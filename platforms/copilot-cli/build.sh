@@ -15,12 +15,22 @@ sedi() {
   fi
 }
 
+# Transformer language decision (WS1 / audit L4): bash + grep/sed (via sedi) for
+# the context-free bulk passes, plus perl for the kind-aware reference rewrite in
+# step 4. perl gives portable \b word boundaries and a uniform -i (no BSD-vs-GNU
+# sed divergence) and ships on both macOS and ubuntu-latest CI — no new heavy
+# runtime dep. python3/node remain fallbacks. All passes are deterministic so a
+# rebuild on unchanged source stays byte-identical (CI auto-commit is a no-op).
+
 rm -rf "$OUT"
 cp -r "$CORE" "$OUT"
-rm -rf "$OUT/hooks"
+# WS2: keep hooks/ as-is — the Claude-format hooks.json (SessionStart + PreToolUse,
+# ${CLAUDE_PLUGIN_ROOT}) fires unchanged on Copilot CLI (live T8/T9); no deletion or adaptation.
 
-# 1. Update plugin.json name
-sedi 's/"name": "maister"/"name": "maister-copilot"/' "$OUT/.claude-plugin/plugin.json"
+# 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
+#    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
+sedi -e 's/"name": "maister"/"name": "maister-copilot"/' \
+     -e 's#for Claude Code#for GitHub Copilot CLI#' "$OUT/.claude-plugin/plugin.json"
 
 # 2. Strip plugin prefix from command names: "maister:foo" → "foo"
 #    Plugin system adds the plugin-id prefix automatically
@@ -33,11 +43,85 @@ find "$OUT/skills" -name "*.md" | while read f; do
   sedi 's/^name: maister:/name: /' "$f"
 done
 
-# 4. Replace maister: prefix with maister- for subagent/skill refs
-# Run AFTER command name transform so name: lines are already clean
+# 4. Kind-aware reference rewrite (registry-driven prose classification).
+#    Replaces the former flat `s/maister:/maister-/g`, which mangled all three
+#    entity kinds. Runs AFTER the name-strip steps (2-3) so `name:` frontmatter
+#    is already bare. Reference-Naming Contract (live-verified, Copilot 1.0.73):
+#      agent  maister:<name> -> <PLUGIN_ID>:<name>   (plugin-id auto-prefix)
+#      skill  maister:<name> -> <name>               (bare; `skill` tool)
+#      cmd    maister:<name> -> <name>               (bare; flat command)
+#    Exclusions are automatic (the pattern requires the `maister:` colon form):
+#      maister-copilot (plugin id), .maister/ paths, maister-plugins marketplace.
+
+# 4a. Build the three name-set registries from the SOURCE tree ($CORE).
+core_agents=$(for f in "$CORE"/agents/*.md; do basename "$f" .md; done | LC_ALL=C sort)
+core_skills=$(for d in "$CORE"/skills/*/; do basename "$d"; done | LC_ALL=C sort)
+core_commands=$(find "$CORE/commands" -name '*.md' | while read f; do basename "$f" .md; done | LC_ALL=C sort)
+
+# 4b. Assert the load-bearing pairwise disjointness (agent vs skill, agent vs
+#     command) so the single-lookup classification is sound; fail the build if not.
+overlap_agent_skill=$(LC_ALL=C comm -12 <(echo "$core_agents") <(echo "$core_skills"))
+overlap_agent_command=$(LC_ALL=C comm -12 <(echo "$core_agents") <(echo "$core_commands"))
+if [ -n "$overlap_agent_skill" ] || [ -n "$overlap_agent_command" ]; then
+  echo "FAIL: name-set overlap breaks reference classification" >&2
+  [ -n "$overlap_agent_skill" ] && echo "  agent<->skill: $overlap_agent_skill" >&2
+  [ -n "$overlap_agent_command" ] && echo "  agent<->command: $overlap_agent_command" >&2
+  exit 1
+fi
+
+# 4c. Derive the agent prefix from the generated plugin id (not a hardcoded literal).
+PLUGIN_ID=$(grep -m1 '"name"' "$OUT/.claude-plugin/plugin.json" | sed 's/.*"name":[[:space:]]*"\([^"]*\)".*/\1/')
+case "$PLUGIN_ID" in
+  maister*) : ;;
+  *) echo "FAIL: could not derive plugin id (got '$PLUGIN_ID')" >&2; exit 1 ;;
+esac
+
+# 4d. Build one perl program covering every name, processed LONGEST-FIRST so a
+#     shorter name that is a prefix of a longer one (e.g. skill `research` vs
+#     agent `research-planner`) never wins. The (?![a-z0-9-]) lookahead already
+#     blocks partial matches; longest-first is belt-and-suspenders. Output is
+#     order-independent (rules are disjoint and never match each other's output),
+#     so the rewrite stays byte-identical across rebuilds.
+perl_prog=$(
+  {
+    for n in $core_agents; do echo "A $n"; done
+    for n in $core_skills $core_commands; do echo "B $n"; done
+  } | awk '{ print length($2), $0 }' | LC_ALL=C sort -k1,1nr -k3,3 | while read len kind name; do
+    if [ "$kind" = "A" ]; then
+      printf 's/\\bmaister:\\Q%s\\E(?![a-z0-9-])/%s:%s/g;\n' "$name" "$PLUGIN_ID" "$name"
+    else
+      printf 's/\\bmaister:\\Q%s\\E(?![a-z0-9-])/%s/g;\n' "$name" "$name"
+    fi
+  done
+)
+
 find "$OUT" -name "*.md" | while read f; do
-  sedi 's/maister:/maister-/g' "$f"
+  perl -0pi -e "$perl_prog" "$f"
 done
+
+# 4e. Translate the non-literal `maister:` reference forms that are not registry
+#     names (the perl pass in 4d leaves them): a `skill:` placeholder, a
+#     slash-command glob, and any illustrative COMPOUND `maister:<x>:<y>` token.
+#     A compound is never a real reference (references are single-segment), so it
+#     is an illustrative example — e.g. product-design's `/maister:feature:new`
+#     "does-not-exist" counter-example. Stripping the `maister:` prefix here keeps
+#     the Claude source 100% untouched (zero-touch) while clearing the token from
+#     the Copilot output (satisfies the no-`maister:`-in-output contract).
+find "$OUT" -name "*.md" | while read f; do
+  sedi -e 's|maister:\[orchestrator-name\]|[orchestrator-name]|g' \
+       -e 's|/maister:\*|/*|g' \
+       -e 's|maister:\([a-z][a-z0-9-]*:[a-z][a-z0-9-]*\)|\1|g' "$f"
+done
+
+# 4f. Fail loud on ANY residual `maister:` reference token. Safe because 4e cleared
+#     the placeholder/glob and the compound illustrative form, so a clean build has
+#     zero `maister:` — a residual now means a genuinely unknown single-segment ref.
+residual=$(grep -rnE 'maister:' "$OUT" --include='*.md' || true)
+if [ -n "$residual" ]; then
+  echo "FAIL: unresolved maister:<name> reference token(s) after rewrite:" >&2
+  echo "$residual" >&2
+  exit 1
+fi
 
 # 5. Transform multi-select patterns to sequential
 find "$OUT/skills" -name "*.md" | while read f; do
@@ -49,12 +133,41 @@ find "$OUT/skills" -name "*.md" | while read f; do
     "$f"
 done
 
-# 6. Replace CLAUDE.md references with copilot equivalents in skills
+# 6. Replace CLAUDE.md references with copilot equivalents in skills. The `.claude/CLAUDE.md`
+#    path form is handled FIRST so it maps whole → .github/copilot-instructions.md instead of the
+#    garbled .claude/.github/... collateral; the standalone CLAUDE.md form follows (WS3.3).
 find "$OUT/skills" -name "*.md" | while read f; do
-  sedi 's/CLAUDE\.md/.github\/copilot-instructions.md/g' "$f"
+  sedi -e 's#\.claude/CLAUDE\.md#.github/copilot-instructions.md#g' \
+       -e 's#CLAUDE\.md#.github/copilot-instructions.md#g' "$f"
 done
 
-# 7. Add platform note to plugin's CLAUDE.md
+# 7. Replace AskUserQuestion with copilot's ask_user tool. Runs BEFORE the platform-note append
+#    (step 9) so the note's literal "instead of `AskUserQuestion`" survives — no "instead of
+#    ask_user" tautology (WS3.4).
+find "$OUT" -name "*.md" | while read f; do
+  sedi 's/AskUserQuestion/ask_user/g' "$f"
+done
+
+# 8. Branding scrub (WS3.2) across output *.md. The audit-named false platform-behavior claims are
+#    neutralized FIRST (so the blanket brand swap can't re-mangle them into a still-false "GitHub
+#    Copilot CLI's built-in plan mode"): quick-plan's built-in-plan-mode attribution and
+#    orchestrator-patterns' `auto`-permission-mode basis. Then the plain "Claude Code" platform
+#    references and the Claude doc URLs. `.` matches the apostrophe in "Code's" (avoids shell
+#    quoting). Untouched — no "Claude Code" substring: ${CLAUDE_PLUGIN_ROOT}, CLAUDE.md,
+#    .claude-plugin, .maister/, maister-copilot. The platform-note heredoc is appended AFTER this
+#    step, so its legitimate "Key differences from Claude Code" comparison is preserved.
+find "$OUT" -name "*.md" | while read f; do
+  sedi -e 's#Claude Code.s built-in plan mode#an ordinary plan-mode session#g' \
+       -e 's#Claude Code.s `auto` permission mode#An `auto` (non-interactive) permission mode#g' \
+       -e 's#Claude Code#GitHub Copilot CLI#g' \
+       -e 's#code\.claude\.com#docs.github.com/copilot#g' \
+       -e 's#claude\.ai/code#docs.github.com/copilot#g' \
+       "$f"
+done
+
+# 9. Add platform note to plugin's CLAUDE.md — appended LAST, after the ask_user (step 7) and
+#    branding (step 8) global passes, so its literal `AskUserQuestion` and its "Key differences
+#    from Claude Code" comparison are authored final and not clobbered.
 cat >> "$OUT/CLAUDE.md" << 'EOF'
 
 ## Platform: Copilot CLI
@@ -62,13 +175,9 @@ cat >> "$OUT/CLAUDE.md" << 'EOF'
 This is the Copilot CLI variant. Key differences from Claude Code:
 - **No multi-select**: When asking users to select multiple options, ask sequential single-select questions instead
 - **Command names**: No plugin prefix in names (e.g., `development`); the plugin system adds the plugin-id prefix automatically
+- **Commands**: plugin `commands/` files are not exposed as slash commands on Copilot CLI; invoke the equivalent workflow via its skill (e.g. `/work`, the `reviews-*` skills).
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
 EOF
-
-# 8. Replace AskUserQuestion with copilot's ask_user tool
-find "$OUT" -name "*.md" | while read f; do
-  sedi 's/AskUserQuestion/ask_user/g' "$f"
-done
 
 echo "Built Copilot CLI variant at $OUT"
