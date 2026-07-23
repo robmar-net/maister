@@ -55,11 +55,11 @@ Auto-classifies tasks and routes to the appropriate workflow orchestrator. Suppo
 
 | Classification | Routes To (Skill) |
 |----------------|-------------------|
-| development | `maister-development` |
-| performance | `maister-performance` |
-| migration | `maister-migration` |
-| research | `maister-research` |
-| product-design | `maister-product-design` |
+| development | `development` |
+| performance | `performance` |
+| migration | `migration` |
+| research | `research` |
+| product-design | `product-design` |
 
 ---
 
@@ -135,14 +135,14 @@ Options:
 
 ```
 Use Skill tool:
-  skill: "maister-[orchestrator-name]"
+  skill: "[orchestrator-name]"
   args: "--resume [task_path] [flags]"
 ```
 
 Examples:
-- Resume development: `skill: "maister-development"` with `args: "--resume .maister/tasks/development/2025-10-23-fix"`
-- Restart from phase: `skill: "maister-development"` with `args: "--resume .maister/tasks/development/2025-10-26-auth --from=verify"`
-- Fresh attempts: `skill: "maister-migration"` with `args: "--resume .maister/tasks/migrations/2025-10-20-redux --reset-attempts"`
+- Resume development: `skill: "development"` with `args: "--resume .maister/tasks/development/2025-10-23-fix"`
+- Restart from phase: `skill: "development"` with `args: "--resume .maister/tasks/development/2025-10-26-auth --from=verify"`
+- Fresh attempts: `skill: "migration"` with `args: "--resume .maister/tasks/migrations/2025-10-20-redux --reset-attempts"`
 
 ### Step 3: Classify & Route New Task
 
@@ -152,7 +152,7 @@ Examples:
 
 ```
 Use Task tool:
-  subagent_type: "maister-task-classifier"
+  subagent_type: "maister-copilot:task-classifier"
   description: "Classify task type"
   prompt: "Classify this task into a workflow type: [task description].
            Return structured YAML classification result."
@@ -182,14 +182,14 @@ Display:
   Routing to [task_type] workflow...
 
 Use Skill tool:
-  skill: "maister-[orchestrator-name]"
+  skill: "[orchestrator-name]"
   args: "[description]"
 ```
 
 **Routing examples:**
-- development (92%): `skill: "maister-development"` with `args: "Fix login timeout error"`
-- development (88%): `skill: "maister-development"` with `args: "Add filtering to user table"`
-- performance (95%): `skill: "maister-performance"` with `args: "Optimize slow dashboard queries"`
+- development (92%): `skill: "development"` with `args: "Fix login timeout error"`
+- development (88%): `skill: "development"` with `args: "Add filtering to user table"`
+- performance (95%): `skill: "performance"` with `args: "Optimize slow dashboard queries"`
 
 ---
 
@@ -219,7 +219,7 @@ Display:
 "Task cancelled. You can:
 - Run /work again when ready
 - Use specific workflow commands directly:
-  /maister-development, /maister-performance, etc."
+  /development, /performance, etc."
 ```
 
 ---
@@ -228,11 +228,11 @@ Display:
 
 | Workflow Type | Skill | Args |
 |---------------|-------|------|
-| development | `maister-development` | `--resume [path] [--from=PHASE] [--reset-attempts]` |
-| performance | `maister-performance` | `--resume [path] [--from=PHASE]` |
-| migration | `maister-migration` | `--resume [path] [--from=PHASE]` |
-| research | `maister-research` | `--resume [path] [--from=PHASE]` |
-| product-design | `maister-product-design` | `--resume [path] [--from=PHASE]` |
+| development | `development` | `--resume [path] [--from=PHASE] [--reset-attempts]` |
+| performance | `performance` | `--resume [path] [--from=PHASE]` |
+| migration | `migration` | `--resume [path] [--from=PHASE]` |
+| research | `research` | `--resume [path] [--from=PHASE]` |
+| product-design | `product-design` | `--resume [path] [--from=PHASE]` |
 
 ---
 

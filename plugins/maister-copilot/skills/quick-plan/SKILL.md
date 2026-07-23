@@ -6,7 +6,7 @@ argument-hint: "[task description]"
 
 # Quick Plan — Plan Mode with Standards Enforcement
 
-This works exactly like Claude Code's built-in plan mode, with one addition: the resulting plan must discover and enforce the project's coding standards from `.maister/docs/`.
+This works exactly like an ordinary plan-mode session, with one addition: the resulting plan must discover and enforce the project's coding standards from `.maister/docs/`.
 
 ## Workflow
 
@@ -19,7 +19,7 @@ This works exactly like Claude Code's built-in plan mode, with one addition: the
    - **Then read the specific standard files it points to that are relevant to this task.** Reading INDEX.md alone is NOT sufficient — this is mandatory.
    - Fold the matched standards into the plan itself: reference the governing standard where it shapes a step, and include a **`## Standards Compliance Checklist`** — one checkbox per applicable guideline the implementation must satisfy (each annotated with its source file, e.g. `(from standards/backend/api.md)`). This checklist is verified after implementation.
 
-   If `.maister/docs/INDEX.md` does not exist, plan normally and note in the plan: "No Maister standards found. Consider running `/maister-init`."
+   If `.maister/docs/INDEX.md` does not exist, plan normally and note in the plan: "No Maister standards found. Consider running `/init`."
 
 Do not call `ExitPlanMode` until the plan reflects the applicable standards and includes the Standards Compliance Checklist (or the "no standards found" note).
 

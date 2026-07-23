@@ -1,0 +1,3 @@
+# Generated compatibility reports are run artifacts, not source — ignore them,
+# but keep the directory (via .gitkeep) so the harness always has somewhere to write.
+compat-report-*.md
