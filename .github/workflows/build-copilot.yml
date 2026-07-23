@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Build Copilot CLI variant
         run: make build
@@ -17,6 +17,11 @@ jobs:
         run: make validate
 
       - name: Commit if changed
+        # Canonical-repo only: auto-committing the rebuilt variant back to master is a
+        # maintainer operation on the upstream repo. On forks the default GITHUB_TOKEN is
+        # read-only (push → 403) and the fork's master is just a PR-staging branch, so the
+        # step is skipped there — build + validate above still run as normal fork CI.
+        if: github.repository == 'SkillPanel/maister'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -62,7 +67,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Detect Copilot seat
         id: seat
