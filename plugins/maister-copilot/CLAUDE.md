@@ -564,15 +564,17 @@ Each workflow skill handles both new tasks and resuming existing ones. Pass a ta
 ```
 Research context flows through ALL phases without skipping any. Research artifacts are copied to `analysis/research-context/` and summaries pass to every subagent via Pattern 7.
 
-### Review & Audit Commands
+### Review & Audit Skills
 
-| Command | Usage | Purpose |
-|---------|-------|---------|
-| `/reviews-code` | `[path] [--scope=SCOPE]` | Automated code quality, security, performance analysis |
-| `/reviews-pragmatic` | `[path]` | Detect over-engineering, ensure code matches project scale |
-| `/reviews-spec-audit` | `[spec-path]` | Independent spec audit for completeness and clarity |
-| `/reviews-reality-check` | `[task-path]` | Validate work actually solves the problem |
-| `/reviews-production-readiness` | `[path] [--target=ENV]` | Pre-deployment verification with GO/NO-GO recommendation |
+On Copilot CLI these are **skills** (auto-registered from the plugin `commands/` files, not slash commands). Invoke by naming the skill, e.g. "use the `reviews-code` skill".
+
+| Skill | Arguments | Purpose |
+|-------|-----------|---------|
+| `reviews-code` | `[path] [--scope=SCOPE]` | Automated code quality, security, performance analysis |
+| `reviews-pragmatic` | `[path]` | Detect over-engineering, ensure code matches project scale |
+| `reviews-spec-audit` | `[spec-path]` | Independent spec audit for completeness and clarity |
+| `reviews-reality-check` | `[task-path]` | Validate work actually solves the problem |
+| `reviews-production-readiness` | `[path] [--target=ENV]` | Pre-deployment verification with GO/NO-GO recommendation |
 
 ### Quick Commands
 
@@ -594,7 +596,7 @@ Subagents are specialized AI agents invoked by skills and orchestrators. All age
 |-------|---------|------------|---------|
 | `project-analyzer` | Deep codebase analysis for tech stack, architecture, conventions | `/init` | `agents/project-analyzer.md` |
 | `docs-operator` | Internal service agent: executes docs-manager operations mid-workflow via Task tool. Has docs-manager skill preloaded. **Special case**: companion agent pattern only works here because docs-manager does NOT spawn subagents (only file operations). Do not use this pattern for skills that spawn subagents. | init, standards-update, standards-discover | `agents/docs-operator.md` |
-| `task-classifier` | Classifies task descriptions into workflow types with confidence scoring | `/work` command | `agents/task-classifier.md` |
+| `task-classifier` | Classifies task descriptions into workflow types with confidence scoring | `work` command | `agents/task-classifier.md` |
 | `gap-analyzer` | Compares current vs desired state with characteristic-detection-based analysis modules | development orchestrator | `agents/gap-analyzer.md` |
 | `specification-creator` | Creates specs from gathered requirements with reusability search and self-verification | development, migration orchestrators | `agents/specification-creator.md` |
 | `implementation-planner` | Breaks specs into task groups with test-driven steps and dependency chains | development, migration orchestrators | `agents/implementation-planner.md` |
@@ -754,7 +756,7 @@ When implementing or modifying plugin features:
 This is the Copilot CLI variant. Key differences from Claude Code:
 - **No multi-select**: When asking users to select multiple options, ask sequential single-select questions instead
 - **Command names**: No plugin prefix in names (e.g., `development`); the plugin system adds the plugin-id prefix automatically
-- **Commands**: plugin `commands/` files are not exposed as slash commands on Copilot CLI; invoke the equivalent workflow via its skill (e.g. `/work`, the `reviews-*` skills).
+- **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
 - **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).

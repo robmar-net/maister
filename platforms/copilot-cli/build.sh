@@ -172,6 +172,36 @@ find "$OUT" -name "*.md" | while read f; do
        "$f"
 done
 
+# 8b. Reframe the standalone review workflows for the Copilot invocation surface.
+#     Copilot surfaces a plugin's `commands/*.md` as SKILLS, not slash commands
+#     (live-verified, 1.0.73: `copilot skill list` shows reviews-*/work as
+#     source:plugin, path:.../commands, enabled). The Claude source presents them as
+#     `/reviews-*` slash commands with a Usage column — correct on Claude, a
+#     non-existent surface on Copilot. Rewrite ONLY the "Review & Audit Commands"
+#     section (anchored on its unique heading, up to the next `### `) into skill form,
+#     and drop the `/work` slash. Claude source ($CORE) is untouched — this operates on
+#     $OUT only. Guard: the perl sub must match exactly once, else the build fails loudly
+#     (a source reword must not silently drop this transform). The wider slash-vs-skill
+#     framing of the other command tables is intentionally out of scope here (epic follow-up).
+perl -0777 -i -pe '
+  $c = s{### Review & Audit Commands\n.*?\n(\n### )}{### Review & Audit Skills
+
+On Copilot CLI these are **skills** (auto-registered from the plugin `commands/` files, not slash commands). Invoke by naming the skill, e.g. "use the `reviews-code` skill".
+
+| Skill | Arguments | Purpose |
+|-------|-----------|---------|
+| `reviews-code` | `[path] [--scope=SCOPE]` | Automated code quality, security, performance analysis |
+| `reviews-pragmatic` | `[path]` | Detect over-engineering, ensure code matches project scale |
+| `reviews-spec-audit` | `[spec-path]` | Independent spec audit for completeness and clarity |
+| `reviews-reality-check` | `[task-path]` | Validate work actually solves the problem |
+| `reviews-production-readiness` | `[path] [--target=ENV]` | Pre-deployment verification with GO/NO-GO recommendation |
+$1}s;
+  END { exit($c == 1 ? 0 : 1) }
+' "$OUT/CLAUDE.md" || { echo "FAIL: step 8b: 'Review & Audit Commands' section not found exactly once in \$OUT/CLAUDE.md (source drift?)" >&2; exit 1; }
+
+# 8c. Drop the `/work` slash reference (Copilot: `work` is a skill, not a slash command).
+sedi 's#`/work`#`work`#g' "$OUT/CLAUDE.md"
+
 # 9. Add platform note to plugin's CLAUDE.md — appended LAST, after the ask_user (step 7) and
 #    branding (step 8) global passes, so its literal `AskUserQuestion` and its "Key differences
 #    from Claude Code" comparison are authored final and not clobbered.
@@ -182,7 +212,7 @@ cat >> "$OUT/CLAUDE.md" << 'EOF'
 This is the Copilot CLI variant. Key differences from Claude Code:
 - **No multi-select**: When asking users to select multiple options, ask sequential single-select questions instead
 - **Command names**: No plugin prefix in names (e.g., `development`); the plugin system adds the plugin-id prefix automatically
-- **Commands**: plugin `commands/` files are not exposed as slash commands on Copilot CLI; invoke the equivalent workflow via its skill (e.g. `/work`, the `reviews-*` skills).
+- **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
 - **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
