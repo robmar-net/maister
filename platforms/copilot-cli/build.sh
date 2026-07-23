@@ -24,8 +24,15 @@ sedi() {
 
 rm -rf "$OUT"
 cp -r "$CORE" "$OUT"
-# WS2: keep hooks/ as-is — the Claude-format hooks.json (SessionStart + PreToolUse,
-# ${CLAUDE_PLUGIN_ROOT}) fires unchanged on Copilot CLI (live T8/T9); no deletion or adaptation.
+# WS2: keep hooks/ — the Claude-format hooks.json (SessionStart + PreToolUse,
+# ${CLAUDE_PLUGIN_ROOT}) fires unchanged on Copilot CLI (live T8/T9); no deletion.
+# WS2b: overlay the Copilot-specific destructive-command guard. Copilot's PreToolUse
+# payload carries no agent identifier (verified live), so the Claude guard's subagent
+# gating is a no-op there; the override asks the user to CONFIRM any destructive command
+# (permissionDecision "ask" — Copilot honors it and does NOT bypass it under
+# --allow-all-tools). Only the OUTPUT hook is replaced; the Claude source hook is untouched.
+cp "$SCRIPT_DIR/hooks-overrides/block-destructive-commands.sh" "$OUT/hooks/block-destructive-commands.sh"
+chmod +x "$OUT/hooks/block-destructive-commands.sh"
 
 # 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
 #    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
@@ -178,6 +185,7 @@ This is the Copilot CLI variant. Key differences from Claude Code:
 - **Commands**: plugin `commands/` files are not exposed as slash commands on Copilot CLI; invoke the equivalent workflow via its skill (e.g. `/work`, the `reviews-*` skills).
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
+- **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
 EOF
 
 echo "Built Copilot CLI variant at $OUT"
