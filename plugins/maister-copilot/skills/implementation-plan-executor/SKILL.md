@@ -75,7 +75,7 @@ Never assume missing `Files to Modify` means "None" — silent disjoint assumpti
 
 For each wave:
 
-0. For every group in the wave, `TaskUpdate` to `status: "in_progress"` with `owner: "maister-task-group-implementer"`.
+0. For every group in the wave, `TaskUpdate` to `status: "in_progress"` with `owner: "maister-copilot:task-group-implementer"`.
 
 1. **Prepare group context** (per group):
    - Extract group content from `implementation-plan.md` (including `Visual References` section, if present)
@@ -93,7 +93,7 @@ For each wave:
    ✅ Right: One assistant message with N `Task` tool-use blocks emitted before any of them returns. The runtime returns all N results before the next assistant turn.
 
    Per-call parameters:
-   - subagent_type: `maister-task-group-implementer`
+   - subagent_type: `maister-copilot:task-group-implementer`
    - prompt: per-group content + initial standards + INDEX.md path + spec excerpt + sibling-wave note (see "Subagent Invocation")
 
    **SELF-CHECK before sending the message**: Are you about to emit a message with one `Task` call when the current wave has more than one group? If yes, STOP. Compose every wave member's prompt first, then emit them all in the same message. Awaiting one before composing the next violates this skill's contract. If the wave has exactly one group, a single `Task` call is correct.
@@ -115,7 +115,7 @@ For each wave:
 4. **Partial-wave failure handling**:
    - Do NOT cancel sibling subagents in the same wave — they may produce valid work even when one peer fails.
    - After every wave member has returned, run the existing failure recovery flow (see "Error Handling" → "Subagent Failure") for each failed group individually.
-   - Mark successful groups in the wave as `completed` normally. Keep failed groups `in_progress` with `metadata: {failed_at, failure_reason, wave: N}` until the ask_user recovery path resolves them.
+   - Mark successful groups in the wave as `completed` normally. Keep failed groups `in_progress` with `metadata: {failed_at, failure_reason, wave: N}` until the AskUserQuestion recovery path resolves them.
    - The next wave is NOT computed until every failed group's recovery decision is made.
 
 5. After the wave fully resolves (all members `completed` or recovered), recompute the ready set and proceed to the next wave.
@@ -303,7 +303,7 @@ N.n  - Run tests (only this group's tests)
 Before executing step N.2 or higher:
 
 1. Verify N.1 (test step) is complete
-2. If not complete, use ask_user:
+2. If not complete, use AskUserQuestion:
    ```
    Question: "Test step N.1 not completed. How to proceed?"
    Header: "Tests"
@@ -372,7 +372,7 @@ If task-group-implementer reports failure:
 1. **Do NOT auto-rollback** - User-confirmed rollback only
 2. **Analyze root cause** from subagent output
 3. **Check for easy fixes**: config issues, missing dependencies, test setup
-4. **Use ask_user**:
+4. **Use AskUserQuestion**:
    ```
    Question: "Group [N] implementation failed: [brief reason]. How to proceed?"
    Header: "Failure"
@@ -390,7 +390,7 @@ If tests fail after implementation:
 
 1. Analyze failure output
 2. If obvious fix: apply and re-run
-3. If unclear: use ask_user with options
+3. If unclear: use AskUserQuestion with options
 
 ## Validation Checklist
 

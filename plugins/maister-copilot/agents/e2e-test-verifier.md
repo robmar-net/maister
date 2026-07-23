@@ -469,7 +469,7 @@ After the markdown reports and screenshots are finalized, write operator-facing 
 
 Detect unavailable tools and provide setup instructions:
 - Install playwright-mcp
-- Configure MCP server in Claude Code
+- Configure MCP server in GitHub Copilot CLI
 - Restart and retry
 
 ### Application Not Running
