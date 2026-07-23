@@ -1,4 +1,4 @@
-.PHONY: build validate clean watch
+.PHONY: build validate check-deterministic test-copilot clean watch
 
 build:
 	bash platforms/copilot-cli/build.sh
@@ -16,7 +16,42 @@ validate:
 	@! grep -r '^name: maister-' plugins/maister-copilot/commands/ 2>/dev/null || (echo "FAIL: maister- prefix in command names" && exit 1)
 	@echo "Checking no maister: prefixes in copilot variant..."
 	@! grep -r 'maister:' plugins/maister-copilot/ --include="*.md" 2>/dev/null || (echo "FAIL: maister: prefix found" && exit 1)
+	@echo "Checking no wrong maister-<word> tokens (WS5.1)..."
+	@! grep -rhoE 'maister-[a-z][a-z-]+' plugins/maister-copilot --include='*.md' | grep -vxE 'maister-copilot|maister-plugins' || (echo "FAIL: forbidden maister-<word> token(s) found above (only maister-copilot is allowed)" && exit 1)
+	@echo "Checking agent references are namespaced as maister-copilot:<name> (WS5.2)..."
+	@AGENTS=$$(ls plugins/maister/agents/*.md | xargs -n1 basename | sed 's/\.md$$//' | paste -sd'|' -); \
+	! grep -rnE 'subagent_type: ["`]('"$$AGENTS"')["`]' plugins/maister-copilot --include='*.md' || (echo "FAIL: bare (non-namespaced) agent ref found above; agents must be maister-copilot:<name>" && exit 1)
+	@! grep -rnE 'maister-copilot:(development|migration|quick-plan)([^a-z-]|$$)' plugins/maister-copilot --include='*.md' || (echo "FAIL: skill referenced as maister-copilot:<skill> above; skills/commands must be bare" && exit 1)
+	@echo "Checking argument-hint is a string, not a YAML array (WS5.3)..."
+	@! grep -rnE '^argument-hint:[[:space:]]*\[' plugins/maister-copilot --include='*.md' || (echo "FAIL: argument-hint must be a quoted string, not an unquoted YAML array" && exit 1)
+	@echo "Checking hooks/ is present in the output (WS5.4)..."
+	@test -d plugins/maister-copilot/hooks && test -f plugins/maister-copilot/hooks/hooks.json || (echo "FAIL: plugins/maister-copilot/hooks/ or hooks/hooks.json is missing" && exit 1)
+	@echo "Checking branding residue and plugin description (WS5.5)..."
+	@! grep -rnE 'code\.claude\.com|claude\.ai/code|## Claude Code Documentation' plugins/maister-copilot --include='*.md' || (echo "FAIL: Claude Code residue (doc URLs or docs-section heading) found above" && exit 1)
+	@grep -q 'GitHub Copilot CLI' plugins/maister-copilot/.claude-plugin/plugin.json || (echo "FAIL: plugin.json description must mention 'GitHub Copilot CLI'" && exit 1)
 	@echo "All checks passed"
+
+# WS5.7: determinism guard, kept OUT of `validate` (double-build) so validate stays fast.
+# Two consecutive builds must produce a byte-identical tree, so the plugin.json
+# targeted-string-edit + all rewrites preserve byte-identity and CI auto-commit stays a no-op.
+check-deterministic:
+	@echo "Determinism check: building twice and comparing byte-identity (WS5.7)..."
+	@$(MAKE) build >/dev/null 2>&1; \
+	H1=$$(find plugins/maister-copilot -type f | sort | xargs shasum | shasum); \
+	$(MAKE) build >/dev/null 2>&1; \
+	H2=$$(find plugins/maister-copilot -type f | sort | xargs shasum | shasum); \
+	if [ "$$H1" = "$$H2" ]; then echo "PASS: rebuild is byte-identical"; else echo "FAIL: non-deterministic rebuild (tree hashes differ)"; exit 1; fi
+
+# WS7: committed Copilot CLI compatibility harness — the acceptance + regression
+# mechanism. Rebuilds the plugin, then loads it into a real Copilot CLI and asserts the
+# 7 runtime contracts (plugin/skills/agents/task/skill/hooks/mcp), emitting a timestamped
+# report under platforms/copilot-cli/compat-tests/reports/. Green on a correct build, red
+# on any runtime-contract regression. See platforms/copilot-cli/compat-tests/README.md.
+# The full run needs an authenticated Copilot seat (a few AI credits); for CI without a
+# seat, run the harness directly with --no-live for the auth-free subset.
+test-copilot:
+	$(MAKE) build
+	bash platforms/copilot-cli/compat-tests/run.sh
 
 clean:
 	rm -rf plugins/maister-copilot/
