@@ -34,6 +34,45 @@ function slugify(title) {
     || 'untitled';
 }
 
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// --- Manifest: raw screen payloads persisted alongside the rendered .html files.
+// Lets the gallery survive a server restart (in-memory state is otherwise empty on
+// startup even though the .html files exist on disk).
+function manifestPath() {
+  if (!taskPath) return null;
+  return path.join(taskPath, ...outputSubdir, '.mockups.json');
+}
+
+function saveManifest() {
+  const p = manifestPath();
+  if (!p) return;
+  try {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify({ latestId, mockups }, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn(`[visual-companion] Could not write manifest: ${err.message}`);
+  }
+}
+
+function loadManifest() {
+  const p = manifestPath();
+  if (!p || !fs.existsSync(p)) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    if (Array.isArray(data.mockups) && data.mockups.length) {
+      mockups.push(...data.mockups);
+      latestId = data.latestId || mockups[mockups.length - 1].id;
+      version = mockups.length;
+      console.log(`Restored ${mockups.length} screen(s) from disk.`);
+    }
+  } catch (err) {
+    console.warn(`[visual-companion] Could not read manifest: ${err.message}`);
+  }
+}
+
 // Save a rendered standalone HTML file to disk. Returns true if saved, false if skipped.
 function saveToDisk(mockup) {
   if (!taskPath) {
@@ -92,12 +131,18 @@ function renderGallery() {
   if (mockups.length === 0) {
     content = '<div class="placeholder">Waiting for design mockups...<br>The orchestrator will send screens here.</div>';
   } else {
-    const cards = mockups.map(m => `
+    // Each preview renders inside its own <iframe srcdoc> so per-screen CSS is fully
+    // isolated — screens reuse identical class names, so injecting their <style> into
+    // the shared gallery document (the old `<style scoped>`, which browsers no longer
+    // support) made every card collide. The iframe gives each card a private document.
+    const cards = mockups.map(m => {
+      const doc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#0e0f11}${m.css || ''}</style></head><body>${m.html || ''}</body></html>`;
+      return `
       <a href="/screen/${m.id}" class="gallery-card">
         <div class="gallery-card-title">${m.title}</div>
-        <div class="gallery-card-preview"><style scoped>${m.css || ''}</style>${m.html || ''}</div>
-      </a>
-    `).join('');
+        <div class="gallery-card-preview"><iframe class="gallery-frame" scrolling="no" sandbox="allow-same-origin" srcdoc="${escapeAttr(doc)}"></iframe></div>
+      </a>`;
+    }).join('');
     content = `<div class="gallery-grid">${cards}</div>`;
   }
 
@@ -207,6 +252,7 @@ async function handler(req, res) {
       latestId = id;
       version++;
       const saved = saveToDisk(mockup);
+      saveManifest();
       notifyClients();
       jsonResponse(res, 200, { status: 'updated', version, id, screens: mockups.length, saved });
       return;
@@ -281,6 +327,7 @@ function tryPort(port) {
 }
 
 async function start() {
+  loadManifest();
   const ports = [3847, 3848, 3849, 3850];
   for (const port of ports) {
     try {
