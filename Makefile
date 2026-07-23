@@ -1,4 +1,4 @@
-.PHONY: build validate check-deterministic test-copilot clean watch
+.PHONY: build validate check-deterministic test-copilot test-hooks clean watch
 
 build:
 	bash platforms/copilot-cli/build.sh
@@ -56,6 +56,17 @@ check-deterministic:
 test-copilot:
 	$(MAKE) build
 	bash platforms/copilot-cli/compat-tests/run.sh
+
+# L1 — hook-EFFECT checks. Where test-copilot (L0) proves the three maister hooks *fire*, this
+# verifies each hook's EFFECT on Copilot CLI and honestly reports where that effect is a no-op.
+# Rebuilds the plugin, then runs deterministic hook-script contracts (no credits) plus one live
+# Copilot session (task subagent + probe hooks; a few AI credits). A LIMITATION verdict is the
+# CORRECT detection of a platform divergence, not a failure — the run only goes red on an
+# UNEXPECTED regression (a hook script's logic breaking). For CI without a seat, run the script
+# directly with --no-live for the deterministic subset. See compat-tests/L1-FINDINGS.md.
+test-hooks:
+	$(MAKE) build
+	bash platforms/copilot-cli/compat-tests/l1-hook-effects.sh
 
 clean:
 	rm -rf plugins/maister-copilot/
