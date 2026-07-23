@@ -23,3 +23,90 @@ jobs:
           git add plugins/maister-copilot/
           git diff --cached --quiet || git commit -m "Rebuild Copilot CLI variant"
           git push
+
+  # ---------------------------------------------------------------------------
+  # WS6 — Runtime compatibility gate (invokes the committed WS7 harness in CI)
+  #
+  # `make validate` (build job) proves STATIC conventions only. Proving the
+  # generated plugin actually LOADS and REGISTERS in a real GitHub Copilot CLI
+  # requires the WS7 harness (`make test-copilot`), which needs the Copilot CLI
+  # installed AND AUTHENTICATED (a seat) with experimental features enabled —
+  # even the `--no-live` subset issues a live `plugin list`. A vanilla GitHub
+  # runner has none of this, so this gate runs in two modes:
+  #
+  #   • Seat provisioned  → install + authenticate the Copilot CLI, run the full
+  #     WS7 harness, FAIL the build on any RED contract, and upload the
+  #     timestamped report as the run's evidence.
+  #   • No seat (default) → SKIP the harness with a clear log line. `make build`
+  #     + `make validate` (build job) still run and gate exactly as before. This
+  #     degraded mode is a DOCUMENTED ACCEPTED LIMITATION: it does NOT prove the
+  #     runtime-registration criterion — it only defers it to a local
+  #     `make test-copilot` run.
+  #
+  # ── To ENABLE the full runtime gate (maintainer, one-time) ──────────────────
+  #   1. Provision a GitHub Copilot seat usable by the CLI and obtain a
+  #      non-interactive CLI auth token (or a pre-authenticated
+  #      ~/.copilot/config.json payload).
+  #   2. Add it as an Actions secret named COPILOT_CLI_TOKEN
+  #      (repo/org → Settings → Secrets and variables → Actions).
+  #   3. Finish the auth handshake in the "Install & authenticate" step below to
+  #      match GitHub's current Copilot CLI auth mechanism, and ensure
+  #      experimental features are enabled in the CLI config (required for
+  #      `--plugin-dir`).
+  #   The gate auto-activates as soon as the secret is present. The full run
+  #   consumes a few AI credits per push (the harness drives one scripted live
+  #   session). Reports are uploaded as build artifacts only — never committed.
+  # ---------------------------------------------------------------------------
+  compat:
+    name: Copilot CLI compat harness (WS7)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect Copilot seat
+        id: seat
+        env:
+          COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+        run: |
+          if [ -n "$COPILOT_CLI_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Copilot seat detected — running the full WS7 runtime compatibility harness."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo 'Copilot CLI compat harness skipped — no seat in CI; `make validate` covers static conventions; run `make test-copilot` locally'
+          fi
+
+      - name: Install & authenticate GitHub Copilot CLI
+        if: steps.seat.outputs.present == 'true'
+        env:
+          COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+        run: |
+          # Install the Copilot CLI (baseline 1.0.73). ubuntu-latest ships Node.js.
+          npm install -g @github/copilot
+          mkdir -p "$HOME/.copilot"
+          # MAINTAINER: complete the auth handshake for the provisioned seat here —
+          # e.g. materialize $COPILOT_CLI_TOKEN into ~/.copilot/config.json or run
+          # the CLI's non-interactive login flow — and enable experimental features
+          # (required for --plugin-dir). After this, `copilot --version` must work:
+          copilot --version
+
+      - name: Run WS7 compatibility harness (fail the build on any red contract)
+        if: steps.seat.outputs.present == 'true'
+        env:
+          COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+        # `make test-copilot` = `make build` + run.sh (full live mode). run.sh
+        # writes its report under platforms/copilot-cli/compat-tests/reports/
+        # (git-ignored) and exits non-zero on any RED contract, failing this job.
+        run: make test-copilot
+
+      - name: Upload compatibility report (evidence)
+        # Upload even when the harness goes RED (the report IS the evidence);
+        # skipped entirely in the no-seat mode. Reports are artifacts only —
+        # they are never `git add`-ed, so the build job's auto-commit stays a no-op.
+        if: ${{ always() && steps.seat.outputs.present == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: copilot-compat-report
+          path: platforms/copilot-cli/compat-tests/reports/compat-report-*.md
+          if-no-files-found: warn
