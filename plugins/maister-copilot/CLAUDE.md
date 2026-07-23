@@ -757,3 +757,4 @@ This is the Copilot CLI variant. Key differences from Claude Code:
 - **Commands**: plugin `commands/` files are not exposed as slash commands on Copilot CLI; invoke the equivalent workflow via its skill (e.g. `/work`, the `reviews-*` skills).
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
+- **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
