@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [
+        { "type": "command", "command": "__PLUGIN_ABS__/hooks/probe-abs.sh", "timeout": 10 },
+        { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/probe-var.sh", "timeout": 10 }
+      ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [
+        { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/probe-pretool.sh", "timeout": 10 }
+      ] }
+    ]
+  }
+}
