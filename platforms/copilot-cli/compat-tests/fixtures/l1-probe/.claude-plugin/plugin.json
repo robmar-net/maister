@@ -1,0 +1,5 @@
+{
+  "name": "compat-l1-probe",
+  "version": "0.0.0",
+  "description": "L1 hook-effects probe plugin: captures the SessionStart env (does Copilot set $CLAUDE_PROJECT_DIR?) and the raw PreToolUse/Bash payload (does it carry an agent identifier?). Loaded alongside the real maister-copilot build; logs to a run-local copy only."
+}
