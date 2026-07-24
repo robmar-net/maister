@@ -29,6 +29,8 @@ validate:
 	@echo "Checking branding residue and plugin description (WS5.5)..."
 	@! grep -rnE 'code\.claude\.com|claude\.ai/code|## Claude Code Documentation' plugins/maister-copilot --include='*.md' || (echo "FAIL: Claude Code residue (doc URLs or docs-section heading) found above" && exit 1)
 	@grep -q 'GitHub Copilot CLI' plugins/maister-copilot/.claude-plugin/plugin.json || (echo "FAIL: plugin.json description must mention 'GitHub Copilot CLI'" && exit 1)
+	@echo "Checking no standalone 'Claude' assistant-name leak outside CLAUDE.md (WS5.11)..."
+	@! grep -rnE '\bClaude\b' plugins/maister-copilot --include='*.md' | grep -v '/CLAUDE.md:' || (echo "FAIL: standalone 'Claude' found above (should be 'Copilot'); the root CLAUDE.md is exempt (intentional carry-over). Regenerate with make build" && exit 1)
 	@echo "Checking no AskUserQuestion residual (must be ask_user) (WS5.9)..."
 	@! grep -rl 'AskUserQuestion' plugins/maister-copilot/skills plugins/maister-copilot/commands plugins/maister-copilot/agents --include='*.md' 2>/dev/null || (echo "FAIL: AskUserQuestion residual found above (should be rewritten to ask_user); regenerate with make build" && exit 1)
 	@echo "Checking the destructive-command guard is the Copilot 'ask' override (WS5.10)..."

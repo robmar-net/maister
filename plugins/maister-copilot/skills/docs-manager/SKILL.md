@@ -315,37 +315,37 @@ Use this to check that documentation is consistent, up-to-date, and properly int
 **Initialize documentation in a new project:**
 ```
 User: "Set up documentation for this project"
-Claude: [Executes Initialize Documentation - creates structure, copies baseline docs, generates INDEX.md, updates .github/copilot-instructions.md, gathers project info]
+Copilot: [Executes Initialize Documentation - creates structure, copies baseline docs, generates INDEX.md, updates .github/copilot-instructions.md, gathers project info]
 ```
 
 **Update project vision:**
 ```
 User: "I want to update our project vision to include AI-first approach"
-Claude: [Executes Update Documentation - reads current vision.md, helps user edit it, updates INDEX.md if needed]
+Copilot: [Executes Update Documentation - reads current vision.md, helps user edit it, updates INDEX.md if needed]
 ```
 
 **Add custom documentation:**
 ```
 User: "Add documentation for our deployment process"
-Claude: [Executes Add Documentation File - creates custom project/deployment.md, updates INDEX.md]
+Copilot: [Executes Add Documentation File - creates custom project/deployment.md, updates INDEX.md]
 ```
 
 **Reference plugin baseline:**
 ```
 User: "Show me the plugin's baseline error handling standard"
-Claude: [Executes Use Plugin Documentation as Reference - shows plugin baseline, compares with project version, no changes unless user requests]
+Copilot: [Executes Use Plugin Documentation as Reference - shows plugin baseline, compares with project version, no changes unless user requests]
 ```
 
 **Validate documentation:**
 ```
 User: "Check if our documentation is complete and consistent"
-Claude: [Executes Validate Documentation Consistency - checks structure, INDEX.md, .github/copilot-instructions.md integration, generates report]
+Copilot: [Executes Validate Documentation Consistency - checks structure, INDEX.md, .github/copilot-instructions.md integration, generates report]
 ```
 
 **Manage INDEX.md:**
 ```
 User: "Rebuild the documentation index"
-Claude: [Executes Manage INDEX.md - scans .maister/docs/, regenerates comprehensive INDEX.md]
+Copilot: [Executes Manage INDEX.md - scans .maister/docs/, regenerates comprehensive INDEX.md]
 ```
 
 ---

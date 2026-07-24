@@ -179,6 +179,18 @@ find "$OUT" -name "*.md" | while read f; do
        "$f"
 done
 
+# 8a. Standalone assistant-name scrub (WS3.2b / T5). Step 8 only maps the PRODUCT string
+#     "Claude Code"; the bare assistant name "Claude" survives in prose (transcript lines
+#     "Claude: [Executes …]" in docs-manager, "developers and Claude" in migration refs). Map
+#     it to "Copilot" to match the variant. Runs AFTER step 8 so "Claude Code" is already gone
+#     (no "Copilot Code"). perl gives portable \b; \bClaude\b is case-sensitive so it never
+#     touches CLAUDE_*, .claude, claude-plugin, or claude-md (all differently-cased).
+#     EXCLUDES the root CLAUDE.md: that file is an intentional, banner-labeled carry-over of the
+#     Claude doc (see step 10), so its "Claude" mentions must stay.
+find "$OUT" -name "*.md" ! -name "CLAUDE.md" | while read f; do
+  perl -i -pe 's/\bClaude\b/Copilot/g' "$f"
+done
+
 # 8b. Reframe the standalone review workflows for the Copilot invocation surface.
 #     Copilot surfaces a plugin's `commands/*.md` as SKILLS, not slash commands
 #     (live-verified, 1.0.73: `copilot skill list` shows reviews-*/work as
