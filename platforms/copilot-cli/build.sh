@@ -33,6 +33,13 @@ cp -r "$CORE" "$OUT"
 # --allow-all-tools). Only the OUTPUT hook is replaced; the Claude source hook is untouched.
 cp "$SCRIPT_DIR/hooks-overrides/block-destructive-commands.sh" "$OUT/hooks/block-destructive-commands.sh"
 chmod +x "$OUT/hooks/block-destructive-commands.sh"
+# WS2c: overlay the Copilot-specific SessionStart skill-invocation reminder. On Copilot a
+# plugin's root CLAUDE.md is NOT loaded (verified 1.0.73 + GitHub Docs), so behavioral
+# invariants that Claude gets from CLAUDE.md (user-confirmed rollback; artifact anchoring)
+# must ride the SessionStart hook — the only plugin->model free-text channel. The override
+# appends those two rules to the reminder's additionalContext. Claude source hook untouched.
+cp "$SCRIPT_DIR/hooks-overrides/skill-invocation-reminder.sh" "$OUT/hooks/skill-invocation-reminder.sh"
+chmod +x "$OUT/hooks/skill-invocation-reminder.sh"
 
 # 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
 #    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
@@ -202,6 +209,19 @@ $1}s;
 # 8c. Drop the `/work` slash reference (Copilot: `work` is a skill, not a slash command).
 sedi 's#`/work`#`work`#g' "$OUT/CLAUDE.md"
 
+# 8d. Remove the "GitHub Copilot CLI Documentation" section (the blind URL-swap produced 404
+#     links — docs.github.com/copilot/docs/en/... — and the "built-in tools" gist it cites is a
+#     CLAUDE CODE tools reference, wrong for this variant; Copilot fetches its own docs via the
+#     built-in fetch_copilot_cli_documentation tool). Runs AFTER step 8 (heading already
+#     "GitHub Copilot CLI Documentation", URLs already swapped) and BEFORE step 9's append, so
+#     the section is the file tail and deletes cleanly to EOF. This also removes all
+#     code.claude.com residue from CLAUDE.md, so `make validate` (WS5.5) stays green without a
+#     carve-out. Guard: must match exactly once (fail loudly on source drift).
+perl -0777 -i -pe '
+  $c = s/\n+## GitHub Copilot CLI Documentation\b.*\z/\n/s;
+  END { exit($c == 1 ? 0 : 1) }
+' "$OUT/CLAUDE.md" || { echo "FAIL: step 8d: 'GitHub Copilot CLI Documentation' section not found exactly once in \$OUT/CLAUDE.md (source drift?)" >&2; exit 1; }
+
 # 9. Add platform note to plugin's CLAUDE.md — appended LAST, after the ask_user (step 7) and
 #    branding (step 8) global passes, so its literal `AskUserQuestion` and its "Key differences
 #    from Claude Code" comparison are authored final and not clobbered.
@@ -217,5 +237,24 @@ This is the Copilot CLI variant. Key differences from Claude Code:
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
 - **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
 EOF
+
+# 10. Prepend a human-facing banner to the TOP of CLAUDE.md — authored LAST so no sed pass
+#     touches it. Copilot does NOT load a plugin's root CLAUDE.md into model context (verified
+#     1.0.73 + GitHub Docs), so this file is a maintainer-facing carry-over of the Claude doc.
+#     The banner says so and points at the real Copilot runtime sources (SessionStart hook +
+#     each SKILL.md). Uses a temp file to prepend (portable, no in-place head insert).
+cat > "$OUT/CLAUDE.md.banner" << 'EOF'
+> ⚠️ **Not loaded by Copilot CLI — maintainer reference only.**
+> GitHub Copilot CLI does **not** read a plugin's root `CLAUDE.md` into model context. A
+> plugin's runtime components are agents, skills, commands, hooks, and MCP/LSP servers — not a
+> root instructions file (verified on CLI 1.0.73 and the official GitHub Copilot plugin docs).
+> This file is a human-facing carry-over of the Claude plugin's documentation, kept for people
+> reading the installed plugin. **Source of truth for Copilot runtime behavior:** the
+> `SessionStart` hook (`hooks/skill-invocation-reminder.sh`) and each skill's `SKILL.md`.
+> Some slash-command, tooling, and platform references below describe the Claude variant.
+
+EOF
+cat "$OUT/CLAUDE.md" >> "$OUT/CLAUDE.md.banner"
+mv "$OUT/CLAUDE.md.banner" "$OUT/CLAUDE.md"
 
 echo "Built Copilot CLI variant at $OUT"
