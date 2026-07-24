@@ -2,7 +2,16 @@ name: Build Copilot CLI Variant
 on:
   push:
     branches: [master, v2]
-    paths: ['plugins/maister/**', 'platforms/**']
+    # Everything the build reads or is gated by. plugins/maister/** + platforms/**
+    # are the build INPUTS; Makefile carries the `validate` rules and the build/determinism
+    # targets; the workflow file itself so changes to the gate are exercised on push.
+    # (plugins/maister-copilot/** is intentionally excluded — it is generated output, so a
+    # rebuild commit can't self-retrigger this workflow.)
+    paths:
+      - 'plugins/maister/**'
+      - 'platforms/**'
+      - 'Makefile'
+      - '.github/workflows/build-copilot.yml'
 
 jobs:
   build:
@@ -15,6 +24,16 @@ jobs:
 
       - name: Validate build
         run: make validate
+
+      - name: Check build determinism
+        # Two consecutive builds on this runner must be byte-identical. This protects the
+        # drift guard below (a non-deterministic build would make `git diff --exit-code`
+        # flaky) and the SkillPanel auto-commit (which would otherwise churn "Rebuild"
+        # commits). NOTE: this proves SAME-machine determinism only — it does not prove
+        # cross-OS (macOS↔Linux) byte-identity, which the drift guard also assumes; the
+        # build is written for that (LC_ALL=C sort, perl -0pi, portable sedi) but it is not
+        # gated here. Add a macOS matrix leg if that ever needs enforcing.
+        run: make check-deterministic
 
       - name: Commit if changed
         # Canonical-repo only: auto-committing the rebuilt variant back to master is a
