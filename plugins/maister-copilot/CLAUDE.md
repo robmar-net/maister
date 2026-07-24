@@ -1,3 +1,12 @@
+> ⚠️ **Not loaded by Copilot CLI — maintainer reference only.**
+> GitHub Copilot CLI does **not** read a plugin's root `CLAUDE.md` into model context. A
+> plugin's runtime components are agents, skills, commands, hooks, and MCP/LSP servers — not a
+> root instructions file (verified on CLI 1.0.73 and the official GitHub Copilot plugin docs).
+> This file is a human-facing carry-over of the Claude plugin's documentation, kept for people
+> reading the installed plugin. **Source of truth for Copilot runtime behavior:** the
+> `SessionStart` hook (`hooks/skill-invocation-reminder.sh`) and each skill's `SKILL.md`.
+> Some slash-command, tooling, and platform references below describe the Claude variant.
+
 # Maister Plugin
 
 This plugin provides AI-powered Software Development Lifecycle (SDLC) capabilities for GitHub Copilot CLI projects.
@@ -711,45 +720,6 @@ Blocks destructive shell commands (`git stash`, `git reset --hard`, `git checkou
 `task-group-implementer` is **not** whitelisted. It runs implementation code under the same destructive-command guard as ordinary agents to prevent rogue `git stash` / `reset --hard` from clobbering sibling implementers in a parallel wave (see "Implementation Task Group Tracking" above).
 
 All other agents and the main agent pass through normally. When adding a new agent that needs full Bash access, add it to the `case` statement in the hook script.
-
-## GitHub Copilot CLI Documentation
-
-**IMPORTANT**: Always consult the latest GitHub Copilot CLI documentation when working with plugins and skills. The documentation is regularly updated with new features, best practices, and implementation details.
-
-### Essential Reading
-
-Before working with this plugin, read the following up-to-date documentation:
-
-1. **Plugins Overview**: https://docs.github.com/copilot/docs/en/plugins
-   - Understanding plugin architecture and capabilities
-   - How plugins extend GitHub Copilot CLI functionality
-   - Plugin installation and configuration
-
-2. **Skills Documentation**: https://docs.github.com/copilot/docs/en/skills
-   - How to create and use skills effectively
-   - Skill best practices and patterns
-   - Skill discovery and invocation
-
-3. **Plugins Reference**: https://docs.github.com/copilot/docs/en/plugins-reference
-   - Complete plugin API reference
-   - Plugin structure and requirements
-   - Available plugin features and hooks
-
-4. **Sub-agents/Agents documentation**: https://docs.github.com/copilot/docs/en/sub-agents https://docs.github.com/copilot/docs/en/plugins-reference#agents
-   - Sub-agent architecture and capabilities
-   - Agent definition and tool access
-
-5. **Built-in tools** available for usage: https://gist.github.com/bgauryy/0cdb9aa337d01ae5bd0c803943aa36bd
-
-### Documentation Priority
-
-When implementing or modifying plugin features:
-1. **Current official documentation** (links above) - Always check for latest updates
-2. **Project-specific documentation** (this file and .maister/docs/)
-3. **Code patterns** in this plugin's codebase
-4. **General best practices**
-
-**Note**: GitHub Copilot CLI is actively developed. Always verify implementation details against the current documentation before making changes.
 
 ## Platform: Copilot CLI
 
