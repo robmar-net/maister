@@ -22,7 +22,7 @@ You are an implementation plan executor that delegates task groups to subagents 
 **No exceptions**: "Patterns are clear" or "only a few steps" are NOT valid reasons to skip delegation.
 
 ❌ Wrong: "Let me read standards..." → Implement directly
-✅ Right: Task tool → Process output → Mark checkboxes
+✅ Right: task tool → Process output → Mark checkboxes
 
 ## Phase 1: Initialize
 
@@ -31,7 +31,7 @@ You are an implementation plan executor that delegates task groups to subagents 
    - `implementation/implementation-plan.md` (required)
    - `implementation/spec.md` (recommended)
    - `.maister/docs/INDEX.md` (required for standards)
-3. **Check for task group items**: Call `TaskList` to find existing task group items from the planner. If found, use them. If not, create them with `TaskCreate` for each task group (fallback for plans created before task system migration).
+3. **Check for task group items**: Call `SELECT * FROM todos` to find existing task group items from the planner. If found, use them. If not, create them with `INSERT INTO todos` for each task group (fallback for plans created before task system migration).
 4. **Initialize work-log.md**:
    ```markdown
    # Work Log
@@ -75,7 +75,7 @@ Never assume missing `Files to Modify` means "None" — silent disjoint assumpti
 
 For each wave:
 
-0. For every group in the wave, `TaskUpdate` to `status: "in_progress"` with `owner: "maister-copilot:task-group-implementer"`.
+0. For every group in the wave, `UPDATE todos` to `status: "in_progress"` with `owner: "maister-copilot:task-group-implementer"`.
 
 1. **Prepare group context** (per group):
    - Extract group content from `implementation-plan.md` (including `Visual References` section, if present)
@@ -93,7 +93,7 @@ For each wave:
    ✅ Right: One assistant message with N `Task` tool-use blocks emitted before any of them returns. The runtime returns all N results before the next assistant turn.
 
    Per-call parameters:
-   - subagent_type: `maister-copilot:task-group-implementer`
+   - agent_type: `maister-copilot:task-group-implementer`
    - prompt: per-group content + initial standards + INDEX.md path + spec excerpt + sibling-wave note (see "Subagent Invocation")
 
    **SELF-CHECK before sending the message**: Are you about to emit a message with one `Task` call when the current wave has more than one group? If yes, STOP. Compose every wave member's prompt first, then emit them all in the same message. Awaiting one before composing the next violates this skill's contract. If the wave has exactly one group, a single `Task` call is correct.
@@ -110,7 +110,7 @@ For each wave:
      (Linux: `sed -i` without `''`. The leading quote in `data-step="N\.` anchors the exact group — group 1 cannot match 11.) Then VERIFY: `grep -c 'data-group="N" class="group done"'` must return 1; if 0, append a warning to `work-log.md` (`HTML plan sync missed markers for Group N`) — a visible miss, never a silent one. File absent → skip silently; sync never blocks the wave.
    - Add a group entry to `work-log.md` with standards trail.
    - Verify test results are acceptable.
-   - `TaskUpdate` to `status: "completed"` with `metadata: {completed_at, tests_passed, files_modified, standards_applied, wave: N}`.
+   - `UPDATE todos` to `status: "completed"` with `metadata: {completed_at, tests_passed, files_modified, standards_applied, wave: N}`.
 
 4. **Partial-wave failure handling**:
    - Do NOT cancel sibling subagents in the same wave — they may produce valid work even when one peer fails.
@@ -347,7 +347,7 @@ After each task group:
    - No `- [ ]` checkboxes remain
    - All groups have work-log entries
    - Standards Reading Log is complete
-   - All group tasks are `completed` via `TaskList` (cross-validate against markdown checkboxes)
+   - All group tasks are `completed` via `SELECT * FROM todos` (cross-validate against markdown checkboxes)
 
 2. **Run full project test suite** (all tests, not just feature tests — catches regressions in unrelated areas)
 

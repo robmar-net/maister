@@ -18,7 +18,7 @@ Before considering an orchestrator complete, verify ALL items:
 - [ ] **Decision gates** — Phases receiving `decisions_needed` present to user via ask_user
 - [ ] **Interactive mode** — `ask_user` at every `→ Pause` transition
 - [ ] **Standards discovery** — `.maister/docs/INDEX.md` referenced in spec, plan, implement, verify phases
-- [ ] **TaskCreate initialization** — Tasks created for all phases at workflow start with `addBlockedBy` dependencies
+- [ ] **INSERT INTO todos initialization** — Tasks created for all phases at workflow start with `todo_deps` dependencies
 - [ ] **Auto-recovery table** — Max attempts per phase with recovery strategies
 - [ ] **Domain context schema** — Includes `phase_summaries` structure
 
@@ -32,7 +32,7 @@ Before considering an orchestrator complete, verify ALL items:
 | Defining phases without transitions | Ambiguous when to pause vs continue |
 | Implicit user prompts without ask_user | User loses control |
 | Inline STOP reminders at END of phases | Easily missed; use `→ Pause` transitions instead |
-| Vague subagent calls ("invoke X") | Must show explicit Skill/Task tool parameters |
+| Vague subagent calls ("invoke X") | Must show explicit Skill/task tool parameters |
 | Inline execution to "save time" | Must delegate regardless of perceived simplicity |
 | File paths only in subagent prompts | Include state summaries and prior phase summaries |
 | Stopping at AUTO-CONTINUE transitions | Brief summary is fine, but must proceed immediately |

@@ -3,7 +3,7 @@ name: reviews-code
 description: Run automated code quality, security, and performance analysis on your code
 ---
 
-**ACTION REQUIRED**: This command delegates to a subagent. The `<command-name>` tag refers to THIS command, not the target. Invoke the code-reviewer subagent via the Task tool NOW. Pass path and scope arguments. Do not read files, explore code, or execute workflow steps yourself.
+**ACTION REQUIRED**: This command delegates to a subagent. The `<command-name>` tag refers to THIS command, not the target. Invoke the code-reviewer subagent via the task tool NOW. Pass path and scope arguments. Do not read files, explore code, or execute workflow steps yourself.
 
 You are running a comprehensive code review using the `code-reviewer` subagent.
 
@@ -27,11 +27,11 @@ You are performing automated code analysis to identify quality, security, and pe
 
 ## Your Instructions
 
-**Invoke the code-reviewer subagent NOW using the Task tool:**
+**Invoke the code-reviewer subagent NOW using the task tool:**
 
 ```
-Use Task tool:
-  subagent_type: "maister-copilot:code-reviewer"
+Use task tool:
+  agent_type: "maister-copilot:code-reviewer"
   description: "Code quality review"
   prompt: |
     Analyze code at: [path from user or from ask_user]

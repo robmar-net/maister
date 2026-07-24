@@ -3,7 +3,7 @@ name: reviews-reality-check
 description: Comprehensive reality assessment of completed work to verify it actually works and is production-ready
 ---
 
-**ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the Task tool with subagent_type="maister-copilot:reality-assessor" NOW. Pass the task path in the prompt. Do not read files, explore code, or execute workflow steps yourself.
+**ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the task tool with agent_type="maister-copilot:reality-assessor" NOW. Pass the task path in the prompt. Do not read files, explore code, or execute workflow steps yourself.
 
 You are running a comprehensive reality check using the `reality-assessor` agent.
 
@@ -21,11 +21,11 @@ You are performing no-nonsense reality assessment to determine if completed work
 
 ## Your Instructions
 
-**Invoke the reality-assessor agent NOW using the Task tool:**
+**Invoke the reality-assessor agent NOW using the task tool:**
 
 ```
 Task Tool:
-- subagent_type: reality-assessor
+- agent_type: reality-assessor
 - description: Reality assessment
 - prompt: |
     You are the reality-assessor agent. Assess the reality of completion for: [task-path]

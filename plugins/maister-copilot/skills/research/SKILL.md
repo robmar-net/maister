@@ -31,7 +31,7 @@ Full framework rule: `../orchestrator-framework/references/orchestrator-patterns
 ### Step 2: Initialize Workflow
 
 1. **Capture the clock**: run `date -u +"%Y-%m-%dT%H:%M:%SZ"` via Bash NOW — you do NOT know the time from context. Every timestamp written this turn (`created`, `updated`, `generated`, `phases[].started`) uses this value. Date-only or `T00:00:00Z` values are the documented failure mode (orchestrator-patterns.md § 4 Timestamp Rule). Re-run `date` in later turns before writing timestamps.
-2. **Create Task Items**: Use `TaskCreate` for all phases (see Phase Configuration), then set dependencies with `TaskUpdate addBlockedBy`
+2. **Create Task Items**: Use `INSERT INTO todos` for all phases (see Phase Configuration), then set dependencies with `INSERT INTO todo_deps`
 3. **Create Task Directory**: `.maister/tasks/research/YYYY-MM-DD-task-name/`
 4. **Initialize State**: Create `orchestrator-state.yml` with research context
 5. **Set up Operator Dashboard** (orchestrator-patterns.md § 8) — first read `.maister/config.yml` and set `orchestrator.options.html_output` (default true if the file/key is absent). **When `html_output` is false, SKIP this entire step** — no `dashboard.html`, no `dashboard-data.js`, no browser auto-open — and proceed. Otherwise: copy `../orchestrator-framework/assets/dashboard.html` to the task root as `dashboard.html`, write the initial `dashboard-data.js` (all phases pending, `task.type: "research"`), then **auto-open it in the user's browser** (`open` / `xdg-open` / `start` per platform, passing the plain absolute filesystem path — NEVER a hand-built `file://` URL; on failure just print the path — never block). On resume: re-copy `dashboard.html` only if missing; regenerate `dashboard-data.js` from state; then auto-open it in the browser again (same opener as a new task — the OS focuses an already-open tab rather than duplicating).
@@ -150,7 +150,7 @@ This phase executes 4 sequential steps. On resume, check existing artifacts to s
 
 **Read `references/research-methodologies.md` NOW using the Read tool** — research type classification, methodology selection, gathering strategies
 
-**INVOKE NOW**: Use Task tool with `subagent_type: maister-copilot:research-planner`
+**INVOKE NOW**: Use task tool with `agent_type: maister-copilot:research-planner`
 
 **Context to pass**: task_path, research_brief_path, research_type, research_question, scope, project_doc_paths (from state)
 
@@ -173,7 +173,7 @@ Update state: `research_context.methodology`, `sources`
 ```
 Read gathering strategy from research-plan.md
 For each category in strategy:
-  Use Task tool: source_category=[category_id] → analysis/findings/[prefix]-*.md
+  Use task tool: source_category=[category_id] → analysis/findings/[prefix]-*.md
 ```
 
 #### Step 4: Synthesize (Subagent)
@@ -181,7 +181,7 @@ For each category in strategy:
 **Artifacts**: `analysis/synthesis.md`, `outputs/research-report.md`
 **Resume check**: If `analysis/synthesis.md` AND `outputs/research-report.md` exist, skip (Phase 1 complete)
 
-**INVOKE NOW**: Use Task tool with `subagent_type: maister-copilot:research-synthesizer`
+**INVOKE NOW**: Use task tool with `agent_type: maister-copilot:research-synthesizer`
 
 **Context to pass**: task_path, findings_directory_path, research_question, research_type, methodology, html_style_guide_path (for the research-report.html companion)
 
@@ -203,7 +203,7 @@ ask_user - "Research foundation complete (initialized, planned, gathered, synthe
 
 ### Phase 2: Optional Phases Decision
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 1 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 1 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Evaluate whether brainstorming and/or design phases would be valuable (independently)
 **Execute**: Direct
@@ -249,7 +249,7 @@ ask_user - "Research foundation complete (initialized, planned, gathered, synthe
 
 > **ANTI-PATTERN**: Do NOT generate solution alternatives inline. The solution-brainstormer agent has specialized multi-perspective analysis capabilities.
 
-**INVOKE NOW**: Use Task tool with `subagent_type: maister-copilot:solution-brainstormer`
+**INVOKE NOW**: Use task tool with `agent_type: maister-copilot:solution-brainstormer`
 
 **Context to pass** (Pattern 7):
 - `task_path`, `synthesis_path`, `research_report_path`
@@ -258,7 +258,7 @@ ask_user - "Research foundation complete (initialized, planned, gathered, synthe
 - Accumulated context: `research_type`, `research_question`, `confidence_level`, `phase_summaries` (Phase 1)
 - `project_doc_paths` (from state)
 
-> **SELF-CHECK**: After Task tool returns, verify `outputs/solution-exploration.md` exists and contains alternatives. If missing: **STOP. Do NOT proceed to Phase 4 or Phase 5.** Re-invoke the brainstormer with corrected context (ensure `output_path` is `outputs/solution-exploration.md`). If second attempt also fails, use ask_user to report the failure and ask whether to retry or skip brainstorming.
+> **SELF-CHECK**: After task tool returns, verify `outputs/solution-exploration.md` exists and contains alternatives. If missing: **STOP. Do NOT proceed to Phase 4 or Phase 5.** Re-invoke the brainstormer with corrected context (ensure `output_path` is `outputs/solution-exploration.md`). If second attempt also fails, use ask_user to report the failure and ask whether to retry or skip brainstorming.
 
 → **AUTO-CONTINUE**
 
@@ -307,7 +307,7 @@ ask_user - "Brainstorming complete. Continue to high-level design?"
 
 ### Phase 5: High-Level Design
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Create architecture design from selected solution approach
 **Execute**: Orchestrator-Direct Hybrid
@@ -327,7 +327,7 @@ ask_user - "Brainstorming complete. Continue to high-level design?"
 
 > **ANTI-PATTERN**: Do NOT generate C4 architecture diagrams or ADRs inline. The solution-designer agent has specialized architecture and MADR documentation capabilities.
 
-**INVOKE NOW**: Use Task tool with `subagent_type: maister-copilot:solution-designer`
+**INVOKE NOW**: Use task tool with `agent_type: maister-copilot:solution-designer`
 
 **Context to pass** (Pattern 7):
 - `task_path`, `synthesis_path`, `research_report_path`
@@ -338,7 +338,7 @@ ask_user - "Brainstorming complete. Continue to high-level design?"
 - Accumulated context: `research_type`, `research_question`, `confidence_level`, `phase_summaries`
 - `project_doc_paths` (from state)
 
-> **SELF-CHECK**: After Task tool returns, verify both `outputs/high-level-design.md` and `outputs/decision-log.md` exist. If missing: **STOP. Do NOT proceed to Part C.** Re-invoke the designer with corrected context. If second attempt also fails, use ask_user to report the failure and ask whether to retry or skip design.
+> **SELF-CHECK**: After task tool returns, verify both `outputs/high-level-design.md` and `outputs/decision-log.md` exist. If missing: **STOP. Do NOT proceed to Part C.** Re-invoke the designer with corrected context. If second attempt also fails, use ask_user to report the failure and ask whether to retry or skip design.
 
 **Part C — Summary (Direct)**:
 3. Read `outputs/high-level-design.md` and `outputs/decision-log.md`
@@ -356,7 +356,7 @@ ask_user - "Design complete. Continue to output generation?"
 
 ### Phase 6: Completion
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Summarize research results and suggest next steps
 **Execute**: Direct

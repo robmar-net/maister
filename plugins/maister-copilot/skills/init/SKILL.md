@@ -8,7 +8,7 @@ argument-hint: "[--standards-from=PATH]"
 
 Initialize `.maister/docs/` with intelligent project analysis and meaningful documentation generation based on actual codebase inspection.
 
-**NOTE**: This skill invokes other skills and subagents at specific phases. Use the **Task tool with `docs-operator` subagent** (subagent_type: `maister-copilot:docs-operator`) for all docs-manager operations, and **Task tool** for project-analyzer. Use the **Skill tool** only for standards-discover (Phase 8, last phase). The Task tool returns control to this skill after completion; the Skill tool does not.
+**NOTE**: This skill invokes other skills and subagents at specific phases. Use the **task tool with `docs-operator` subagent** (agent_type: `maister-copilot:docs-operator`) for all docs-manager operations, and **task tool** for project-analyzer. Use the **Skill tool** only for standards-discover (Phase 8, last phase). The task tool returns control to this skill after completion; the Skill tool does not.
 
 ## Phase Configuration
 
@@ -23,7 +23,7 @@ Initialize `.maister/docs/` with intelligent project analysis and meaningful doc
 | 7 | Validate | Validating initialization |
 | 8 | Discover coding standards | Discovering coding standards |
 
-**Task Tracking**: Before Phase 1, use `TaskCreate` for all phases (pending), then set sequential dependencies with `TaskUpdate addBlockedBy`. At each phase: `TaskUpdate` to `in_progress` → execute → `TaskUpdate` to `completed`. If skipped (e.g., user selects "Update existing"), mark skipped phases as `completed` with `metadata: {skipped: true}`.
+**Task Tracking**: Before Phase 1, use `INSERT INTO todos` for all phases (pending), then set sequential dependencies with `INSERT INTO todo_deps`. At each phase: `UPDATE todos` to `in_progress` → execute → `UPDATE todos` to `completed`. If skipped (e.g., user selects "Update existing"), mark skipped phases as `completed` with `metadata: {skipped: true}`.
 
 ---
 
@@ -46,7 +46,7 @@ Check if `.maister/` directory already exists.
 
 ## PHASE 2: Project Analysis
 
-Invoke `project-analyzer` subagent via the Task tool.
+Invoke `project-analyzer` subagent via the task tool.
 
 Wait for completion. Store analysis results for use in Phases 3 and 6.
 
@@ -109,7 +109,7 @@ Store selection for Phase 5.
 
 ## PHASE 5: Initialize Documentation Structure
 
-**Invoke `docs-operator` subagent** via Task tool (subagent_type: `maister-copilot:docs-operator`) with prompt:
+**Invoke `docs-operator` subagent** via task tool (agent_type: `maister-copilot:docs-operator`) with prompt:
 
 > "Initialize documentation structure. Standards selection: [array from Phase 4]. [If --standards-from was provided: Standards source path: [resolved path]/.maister/docs/standards/. Copy standards from this external path instead of built-in defaults.] Only copy selected standard categories. Do NOT copy project templates — only create the project/ directory. Project documentation will be generated in Phase 6 with real content from project analysis. Create placeholder sections in INDEX.md for skipped categories."
 
@@ -157,7 +157,7 @@ Write each file to `.maister/docs/project/`.
 
 ## PHASE 7: Validate
 
-**Step 1**: Invoke `docs-operator` subagent via Task tool (subagent_type: `maister-copilot:docs-operator`) with prompt:
+**Step 1**: Invoke `docs-operator` subagent via task tool (agent_type: `maister-copilot:docs-operator`) with prompt:
 
 > "Regenerate INDEX.md to include all newly created project documentation. Then verify .github/copilot-instructions.md is properly integrated with .maister/docs/ documentation."
 

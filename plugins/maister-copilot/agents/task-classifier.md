@@ -360,7 +360,7 @@ Use ask_user with relevant options
 
 **With /work Command**:
 1. `/work` parses arguments and task description
-2. Invokes this agent directly via Task tool
+2. Invokes this agent directly via task tool
 3. Agent performs classification and returns result
 4. `/work` routes to appropriate orchestrator
 

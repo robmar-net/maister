@@ -162,6 +162,36 @@ find "$OUT" -name "*.md" | while read f; do
   sedi 's/AskUserQuestion/ask_user/g' "$f"
 done
 
+# 7b. Rewrite Claude task/delegation tool names to their Copilot CLI equivalents (WS3.5).
+#    Live-verified against Copilot CLI 1.0.74 (see compat-tests/L1-FINDINGS.md and issue #19):
+#      • Delegation is the `task` tool with param `agent_type` — Copilot's schema has NO
+#        `subagent_type` (0 occurrences) and the run.sh C4 contract drives `task(agent_type)`.
+#      • There is NO `TaskCreate`/`TaskUpdate`/`TaskList`/`TaskGet` tool. Task items and their
+#        dependencies live in Copilot's SQL session store — the `sql` tool over the pre-seeded
+#        `todos` (id,title,description,status[pending|in_progress|done],created_at,updated_at)
+#        and `todo_deps` (todo_id,depends_on) tables. Shipped unchanged, these Claude names point
+#        at phantom tools; the model only limps along by improvising the SQL itself (non-
+#        deterministic — unacceptable for dependency-ordered task groups).
+#    Order is specific-first: `TaskUpdate addBlockedBy` (a dependency EDGE → todo_deps) is
+#    mapped before the bare `TaskUpdate` (a row status update → todos); the leftover standalone
+#    `addBlockedBy` (the two-span `` `TaskUpdate` with `addBlockedBy` `` form) then maps to the
+#    `todo_deps` table. All rules are fixed strings → order-independent output, determinism holds.
+#    NOTE (documented residual): Claude's status value `completed` differs from Copilot's `done`;
+#    that enum is NOT rewritten here (too many unrelated "completed" tokens) — the plugin CLAUDE.md
+#    platform note calls it out, and the model maps it at runtime.
+find "$OUT" -name "*.md" | while read f; do
+  sedi \
+    -e 's/TaskUpdate addBlockedBy/INSERT INTO todo_deps/g' \
+    -e 's/addBlockedBy/todo_deps/g' \
+    -e 's/TaskCreate/INSERT INTO todos/g' \
+    -e 's/TaskUpdate/UPDATE todos/g' \
+    -e 's/TaskList/SELECT * FROM todos/g' \
+    -e 's/TaskGet/SELECT * FROM todos/g' \
+    -e 's/subagent_type/agent_type/g' \
+    -e 's/Task tool/task tool/g' \
+    "$f"
+done
+
 # 8. Branding scrub (WS3.2) across output *.md. The audit-named false platform-behavior claims are
 #    neutralized FIRST (so the blanket brand swap can't re-mangle them into a still-false "GitHub
 #    Copilot CLI's built-in plan mode"): quick-plan's built-in-plan-mode attribution and
@@ -235,6 +265,8 @@ This is the Copilot CLI variant. Key differences from Claude Code:
 - **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
+- **Delegation to agents**: Use the `task` tool with `agent_type: "maister-copilot:<agent>"` (Copilot's delegation tool; there is no `Task`/`subagent_type` call). Copilot infers and runs the named custom agent.
+- **Task/todo tracking**: There is no `TaskCreate`/`TaskUpdate`/`TaskList` tool on Copilot CLI. Task items and their dependencies live in the SQL session store — use the `sql` tool over the pre-seeded tables `todos` (`id`, `title`, `description`, `status`, `created_at`, `updated_at`) and `todo_deps` (`todo_id`, `depends_on`). Create with `INSERT INTO todos (...)`, update state with `UPDATE todos SET status = 'in_progress'|'done' WHERE id = '...'` (note: the status value is `done`, not `completed`), record a dependency with `INSERT INTO todo_deps (todo_id, depends_on) VALUES (...)`, and list/check with `SELECT * FROM todos`.
 - **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
 EOF
 

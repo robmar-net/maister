@@ -236,12 +236,12 @@ Follow standards from `.maister/docs/standards/`:
 
 After writing the implementation plan file, create structured task items for group-level tracking:
 
-1. For each task group, call `TaskCreate`:
+1. For each task group, call `INSERT INTO todos`:
    - `subject`: "Group N: [Layer Name]" (e.g., "Group 1: Database Layer")
    - `description`: Acceptance criteria + step count + dependency info
    - `activeForm`: "Implementing [Layer Name]"
 
-2. Set dependencies with `TaskUpdate addBlockedBy` mirroring the plan's dependency chain:
+2. Set dependencies with `INSERT INTO todo_deps` mirroring the plan's dependency chain:
    - Database → API → Frontend (matches `Dependencies:` field in each group)
    - All implementation groups → Test Review & Gap Analysis (if present)
 
@@ -344,8 +344,8 @@ Before completing, verify:
 
 ### Task Items Created
 
-- One `TaskCreate` per task group
-- Dependencies set via `TaskUpdate addBlockedBy`
+- One `INSERT INTO todos` per task group
+- Dependencies set via `INSERT INTO todo_deps`
 
 ### Structured Result (returned to orchestrator)
 

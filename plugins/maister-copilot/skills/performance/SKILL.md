@@ -31,7 +31,7 @@ Full framework rule: `../orchestrator-framework/references/orchestrator-patterns
 ### Step 2: Initialize Workflow
 
 1. **Capture the clock**: run `date -u +"%Y-%m-%dT%H:%M:%SZ"` via Bash NOW — you do NOT know the time from context. Every timestamp written this turn (`created`, `updated`, `generated`, `phases[].started`) uses this value. Date-only or `T00:00:00Z` values are the documented failure mode (orchestrator-patterns.md § 4 Timestamp Rule). Re-run `date` in later turns before writing timestamps.
-2. **Create Task Items**: Use `TaskCreate` for all phases (see Phase Configuration), then set dependencies with `TaskUpdate addBlockedBy`
+2. **Create Task Items**: Use `INSERT INTO todos` for all phases (see Phase Configuration), then set dependencies with `INSERT INTO todo_deps`
 3. **Create Task Directory**: `.maister/tasks/performance/YYYY-MM-DD-task-name/`
 4. **Create Subdirectories**: `analysis/`, `analysis/user-profiling-data/`, `implementation/`, `verification/`
 5. **Initialize State**: Create `orchestrator-state.yml` with performance context
@@ -126,7 +126,7 @@ Pass `task_type="enhancement"` and the performance-focused description. The code
 ### Phase 2: Static Performance Analysis
 
 **Purpose**: Identify bottlenecks through static code analysis + optional user profiling data
-**Execute**: Task tool - `maister-copilot:bottleneck-analyzer` subagent
+**Execute**: task tool - `maister-copilot:bottleneck-analyzer` subagent
 **Output**: `analysis/performance-analysis.md`
 **State**: Update `performance_context.bottlenecks_identified`, `performance_context.user_data_available`, `performance_context.bottleneck_priorities`
 
@@ -141,13 +141,13 @@ Pass `task_type="enhancement"` and the performance-focused description. The code
 - ❌ "Let me analyze the bottlenecks myself..." — STOP. Delegate to bottleneck-analyzer.
 - ❌ "I'll grep for N+1 patterns..." — STOP. Delegate to bottleneck-analyzer.
 
-**INVOKE NOW** — Task tool call:
+**INVOKE NOW** — task tool call:
 
-4. Task tool - `maister-copilot:bottleneck-analyzer` subagent
+4. task tool - `maister-copilot:bottleneck-analyzer` subagent
 
 **Context to pass**: task_path, description, codebase analysis summary from Phase 1, user data paths (if any)
 
-**SELF-CHECK**: Did you just invoke the Task tool with `maister-copilot:bottleneck-analyzer`? Or did you start analyzing code yourself? If the latter, STOP and invoke the Task tool.
+**SELF-CHECK**: Did you just invoke the task tool with `maister-copilot:bottleneck-analyzer`? Or did you start analyzing code yourself? If the latter, STOP and invoke the task tool.
 
 → **MANDATORY GATE** — fires regardless of permission mode, session-reminders, or prior approval patterns. Invoke `ask_user` now. Proceeding without a user response is a protocol violation (orchestrator-patterns.md § 2 / § 2.1).
 
@@ -157,7 +157,7 @@ ask_user - "Performance analysis complete. [N] bottlenecks identified ([P0 count
 
 ### Phase 3: Requirements & Specification
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 2 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 2 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Gather optimization requirements and create specification
 **Output**: `analysis/requirements.md`, `implementation/spec.md`
@@ -180,13 +180,13 @@ ask_user - "Performance analysis complete. [N] bottlenecks identified ([P0 count
 - ❌ "Let me create the specification..." — STOP. Delegate to specification-creator.
 - ❌ "I'll write the spec based on the analysis..." — STOP. Delegate to specification-creator.
 
-**INVOKE NOW** — Task tool call:
+**INVOKE NOW** — task tool call:
 
-4. Task tool - `maister-copilot:specification-creator` subagent
+4. task tool - `maister-copilot:specification-creator` subagent
 
 **Context to pass**: task_path, task_type="performance", task_description, requirements_path (analysis/requirements.md), project_context_paths (INDEX.md + project_doc_paths from state — all discovered project docs), phase_summaries (codebase_analysis, bottleneck_analysis), html_style_guide_path (for the spec.html companion)
 
-**SELF-CHECK**: Did you just invoke the Task tool with `maister-copilot:specification-creator`? Or did you start writing spec.md yourself? If the latter, STOP and invoke the Task tool.
+**SELF-CHECK**: Did you just invoke the task tool with `maister-copilot:specification-creator`? Or did you start writing spec.md yourself? If the latter, STOP and invoke the task tool.
 
 → **MANDATORY GATE** — fires regardless of permission mode, session-reminders, or prior approval patterns. Invoke `ask_user` now. Proceeding without a user response is a protocol violation (orchestrator-patterns.md § 2 / § 2.1).
 
@@ -196,10 +196,10 @@ ask_user - Display executive summary before asking. Read `implementation/spec.md
 
 ### Phase 4: Specification Audit (Conditional)
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 3 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 3 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Independent review of optimization specification
-**Execute**: Task tool - `maister-copilot:spec-auditor` subagent
+**Execute**: task tool - `maister-copilot:spec-auditor` subagent
 **Output**: `verification/spec-audit.md`
 **State**: Update `options.spec_audit_enabled`
 
@@ -216,7 +216,7 @@ ask_user - Display executive summary before asking. Read `verification/spec-audi
 
 ### Phase 5: Implementation Planning
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 4 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 4 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Break optimization specification into implementation steps
 
@@ -226,15 +226,15 @@ ask_user - Display executive summary before asking. Read `verification/spec-audi
 - ❌ "Let me create the implementation plan..." — STOP. Delegate to implementation-planner.
 - ❌ "I'll break this into optimization steps..." — STOP. Delegate to implementation-planner.
 
-**INVOKE NOW** — Task tool call:
+**INVOKE NOW** — task tool call:
 
-**Execute**: Task tool - `maister-copilot:implementation-planner` subagent
+**Execute**: task tool - `maister-copilot:implementation-planner` subagent
 **Output**: `implementation/implementation-plan.md`
 **State**: Update task groups and dependencies
 
 **Context to pass**: task_path, task_type="performance", task_description, phase_summaries (specification, bottleneck_analysis, codebase_analysis), html_style_guide_path (for the implementation-plan.html companion)
 
-**SELF-CHECK**: Did you just invoke the Task tool with `maister-copilot:implementation-planner`? Or did you start writing the plan yourself? If the latter, STOP and invoke the Task tool.
+**SELF-CHECK**: Did you just invoke the task tool with `maister-copilot:implementation-planner`? Or did you start writing the plan yourself? If the latter, STOP and invoke the task tool.
 
 → **MANDATORY GATE** — fires regardless of permission mode, session-reminders, or prior approval patterns. Invoke `ask_user` now. Proceeding without a user response is a protocol violation (orchestrator-patterns.md § 2 / § 2.1).
 
@@ -244,7 +244,7 @@ ask_user - Display executive summary before asking. Read `implementation/impleme
 
 ### Phase 6: Implementation
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 5 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 5 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Execute the optimization plan
 
@@ -276,7 +276,7 @@ ask_user - Display executive summary before asking. Extract from `phase_summarie
 
 ### Phase 7: Verification Options
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 6 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 6 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Determine which verification checks to run
 **Execute**: Direct - use ask_user for options
@@ -298,7 +298,7 @@ ask_user - "Options selected. Continue to Phase 8?"
 
 ### Phase 8: Verification & Issue Resolution
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 7 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 7 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Comprehensive implementation verification with user-driven fix cycles
 **Output**: `verification/implementation-verification.md`, optional review reports
@@ -330,7 +330,7 @@ ask_user - Display executive summary: total issues found, issues fixed, issues r
 
 ### Phase 9: Finalization
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 8 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 8 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Complete workflow and provide next steps
 **Execute**: Direct - create summary, update state, guide commit

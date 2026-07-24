@@ -20,7 +20,7 @@ validate:
 	@! grep -rhoE 'maister-[a-z][a-z-]+' plugins/maister-copilot --include='*.md' | grep -vxE 'maister-copilot|maister-plugins' || (echo "FAIL: forbidden maister-<word> token(s) found above (only maister-copilot is allowed)" && exit 1)
 	@echo "Checking agent references are namespaced as maister-copilot:<name> (WS5.2)..."
 	@AGENTS=$$(ls plugins/maister/agents/*.md | xargs -n1 basename | sed 's/\.md$$//' | paste -sd'|' -); \
-	! grep -rnE 'subagent_type: ["`]('"$$AGENTS"')["`]' plugins/maister-copilot --include='*.md' || (echo "FAIL: bare (non-namespaced) agent ref found above; agents must be maister-copilot:<name>" && exit 1)
+	! grep -rnE 'agent_type: ["`]('"$$AGENTS"')["`]' plugins/maister-copilot --include='*.md' || (echo "FAIL: bare (non-namespaced) agent ref found above; agents must be maister-copilot:<name>" && exit 1)
 	@! grep -rnE 'maister-copilot:(development|migration|quick-plan)([^a-z-]|$$)' plugins/maister-copilot --include='*.md' || (echo "FAIL: skill referenced as maister-copilot:<skill> above; skills/commands must be bare" && exit 1)
 	@echo "Checking argument-hint is a string, not a YAML array (WS5.3)..."
 	@! grep -rnE '^argument-hint:[[:space:]]*\[' plugins/maister-copilot --include='*.md' || (echo "FAIL: argument-hint must be a quoted string, not an unquoted YAML array" && exit 1)
@@ -31,6 +31,8 @@ validate:
 	@grep -q 'GitHub Copilot CLI' plugins/maister-copilot/.claude-plugin/plugin.json || (echo "FAIL: plugin.json description must mention 'GitHub Copilot CLI'" && exit 1)
 	@echo "Checking no AskUserQuestion residual (must be ask_user) (WS5.9)..."
 	@! grep -rl 'AskUserQuestion' plugins/maister-copilot/skills plugins/maister-copilot/commands plugins/maister-copilot/agents --include='*.md' 2>/dev/null || (echo "FAIL: AskUserQuestion residual found above (should be rewritten to ask_user); regenerate with make build" && exit 1)
+	@echo "Checking no Claude task/delegation tool-name residual (TaskCreate/TaskUpdate/TaskList/TaskGet/subagent_type) (WS5.11)..."
+	@! grep -rnE 'TaskCreate|TaskUpdate|TaskList|TaskGet|subagent_type' plugins/maister-copilot/skills plugins/maister-copilot/commands plugins/maister-copilot/agents --include='*.md' 2>/dev/null || (echo "FAIL: Claude task/delegation tool-name residual found above (should be task(agent_type) / sql todos+todo_deps); regenerate with make build" && exit 1)
 	@echo "Checking the destructive-command guard is the Copilot 'ask' override (WS5.10)..."
 	@grep -q 'permissionDecision": "ask"' plugins/maister-copilot/hooks/block-destructive-commands.sh || (echo "FAIL: output destructive-command guard is not the Copilot 'ask' override (build.sh WS2b overlay missing?)" && exit 1)
 	@echo "All checks passed"
