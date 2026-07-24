@@ -12,6 +12,13 @@ on:
       - 'platforms/**'
       - 'Makefile'
       - '.github/workflows/build-copilot.yml'
+  # PRs targeting master/v2 run the full build+validate+determinism+drift gate. Deliberately
+  # NO `paths:` filter here: `build` is a REQUIRED status check (branch protection), and a
+  # path-filtered required check never reports on PRs that don't touch those paths — leaving
+  # the PR stuck "expected" forever. Running the (fast) build on every PR keeps the required
+  # check always-reporting. compat still self-skips on PRs (no seat secret on forks).
+  pull_request:
+    branches: [master, v2]
 
 jobs:
   build:
@@ -40,7 +47,7 @@ jobs:
         # maintainer operation on the upstream repo. On forks the default GITHUB_TOKEN is
         # read-only (push → 403) and the fork's master is just a PR-staging branch, so the
         # step is skipped there — build + validate above still run as normal fork CI.
-        if: github.repository == 'SkillPanel/maister'
+        if: github.repository == 'SkillPanel/maister' && github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
