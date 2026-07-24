@@ -420,7 +420,7 @@ Verification Plan:
 
 **Step 2** (3 questions):
 
-**Q1** (always): ask_user (sequential single-select) — "Which standard verifications to run?"
+**Q1** (always): ask_user (multi-select) — "Which standard verifications to run?"
 Options: "Code review (Recommended)", "Pragmatic review (Recommended)", "Reality check (Recommended)", "Production readiness (Recommended)". All pre-selected.
 
 **Q2** (SKIP if `options.e2e_enabled: false` and no `--e2e` flag): ask_user — "Enable E2E browser verification?" Options: "Yes (Recommended)", "No, skip".

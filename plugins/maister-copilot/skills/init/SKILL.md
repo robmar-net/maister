@@ -65,7 +65,7 @@ Wait for completion. Store analysis results for use in Phases 3 and 6.
 4. Team context (optional)
 5. Special requirements (optional)
 
-**Step 4**: Ask which project documentation to generate using ask_user (sequential single-select):
+**Step 4**: Ask which project documentation to generate using ask_user (multi-select):
 - "Vision" — Project vision, goals, and purpose
 - "Roadmap" — Development roadmap and planned features
 - "Tech Stack" — Technology choices and rationale (ALWAYS selected, required)
@@ -99,7 +99,7 @@ Also scan `.maister/docs/standards/*/` for any existing custom categories to inc
 
 Show smart defaults summary (noting the source: external project or built-in), then use ask_user:
 - "Use smart defaults" → proceed with calculated defaults
-- "Customize selection" → show sequential single-select with all discovered categories + "Add custom category" option
+- "Customize selection" → show multi-select with all discovered categories + "Add custom category" option
 
 Custom categories: if user adds a new category, create the directory and include it in the selection.
 

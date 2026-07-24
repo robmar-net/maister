@@ -137,15 +137,18 @@ if [ -n "$residual" ]; then
   exit 1
 fi
 
-# 5. Transform multi-select patterns to sequential
-find "$OUT/skills" -name "*.md" | while read f; do
-  sedi \
-    -e 's/multi-select question/sequential single-select questions (one per option)/g' \
-    -e 's/multi-select/sequential single-select/g' \
-    -e 's/multiselect/sequential single-select/g' \
-    -e 's/multiSelect/sequential single-select/g' \
-    "$f"
-done
+# 5. (removed) Multi-select downgrade — NO LONGER APPLIED.
+#    This step used to rewrite "multi-select" -> "sequential single-select" on the assumption
+#    that Copilot's ask_user could not do multi-select. That assumption is FALSE on Copilot CLI
+#    1.0.7x: the builtin `ask_user` tool takes a `requestedSchema` (JSON Schema) whose
+#    `properties` is a MAP of fields — so it supports BOTH multiple questions per call AND
+#    multi-select (array field type, rendered as "Select zero or more" checkboxes). Verified
+#    live on 1.0.74 (form with 3 question-tabs + a "space toggle" multi-select field) plus the
+#    captured builtin tool schema. Downgrading multi-select therefore removed a working
+#    capability and produced worse UX than Claude. The source's conceptual "(multi-select)"
+#    guidance is correct as-is; step 7 (AskUserQuestion -> ask_user) already handles the tool
+#    name. See the "No multi-select" removal in the platform note (step 9) and the dropped
+#    validate check.
 
 # 6. Replace CLAUDE.md references with copilot equivalents in skills. The `.claude/CLAUDE.md`
 #    path form is handled FIRST so it maps whole → .github/copilot-instructions.md instead of the
@@ -242,7 +245,7 @@ cat >> "$OUT/CLAUDE.md" << 'EOF'
 ## Platform: Copilot CLI
 
 This is the Copilot CLI variant. Key differences from Claude Code:
-- **No multi-select**: When asking users to select multiple options, ask sequential single-select questions instead
+- **Structured `ask_user` forms**: `ask_user` takes a `requestedSchema` (JSON Schema) whose `properties` map allows **several fields (questions) in one call** and **multi-select** array fields (rendered as "select zero or more"). Group related decisions into one form; use a multi-select field for genuinely non-exclusive choices — do NOT downgrade to sequential single-select.
 - **Command names**: No plugin prefix in names (e.g., `development`); the plugin system adds the plugin-id prefix automatically
 - **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
