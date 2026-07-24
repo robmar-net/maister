@@ -245,7 +245,7 @@ If you encounter errors during implementation:
 
 **Invoked by**: `implementation-plan-executor` skill
 
-**Input** (via Task tool prompt):
+**Input** (via task tool prompt):
 - Task group content (from implementation-plan.md, including `Visual References` block when present)
 - Specification excerpt (relevant sections from spec.md)
 - Initial standards (from plan's Standards Compliance section)

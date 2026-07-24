@@ -43,7 +43,7 @@ Full framework rule: `../orchestrator-framework/references/orchestrator-patterns
 ### Step 3: Initialize Workflow
 
 1. **Capture the clock**: run `date -u +"%Y-%m-%dT%H:%M:%SZ"` via Bash NOW — you do NOT know the time from context. Every timestamp written this turn (`created`, `updated`, `generated`, `phases[].started`) uses this value. Date-only or `T00:00:00Z` values are the documented failure mode (orchestrator-patterns.md § 4 Timestamp Rule). Re-run `date` in later turns before writing timestamps.
-2. **Create Task Items**: Use `TaskCreate` for all phases (see Phase Configuration), then set dependencies with `TaskUpdate addBlockedBy`
+2. **Create Task Items**: Use `INSERT INTO todos` for all phases (see Phase Configuration), then set dependencies with `INSERT INTO todo_deps`
 3. **Create Task Directory**: `.maister/tasks/product-design/YYYY-MM-DD-task-name/`
    - Create `context/` folder with `README.md` instructing users to drop relevant files there (meeting transcripts, existing designs, spreadsheets, docs, PDFs, images)
    - Create `analysis/` and `outputs/` directories
@@ -71,7 +71,7 @@ Cross-cutting rules from `orchestrator-patterns.md` (same as the development and
 
 1. **Artifact Summary Contract (§ 7)**: every artifact opens with TL;DR / Key Decisions / Open Questions & Risks. This applies to subagent prompts (solution-brainstormer, information-gatherer already comply) AND to the artifacts this orchestrator writes directly (`problem-statement.md`, `personas.md`, `design-decisions.md`, `feature-spec.md`, `outputs/product-brief.md`). At context extraction, lift `decisions`, `risks`, and `artifacts` into `phase_summaries.[phase]` — verbatim, never re-summarized.
 2. **Dashboard upkeep (§ 8)**: rewrite `dashboard-data.js` at every phase START (mark `in_progress` before executing), **BEFORE firing every exit gate** (register the finished phase's artifacts/summary/decisions/risks — the operator reviews them on the dashboard while answering; status stays `in_progress` until the gate passes), after every phase completion (including skipped phases 3/7, with reason), every gate decision, after each refinement-loop iteration that changes an artifact, and at finalization. Every rewrite starts with `date -u` (one call per turn). Register Phase 7 mockups as artifacts (`analysis/mockups/{slug}.html` — they ARE html; set both `path` and `html` to the mockup path).
-3. **HTML companions (§ 9) — delegated, because this orchestrator writes its hero artifacts INLINE** (no producing subagent to attach a companion to). Right after each hero md is finalized, invoke the `maister-copilot:html-companion-writer` subagent (Task tool) to write its sibling `.html`: `analysis/design-decisions.md` (Phase 5), `analysis/feature-spec.md` (Phase 6), `outputs/product-brief.md` (Phase 8, after final approval). Pass `md_path`, `html_style_guide_path` (absolute path to `../orchestrator-framework/references/html-report-style.md`), `artifact_label`, and `report_suite` (the sibling reports that exist, hrefs relative to the md's directory, for the breadcrumb). Register the returned `html_path` in `phase_summaries.[phase].artifacts[].html` so the dashboard hero cards link HTML first. Companion generation never blocks — on `status: failed` keep the md and continue. (`analysis/alternatives.md` already gets a companion from the solution-brainstormer subagent in Phase 4; `problem-statement.md`/`personas.md` are secondary — companion them too if cheap, but the three hero artifacts are the priority.)
+3. **HTML companions (§ 9) — delegated, because this orchestrator writes its hero artifacts INLINE** (no producing subagent to attach a companion to). Right after each hero md is finalized, invoke the `maister-copilot:html-companion-writer` subagent (task tool) to write its sibling `.html`: `analysis/design-decisions.md` (Phase 5), `analysis/feature-spec.md` (Phase 6), `outputs/product-brief.md` (Phase 8, after final approval). Pass `md_path`, `html_style_guide_path` (absolute path to `../orchestrator-framework/references/html-report-style.md`), `artifact_label`, and `report_suite` (the sibling reports that exist, hrefs relative to the md's directory, for the breadcrumb). Register the returned `html_path` in `phase_summaries.[phase].artifacts[].html` so the dashboard hero cards link HTML first. Companion generation never blocks — on `status: failed` keep the md and continue. (`analysis/alternatives.md` already gets a companion from the solution-brainstormer subagent in Phase 4; `problem-statement.md`/`personas.md` are secondary — companion them too if cheap, but the three hero artifacts are the priority.)
 4. **icon_hint values** per phase: 0 `analysis`, 1 `analysis`, 2 `analysis`, 3 `analysis`, 4 `plan`, 5 `plan`, 6 `spec`, 7 `code`, 8 `done`.
 
 ---
@@ -105,7 +105,7 @@ Use for **product and feature design**: defining what to build before building i
 | 1 | "Synthesize all context sources" | "Synthesizing context" | Always (scope adapts) | codebase-analyzer (if enhancement), information-gatherer (if mini-research) |
 | 2 | "Explore problem space" | "Exploring problem space" | Always (depth adapts) | Direct (interactive) |
 | 3 | "Explore users & personas" | "Exploring users & personas" | When `is_greenfield` OR `is_complex` | Direct (interactive) |
-| 4 | "Generate design alternatives" | "Generating design alternatives" | Always | solution-brainstormer (Task tool) |
+| 4 | "Generate design alternatives" | "Generating design alternatives" | Always | solution-brainstormer (task tool) |
 | 5 | "Converge on design direction" | "Converging on direction" | Always | Direct (interactive) |
 | 6 | "Specify features section-by-section" | "Specifying features" | Always (depth adapts) | Direct (interactive) |
 | 7 | "Create visual prototypes" | "Creating visual prototypes" | When `is_ui_focused` | mockup-studio (Skill tool) |
@@ -240,7 +240,7 @@ ask_user — "I detected these design characteristics. Please confirm or correct
 
 ### Phase 1: Context Synthesis
 
-> **Phase gate**: Confirm Phase 0 completion in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase gate**: Confirm Phase 0 completion in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Synthesize ALL context sources into a unified design context document that informs all downstream phases
 **Execute**: Skill/Agent + Direct (adapts based on characteristics)
@@ -271,12 +271,12 @@ ask_user — "I detected these design characteristics. Please confirm or correct
    - "Let me research that topic..." -- STOP. Delegate to information-gatherer.
    - "I'll look that up..." -- STOP. Delegate to information-gatherer.
 
-   **INVOKE NOW** -- Task tool call (parallel, one per topic):
-   Task tool - `maister-copilot:information-gatherer` subagent per research topic
+   **INVOKE NOW** -- task tool call (parallel, one per topic):
+   task tool - `maister-copilot:information-gatherer` subagent per research topic
 
    **Context to pass**: research topic, scope constraints, task_path
 
-   **SELF-CHECK**: Did you invoke the Task tool with information-gatherer for each research topic? Or did you start searching yourself? If the latter, STOP and invoke the Task tool.
+   **SELF-CHECK**: Did you invoke the task tool with information-gatherer for each research topic? Or did you start searching yourself? If the latter, STOP and invoke the task tool.
 
 5. **Synthesize ALL sources** into `analysis/design-context.md`:
    - Project documentation: vision, roadmap, tech stack, architecture, and any user-added project docs (from `design_context.project_doc_paths` discovered in Phase 0)
@@ -297,7 +297,7 @@ ask_user — "I detected these design characteristics. Please confirm or correct
 
 ### Phase 2: Problem Exploration
 
-> **Phase gate**: Confirm Phase 1 completion in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase gate**: Confirm Phase 1 completion in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Explore the problem space through structured questioning to produce a refined problem statement, constraints, and success criteria
 **Execute**: Direct, inline, interactive
@@ -349,7 +349,7 @@ ask_user — "Problem space explored." Read `next_phase` from `orchestrator-stat
 
 ### Phase 3: User & Persona Exploration
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 2 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 2 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Develop persona cards and user journeys for the design
 **Execute**: Direct, inline, interactive
@@ -393,10 +393,10 @@ ask_user — "Personas defined. Continue to Idea Generation?"
 
 ### Phase 4: Idea Generation
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase (Phase 3 if ran, or Phase 2) in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase (Phase 3 if ran, or Phase 2) in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Generate unbiased design alternatives using the solution-brainstormer agent
-**Execute**: Agent via Task tool (deliberately non-interactive to avoid anchoring bias)
+**Execute**: Agent via task tool (deliberately non-interactive to avoid anchoring bias)
 **Resume check**: If `analysis/alternatives.md` exists, skip to Phase 5
 
 **ANTI-PATTERN -- DO NOT DO THIS:**
@@ -404,9 +404,9 @@ ask_user — "Personas defined. Continue to Idea Generation?"
 - "Here are some alternatives I see..." -- STOP. Delegate to solution-brainstormer.
 - "The obvious approach would be..." -- STOP. Anchoring bias. Delegate to solution-brainstormer.
 
-**INVOKE NOW** -- Task tool call:
+**INVOKE NOW** -- task tool call:
 
-Task tool - `maister-copilot:solution-brainstormer` subagent
+task tool - `maister-copilot:solution-brainstormer` subagent
 
 **Context to pass** (Pattern 7):
 - `task_path`
@@ -423,7 +423,7 @@ Task tool - `maister-copilot:solution-brainstormer` subagent
 - `analysis/problem-statement.md` (refined problem + constraints)
 - `analysis/personas.md` (if exists — persona cards + journeys)
 
-**SELF-CHECK**: After Task tool returns, verify `analysis/alternatives.md` exists and contains alternatives with trade-off analysis. If missing: re-invoke brainstormer with corrected context. If second attempt fails, ask_user to report failure and ask whether to retry or proceed with inline alternatives.
+**SELF-CHECK**: After task tool returns, verify `analysis/alternatives.md` exists and contains alternatives with trade-off analysis. If missing: re-invoke brainstormer with corrected context. If second attempt fails, ask_user to report failure and ask whether to retry or proceed with inline alternatives.
 
 **Output**: `analysis/alternatives.md`
 **State**: Update `phase_summaries.idea_generation` with summary of alternatives generated
@@ -472,7 +472,7 @@ ask_user — with options:
 
 6. **Write artifact**: Write the selected approach, rationale, alternatives considered (brief summary referencing `analysis/alternatives.md` for full detail), trade-offs accepted, and key design decisions per area to `analysis/design-decisions.md`.
 
-7. **HTML companion** *(skip when `options.html_output` is false)*: invoke `maister-copilot:html-companion-writer` (Task tool) for `analysis/design-decisions.md` (see Operator Visibility § 3). Register the returned `html_path` in `phase_summaries.idea_convergence.artifacts`.
+7. **HTML companion** *(skip when `options.html_output` is false)*: invoke `maister-copilot:html-companion-writer` (task tool) for `analysis/design-decisions.md` (see Operator Visibility § 3). Register the returned `html_path` in `phase_summaries.idea_convergence.artifacts`.
 
 **Output**: `analysis/design-decisions.md` (+ `.html` companion)
 **State**: Update `phase_summaries.idea_convergence` with `selected_approach`, `trade_offs_accepted`, `key_decisions`
@@ -485,7 +485,7 @@ ask_user — "Design direction approved. Continue to Feature Specification?"
 
 ### Phase 6: Feature Specification
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 5 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 5 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Build a complete feature specification section-by-section using propose-and-refine
 **Execute**: Direct, inline, interactive
@@ -547,7 +547,7 @@ If no gaps: proceed to Phase 7/8.
 
 > **ANTI-PATTERN**: Do NOT skip depth verification because "the user already approved." Approval confirms direction; depth verification ensures implementation-readiness.
 
-**HTML companion** *(skip when `options.html_output` is false)*: once `analysis/feature-spec.md` is complete (all sections written, depth verification passed), invoke `maister-copilot:html-companion-writer` (Task tool) for it (see Operator Visibility § 3). Register the returned `html_path` in `phase_summaries.feature_specification.artifacts`.
+**HTML companion** *(skip when `options.html_output` is false)*: once `analysis/feature-spec.md` is complete (all sections written, depth verification passed), invoke `maister-copilot:html-companion-writer` (task tool) for it (see Operator Visibility § 3). Register the returned `html_path` in `phase_summaries.feature_specification.artifacts`.
 
 **Output**: `analysis/feature-spec.md` (+ `.html` companion)
 **State**: Update `phase_summaries.feature_specification` with `spec_sections` (individually approved), `sections_count`
@@ -558,7 +558,7 @@ ask_user — "Specification complete." Read `next_phase` from `orchestrator-stat
 
 ### Phase 7: Visual Prototyping
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 6 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from Phase 6 in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Generate visual mockups (HTML/CSS via the visual companion or ASCII fallback) for UI-focused designs
 **Execute**: Skill tool - `mockup-studio`
@@ -589,7 +589,7 @@ ask_user — "Visual prototyping complete. Continue to Review & Handoff?"
 
 ### Phase 8: Review & Handoff
 
-> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `TaskUpdate`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
+> **Phase entry self-check**: Before executing this phase, locate the `ask_user` tool call from the preceding phase in this conversation. If you cannot point to its call ID, STOP and fire that gate now. State updates (`completed_phases`, `UPDATE todos`) without a corresponding `ask_user` call are protocol violations — never paper over a missed gate by updating state.
 
 **Purpose**: Assemble the layered product brief, present for final approval, suggest development handoff
 **Execute**: Direct, inline, interactive
@@ -640,7 +640,7 @@ ask_user — with options:
 
 5. **Shut down visual companion server** (if it was used): `curl -s -X POST http://localhost:[port]/shutdown`
 
-5b. **HTML companion** *(skip when `options.html_output` is false)* (after final approval, so it reflects the approved brief — do NOT regenerate on each refinement iteration): invoke `maister-copilot:html-companion-writer` (Task tool) for `outputs/product-brief.md` (see Operator Visibility § 3). Register the returned `html_path` in `phase_summaries.review_handoff.artifacts` and rewrite `dashboard-data.js` so the Product Brief hero card links the HTML.
+5b. **HTML companion** *(skip when `options.html_output` is false)* (after final approval, so it reflects the approved brief — do NOT regenerate on each refinement iteration): invoke `maister-copilot:html-companion-writer` (task tool) for `outputs/product-brief.md` (see Operator Visibility § 3). Register the returned `html_path` in `phase_summaries.review_handoff.artifacts` and rewrite `dashboard-data.js` so the Product Brief hero card links the HTML.
 
 6. On approval, update task status and suggest next steps.
 

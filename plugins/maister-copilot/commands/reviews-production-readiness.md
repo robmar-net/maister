@@ -3,7 +3,7 @@ name: reviews-production-readiness
 description: Verify production deployment readiness with comprehensive checks
 ---
 
-**ACTION REQUIRED**: This command delegates to a subagent. The `<command-name>` tag refers to THIS command, not the target. Invoke the production-readiness-checker subagent via the Task tool NOW. Pass path and target arguments. Do not read files, explore code, or execute workflow steps yourself.
+**ACTION REQUIRED**: This command delegates to a subagent. The `<command-name>` tag refers to THIS command, not the target. Invoke the production-readiness-checker subagent via the task tool NOW. Pass path and target arguments. Do not read files, explore code, or execute workflow steps yourself.
 
 You are verifying production deployment readiness using the `production-readiness-checker` subagent.
 
@@ -26,11 +26,11 @@ You are performing comprehensive production readiness analysis covering configur
 
 ## Your Instructions
 
-**Invoke the production-readiness-checker subagent NOW using the Task tool:**
+**Invoke the production-readiness-checker subagent NOW using the task tool:**
 
 ```
-Use Task tool:
-  subagent_type: "maister-copilot:production-readiness-checker"
+Use task tool:
+  agent_type: "maister-copilot:production-readiness-checker"
   description: "Production readiness check"
   prompt: |
     Verify production readiness at: [path from user or from ask_user]

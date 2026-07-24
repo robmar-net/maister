@@ -151,8 +151,8 @@ Examples:
 1. **Invoke task-classifier subagent** to determine workflow type:
 
 ```
-Use Task tool:
-  subagent_type: "maister-copilot:task-classifier"
+Use task tool:
+  agent_type: "maister-copilot:task-classifier"
   description: "Classify task type"
   prompt: "Classify this task into a workflow type: [task description].
            Return structured YAML classification result."
@@ -240,7 +240,7 @@ Display:
 
 ### With Task Classifier
 
-The `/work` command delegates classification to the task-classifier subagent via Task tool, which:
+The `/work` command delegates classification to the task-classifier subagent via task tool, which:
 - Fetches issue details from GitHub/Jira/Azure DevOps (via MCP, CLI tools, or WebFetch)
 - Analyzes codebase context for better classification
 - Uses confidence-based user confirmation

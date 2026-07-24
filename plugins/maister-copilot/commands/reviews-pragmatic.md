@@ -3,7 +3,7 @@ name: reviews-pragmatic
 description: Run pragmatic code review to detect over-engineering and ensure code matches project scale
 ---
 
-**ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the Task tool with subagent_type="maister-copilot:code-quality-pragmatist" NOW. Pass the path to analyze in the prompt. Do not read files, explore code, or execute workflow steps yourself.
+**ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the task tool with agent_type="maister-copilot:code-quality-pragmatist" NOW. Pass the path to analyze in the prompt. Do not read files, explore code, or execute workflow steps yourself.
 
 You are running a pragmatic code review using the `code-quality-pragmatist` agent.
 
@@ -21,11 +21,11 @@ You are performing pragmatic analysis to identify over-engineering, unnecessary 
 
 ## Your Instructions
 
-**Invoke the code-quality-pragmatist agent NOW using the Task tool:**
+**Invoke the code-quality-pragmatist agent NOW using the task tool:**
 
 ```
 Task Tool:
-- subagent_type: code-quality-pragmatist
+- agent_type: code-quality-pragmatist
 - description: Pragmatic code review
 - prompt: |
     You are the code-quality-pragmatist agent. Review the code at: [path]

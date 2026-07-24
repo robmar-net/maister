@@ -57,7 +57,7 @@ Custom scope values are matched against existing `.maister/docs/standards/*/` di
 | 8 | Apply approved standards | Applying standards |
 | 9 | Generate summary report | Generating summary |
 
-**Task Tracking**: At start of Phase 1, use `TaskCreate` for all phases above (pending). Set dependencies: Phases 2-5 blocked by Phase 1 (they run in parallel after planning). Phase 6 blocked by Phases 2-5. Phases 7-9 sequential. At each phase start: `TaskUpdate` to `in_progress`. At each phase end: `TaskUpdate` to `completed`. For phases skipped due to scope (e.g., Phases 3-4 when `--scope=quick`), mark `completed` with `metadata: {skipped: true, reason: "scope=quick"}`.
+**Task Tracking**: At start of Phase 1, use `INSERT INTO todos` for all phases above (pending). Set dependencies: Phases 2-5 blocked by Phase 1 (they run in parallel after planning). Phase 6 blocked by Phases 2-5. Phases 7-9 sequential. At each phase start: `UPDATE todos` to `in_progress`. At each phase end: `UPDATE todos` to `completed`. For phases skipped due to scope (e.g., Phases 3-4 when `--scope=quick`), mark `completed` with `metadata: {skipped: true, reason: "scope=quick"}`.
 
 ---
 
@@ -98,7 +98,7 @@ Use the Read tool to load ONLY the reference files for phases you will execute:
 
 **Step 3: Adapt templates** — Replace `[scope]`, `[confidence]`, and other placeholders with actual values. Replace the `[output_file]` placeholder in each template with the actual temp file path for that phase (e.g., `{tmpdir}/config.yml`).
 
-**Step 4: Launch subagents in parallel** — Use the Task tool with `subagent_type: general-purpose` for each phase.
+**Step 4: Launch subagents in parallel** — Use the task tool with `agent_type: general-purpose` for each phase.
 
 > ❌ **WRONG** — launching one agent per message, waiting for result, then launching the next.
 > ✅ **CORRECT** — launching ALL applicable agents (2–4 Task calls) in a SINGLE message.
@@ -164,17 +164,17 @@ If `--auto-apply` is set, automatically approve findings with confidence >= 90% 
 
 ### Phase 8: Application
 
-> **DELEGATION REQUIRED**: Do NOT write standard files directly using Write/Edit tools. ALL file operations MUST go through the `docs-operator` subagent (Task tool).
+> **DELEGATION REQUIRED**: Do NOT write standard files directly using Write/Edit tools. ALL file operations MUST go through the `docs-operator` subagent (task tool).
 >
-> **SELF-CHECK before each file operation**: "Am I about to write a file directly? STOP — invoke docs-operator via Task tool instead."
+> **SELF-CHECK before each file operation**: "Am I about to write a file directly? STOP — invoke docs-operator via task tool instead."
 
 For each approved standard:
 
 1. **Prepare content** — Standard name, description, examples (preferred/avoid), rationale from evidence, source citations. Format each standard as a `###` heading with 1-10 lines description (excluding code snippets). Group related standards into the same topic file. Add brief code examples only when they clarify the practice.
 2. **Check if file exists** — Determine create vs update action
-3. **Invoke `docs-operator` subagent** via Task tool (subagent_type: `maister-copilot:docs-operator`) — Pass prepared content. For creates: new file. For updates: merge new findings with existing. Wait for completion, then continue with the next standard.
-4. **After all standards applied, invoke `docs-operator` subagent** via Task tool to regenerate INDEX.md. Wait for completion, then continue with step 5.
-5. **Invoke `docs-operator` subagent** via Task tool to verify .github/copilot-instructions.md integration — ensure standards directory is referenced. Wait for completion, then display the application summary.
+3. **Invoke `docs-operator` subagent** via task tool (agent_type: `maister-copilot:docs-operator`) — Pass prepared content. For creates: new file. For updates: merge new findings with existing. Wait for completion, then continue with the next standard.
+4. **After all standards applied, invoke `docs-operator` subagent** via task tool to regenerate INDEX.md. Wait for completion, then continue with step 5.
+5. **Invoke `docs-operator` subagent** via task tool to verify .github/copilot-instructions.md integration — ensure standards directory is referenced. Wait for completion, then display the application summary.
 
 Display application summary: created count, updated count, total active.
 

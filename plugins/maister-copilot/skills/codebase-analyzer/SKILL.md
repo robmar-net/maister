@@ -94,7 +94,7 @@ If combining roles into one agent, also read `references/combined.md` for mergin
 
 **3b. Adapt templates** — Replace `[description]` with the actual task description. Select the correct task-type section (Bug / Enhancement / Feature).
 
-**3c. Launch agents** — Use the Task tool with `subagent_type="Explore"` — one call per selected role, all in ONE message.
+**3c. Launch agents** — Use the task tool with `agent_type="Explore"` — one call per selected role, all in ONE message.
 
 **IMPORTANT**: Every Explore agent prompt MUST include this instruction:
 > IMPORTANT: Do NOT create, write, or modify any files. Output all findings as text in your response only.
@@ -103,11 +103,11 @@ If combining roles into one agent, also read `references/combined.md` for mergin
 
 ### Step 4: Delegate Report Generation
 
-After all Explore agents complete, delegate to `codebase-analysis-reporter` subagent via Task tool:
+After all Explore agents complete, delegate to `codebase-analysis-reporter` subagent via task tool:
 
 ```
-Task tool:
-  subagent_type: "maister-copilot:codebase-analysis-reporter"
+task tool:
+  agent_type: "maister-copilot:codebase-analysis-reporter"
   description: "Merge findings into analysis report"
   prompt: |
     You are the codebase-analysis-reporter. Merge these raw findings into a structured analysis report.

@@ -504,7 +504,7 @@ Skills are automatically invoked by Claude when appropriate. Details live in eac
 | `codebase-analyzer` | Thin dispatcher: selects agent roles adaptively, launches parallel Explore subagents, delegates report synthesis to `codebase-analysis-reporter` subagent | `skills/codebase-analyzer/SKILL.md` |
 | `implementation-verifier` | Read-only QA orchestrator: delegates completeness checks, test execution, code review, and production readiness to specialized subagents; compiles results into verification report | `skills/implementation-verifier/SKILL.md` |
 | `standards-discover` | Parallel multi-source standards discovery (config, code, docs, PRs/CI) with confidence scoring | `skills/standards-discover/SKILL.md` |
-| `docs-manager` | Internal engine for doc file operations, INDEX.md generation, CLAUDE.md integration. Not user-invocable — accessed via `docs-operator` agent (Task tool) by init, standards-update, standards-discover | `skills/docs-manager/skill.md` |
+| `docs-manager` | Internal engine for doc file operations, INDEX.md generation, CLAUDE.md integration. Not user-invocable — accessed via `docs-operator` agent (task tool) by init, standards-update, standards-discover | `skills/docs-manager/skill.md` |
 | `init` | Initialize `.maister/docs/` with project analysis, documentation generation, and baseline standards | `skills/init/SKILL.md` |
 | `standards-update` | Update or create standards from conversation context or explicit input | `skills/standards-update/SKILL.md` |
 | `quick-plan` | Built-in plan mode + standards enforcement: discovers matched standards from INDEX.md during planning and folds a Standards Compliance Checklist into the plan | `skills/quick-plan/SKILL.md` |
@@ -523,7 +523,7 @@ All orchestrators share patterns documented in a single reference file:
 | `html-report-style.md` | Shared style guide for HTML companion reports (standard CSS, severity badges, per-artifact layouts) |
 | `assets/dashboard.html` | Static operator dashboard viewer, copied into each task directory at workflow init (never model-generated) |
 
-Each orchestrator reads `orchestrator-patterns.md` at initialization and implements domain-specific phases. Key principles: state-driven execution, resume capability, interactive phase gates, user-confirmed rollback, context passing between phases via `phase_summaries`, delegation enforcement (Skill tool for skills, Task tool for agents).
+Each orchestrator reads `orchestrator-patterns.md` at initialization and implements domain-specific phases. Key principles: state-driven execution, resume capability, interactive phase gates, user-confirmed rollback, context passing between phases via `phase_summaries`, delegation enforcement (Skill tool for skills, task tool for agents).
 
 ### Orchestrator Skills
 
@@ -604,7 +604,7 @@ Subagents are specialized AI agents invoked by skills and orchestrators. All age
 | Agent | Purpose | Invoked By | Details |
 |-------|---------|------------|---------|
 | `project-analyzer` | Deep codebase analysis for tech stack, architecture, conventions | `/init` | `agents/project-analyzer.md` |
-| `docs-operator` | Internal service agent: executes docs-manager operations mid-workflow via Task tool. Has docs-manager skill preloaded. **Special case**: companion agent pattern only works here because docs-manager does NOT spawn subagents (only file operations). Do not use this pattern for skills that spawn subagents. | init, standards-update, standards-discover | `agents/docs-operator.md` |
+| `docs-operator` | Internal service agent: executes docs-manager operations mid-workflow via task tool. Has docs-manager skill preloaded. **Special case**: companion agent pattern only works here because docs-manager does NOT spawn subagents (only file operations). Do not use this pattern for skills that spawn subagents. | init, standards-update, standards-discover | `agents/docs-operator.md` |
 | `task-classifier` | Classifies task descriptions into workflow types with confidence scoring | `work` command | `agents/task-classifier.md` |
 | `gap-analyzer` | Compares current vs desired state with characteristic-detection-based analysis modules | development orchestrator | `agents/gap-analyzer.md` |
 | `specification-creator` | Creates specs from gathered requirements with reusability search and self-verification | development, migration orchestrators | `agents/specification-creator.md` |
@@ -673,21 +673,21 @@ Subagents are specialized AI agents invoked by skills and orchestrators. All age
 
 ## Progress Tracking with Task System
 
-All orchestrators use `TaskCreate`/`TaskUpdate` for real-time progress visibility at two levels:
+All orchestrators use `INSERT INTO todos`/`UPDATE todos` for real-time progress visibility at two levels:
 
 ### Orchestrator Phase Tracking
 
-- At workflow start: `TaskCreate` for all phases (pending), then `TaskUpdate addBlockedBy` for phase dependencies
-- At each phase: `TaskUpdate` to `in_progress` (shows spinner with `activeForm`) → execute → `TaskUpdate` to `completed`
+- At workflow start: `INSERT INTO todos` for all phases (pending), then `INSERT INTO todo_deps` for phase dependencies
+- At each phase: `UPDATE todos` to `in_progress` (shows spinner with `activeForm`) → execute → `UPDATE todos` to `completed`
 - Optionally set `owner` when delegating to skills/agents, and `metadata` for timing/artifacts
 - State file (`orchestrator-state.yml`) is source of truth for resume logic
 - Task system mirrors state for UX and provides dependency visualization
 
 ### Implementation Task Group Tracking
 
-- At planning: `TaskCreate` for each task group with `Dependencies` AND `Files to Modify` declared in `implementation-plan.md`
+- At planning: `INSERT INTO todos` for each task group with `Dependencies` AND `Files to Modify` declared in `implementation-plan.md`
 - During execution: executor computes parallel waves from dependencies + file overlap, then dispatches all groups in a wave concurrently via parallel `Task` tool calls. The `--sequential` flag (read from `orchestrator-state.yml` as `orchestrator.options.sequential`) forces the legacy one-at-a-time loop
-- `TaskUpdate` to `in_progress` on wave dispatch → execute → `TaskUpdate` to `completed` on each group's return
+- `UPDATE todos` to `in_progress` on wave dispatch → execute → `UPDATE todos` to `completed` on each group's return
 - Markdown checkboxes in `implementation-plan.md` remain the step-level source of truth
 - Task system provides group-level visibility with dependencies, timing, ownership, and wave membership
 
@@ -729,4 +729,6 @@ This is the Copilot CLI variant. Key differences from Claude Code:
 - **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
+- **Delegation to agents**: Use the `task` tool with `agent_type: "maister-copilot:<agent>"` (Copilot's delegation tool; there is no `Task`/`subagent_type` call). Copilot infers and runs the named custom agent.
+- **Task/todo tracking**: There is no `TaskCreate`/`TaskUpdate`/`TaskList` tool on Copilot CLI. Task items and their dependencies live in the SQL session store — use the `sql` tool over the pre-seeded tables `todos` (`id`, `title`, `description`, `status`, `created_at`, `updated_at`) and `todo_deps` (`todo_id`, `depends_on`). Create with `INSERT INTO todos (...)`, update state with `UPDATE todos SET status = 'in_progress'|'done' WHERE id = '...'` (note: the status value is `done`, not `completed`), record a dependency with `INSERT INTO todo_deps (todo_id, depends_on) VALUES (...)`, and list/check with `SELECT * FROM todos`.
 - **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
