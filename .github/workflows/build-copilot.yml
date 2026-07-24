@@ -2,7 +2,23 @@ name: Build Copilot CLI Variant
 on:
   push:
     branches: [master, v2]
-    paths: ['plugins/maister/**', 'platforms/**']
+    # Everything the build reads or is gated by. plugins/maister/** + platforms/**
+    # are the build INPUTS; Makefile carries the `validate` rules and the build/determinism
+    # targets; the workflow file itself so changes to the gate are exercised on push.
+    # (plugins/maister-copilot/** is intentionally excluded — it is generated output, so a
+    # rebuild commit can't self-retrigger this workflow.)
+    paths:
+      - 'plugins/maister/**'
+      - 'platforms/**'
+      - 'Makefile'
+      - '.github/workflows/build-copilot.yml'
+  # PRs targeting master/v2 run the full build+validate+determinism+drift gate. Deliberately
+  # NO `paths:` filter here: `build` is a REQUIRED status check (branch protection), and a
+  # path-filtered required check never reports on PRs that don't touch those paths — leaving
+  # the PR stuck "expected" forever. Running the (fast) build on every PR keeps the required
+  # check always-reporting. compat still self-skips on PRs (no seat secret on forks).
+  pull_request:
+    branches: [master, v2]
 
 jobs:
   build:
@@ -16,18 +32,44 @@ jobs:
       - name: Validate build
         run: make validate
 
+      - name: Check build determinism
+        # Two consecutive builds on this runner must be byte-identical. This protects the
+        # drift guard below (a non-deterministic build would make `git diff --exit-code`
+        # flaky) and the SkillPanel auto-commit (which would otherwise churn "Rebuild"
+        # commits). NOTE: this proves SAME-machine determinism only — it does not prove
+        # cross-OS (macOS↔Linux) byte-identity, which the drift guard also assumes; the
+        # build is written for that (LC_ALL=C sort, perl -0pi, portable sedi) but it is not
+        # gated here. Add a macOS matrix leg if that ever needs enforcing.
+        run: make check-deterministic
+
       - name: Commit if changed
         # Canonical-repo only: auto-committing the rebuilt variant back to master is a
         # maintainer operation on the upstream repo. On forks the default GITHUB_TOKEN is
         # read-only (push → 403) and the fork's master is just a PR-staging branch, so the
         # step is skipped there — build + validate above still run as normal fork CI.
-        if: github.repository == 'SkillPanel/maister'
+        if: github.repository == 'SkillPanel/maister' && github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add plugins/maister-copilot/
           git diff --cached --quiet || git commit -m "Rebuild Copilot CLI variant"
           git push
+
+      - name: Verify committed variant is in sync (fail on drift)
+        # Everywhere the auto-commit above does NOT run (this repo, and forks): the rebuilt
+        # variant is never committed by CI, so a contributor who edits plugins/maister/** or
+        # platforms/** but forgets to `make build` would otherwise merge a STALE
+        # plugins/maister-copilot/** with the job still GREEN — `make validate` runs against
+        # the freshly-rebuilt working tree, never against the committed bytes. This guard turns
+        # that drift into a red check: `make build` already ran above, so any diff here means
+        # the committed variant is out of date. (Relies on the same cross-platform build
+        # determinism the SkillPanel auto-commit already depends on to stay a no-op.)
+        if: github.repository != 'SkillPanel/maister'
+        run: |
+          git diff --exit-code -- plugins/maister-copilot/ || {
+            echo "::error::Committed plugins/maister-copilot/ is stale relative to plugins/maister/** + platforms/**. Run 'make build' and commit the regenerated variant."
+            exit 1
+          }
 
   # ---------------------------------------------------------------------------
   # WS6 — Runtime compatibility gate (invokes the committed WS7 harness in CI)
@@ -54,12 +96,15 @@ jobs:
   #      ~/.copilot/config.json payload).
   #   2. Add it as an Actions secret named COPILOT_CLI_TOKEN
   #      (repo/org → Settings → Secrets and variables → Actions).
-  #   3. Finish the auth handshake in the "Install & authenticate" step below to
-  #      match GitHub's current Copilot CLI auth mechanism, and ensure
-  #      experimental features are enabled in the CLI config (required for
-  #      `--plugin-dir`).
-  #   The gate auto-activates as soon as the secret is present. The full run
-  #   consumes a few AI credits per push (the harness drives one scripted live
+  #   3. IMPLEMENT the auth handshake in the "Install & authenticate" step below
+  #      (it is a TODO placeholder today — `copilot --version` works WITHOUT auth,
+  #      so an un-wired handshake yields an unauthenticated live session and
+  #      run.sh exits non-zero = RED). Match GitHub's current Copilot CLI auth
+  #      mechanism and enable experimental features (required for `--plugin-dir`).
+  #   4. Set the repo/org Actions VARIABLE COPILOT_COMPAT_LIVE=true to opt in.
+  #   The gate activates only when the secret AND vars.COPILOT_COMPAT_LIVE=true are
+  #   BOTH set — so merely adding the secret can NOT red the build before step 3 is
+  #   done. The full run consumes a few AI credits per push (one scripted live
   #   session). Reports are uploaded as build artifacts only — never committed.
   # ---------------------------------------------------------------------------
   compat:
@@ -73,13 +118,20 @@ jobs:
         id: seat
         env:
           COPILOT_CLI_TOKEN: ${{ secrets.COPILOT_CLI_TOKEN }}
+          COPILOT_COMPAT_LIVE: ${{ vars.COPILOT_COMPAT_LIVE }}
         run: |
-          if [ -n "$COPILOT_CLI_TOKEN" ]; then
+          # Live mode requires BOTH: the seat secret AND an explicit opt-in variable. The
+          # opt-in exists because the "Install & authenticate" step's handshake is a MAINTAINER
+          # TODO (see below) — without it a live session is unauthenticated and run.sh exits
+          # non-zero (RED). Gating on the secret alone would mean simply *adding* the secret
+          # flips CI red before the handshake is wired; the explicit vars.COPILOT_COMPAT_LIVE
+          # opt-in prevents that. Default (either unset) → SKIP, green, static gate unchanged.
+          if [ -n "$COPILOT_CLI_TOKEN" ] && [ "$COPILOT_COMPAT_LIVE" = "true" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "Copilot seat detected — running the full WS7 runtime compatibility harness."
+            echo "Live compat gate enabled (COPILOT_CLI_TOKEN set and vars.COPILOT_COMPAT_LIVE=true) — running the full WS7 runtime compatibility harness."
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo 'Copilot CLI compat harness skipped — no seat in CI; `make validate` covers static conventions; run `make test-copilot` locally'
+            echo 'Copilot CLI compat harness skipped — live gate not enabled (needs the COPILOT_CLI_TOKEN secret AND vars.COPILOT_COMPAT_LIVE=true, plus a real auth handshake in the Install step). `make validate` covers static conventions; run `make test-copilot` locally.'
           fi
 
       - name: Install & authenticate GitHub Copilot CLI
