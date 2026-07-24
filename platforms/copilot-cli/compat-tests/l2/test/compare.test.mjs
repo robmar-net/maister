@@ -1,0 +1,160 @@
+// Credit-free unit tests for the comparator + reference-check utility (Task Group 4).
+//
+// Tests run over INLINE + fixture references (test/fixtures/compare/*), NOT the
+// committed golden (l2/reference/development.skeleton.json) — keeping compare's
+// logic independent of the maister-model-derived reference (plan step 4.1).
+//
+// Run ONLY these: node --test l2/test/compare.test.mjs
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+import { compare, computeHash, checkReference, WORKFLOW_MODEL_VERSION } from '../compare.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIX = join(__dirname, 'fixtures', 'compare');
+
+const loadJson = (name) => JSON.parse(readFileSync(join(FIX, name), 'utf8'));
+
+// Fresh copies per test so mutations never bleed across cases.
+const loadReference = () => loadJson('reference.sample.json');
+const loadSkeletonArray = () => loadJson('skeleton.sample.json');
+
+test('4.1a conforming skeleton -> AS-EXPECTED (exit 0)', () => {
+  const reference = loadReference();
+  const copilotSet = new Set(loadSkeletonArray());
+
+  const result = compare(copilotSet, reference);
+
+  assert.equal(result.overall, 'AS-EXPECTED');
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.diffs.length, 0, 'a conforming skeleton has no classified diffs');
+  // All 5 required predicates are matched (PASS); no FAIL.
+  assert.equal(result.counts.pass, reference.required.length);
+  assert.equal(result.counts.fail, 0);
+  // The one present optional is informational, never a diff.
+  assert.ok(result.optionalPresent.includes('phase_completed(6)'));
+});
+
+test('4.1b missing required predicate -> REGRESSED (exit 1)', () => {
+  const reference = loadReference();
+  // Drop one REQUIRED predicate from an otherwise-conforming skeleton.
+  const copilotSet = new Set(
+    loadSkeletonArray().filter((p) => p !== 'delegated(gap-analyzer)'),
+  );
+
+  const result = compare(copilotSet, reference);
+
+  assert.equal(result.overall, 'REGRESSED');
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.counts.fail, 1);
+
+  const diff = result.diffs.find((d) => d.predicate === 'delegated(gap-analyzer)');
+  assert.ok(diff, 'the absent required predicate is reported as a diff');
+  assert.equal(diff.side, 'missing');
+  assert.equal(diff.classification, 'CANDIDATE_REGRESSION');
+});
+
+test('4.1c allowlisted extra -> LIMITATION (does NOT fail, exit 0)', () => {
+  const reference = loadReference();
+  // Add an EXTRA predicate that is absent from required u optional but IS on the
+  // reference allowlist (the seeded destructive-guard deny->ask adaptation).
+  const copilotSet = new Set([
+    ...loadSkeletonArray(),
+    'hook_effect(destructive_guard=ask)',
+  ]);
+
+  const result = compare(copilotSet, reference);
+
+  assert.equal(result.overall, 'AS-EXPECTED', 'an allowlisted diff never fails the run');
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.counts.limitation, 1);
+  assert.equal(result.counts.fail, 0);
+
+  const diff = result.diffs.find(
+    (d) => d.predicate === 'hook_effect(destructive_guard=ask)',
+  );
+  assert.ok(diff, 'the allowlisted extra is still reported (as a LIMITATION) for the table');
+  assert.equal(diff.side, 'extra');
+  assert.equal(diff.classification, 'LIMITATION');
+  assert.match(diff.reason, /deny->ask/i);
+});
+
+test('4.1d optional-absent predicate is NOT counted as a diff', () => {
+  const reference = loadReference();
+  // The base fixture skeleton omits the optional delegated(spec-auditor).
+  const copilotSet = new Set(loadSkeletonArray());
+  assert.ok(
+    reference.optional.includes('delegated(spec-auditor)'),
+    'precondition: spec-auditor is modelled optional',
+  );
+  assert.ok(!copilotSet.has('delegated(spec-auditor)'), 'precondition: it is absent');
+
+  const result = compare(copilotSet, reference);
+
+  // Absent optional is informational only — never a diff, never a fail.
+  assert.ok(result.optionalAbsent.includes('delegated(spec-auditor)'));
+  assert.ok(
+    !result.diffs.some((d) => d.predicate === 'delegated(spec-auditor)'),
+    'an absent optional does not appear in the classified diff',
+  );
+  assert.equal(result.overall, 'AS-EXPECTED');
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.diffs.length, 0);
+});
+
+test('4.1e checkReference: current(0) / bumped-version(1) / corrupt(2) + computeHash determinism', () => {
+  const reference = loadReference();
+
+  // computeHash is deterministic AND reproduces the committed fixture hash
+  // (this is the single hash definition used by Group 6 to stamp + Group 7 to verify).
+  assert.equal(computeHash(reference), computeHash(reference), 'computeHash is deterministic');
+  assert.equal(computeHash(reference), reference.hash, 'computeHash reproduces the stamped hash');
+
+  // current: version matches AND stored hash matches recomputed hash -> exit 0.
+  const current = checkReference(reference, reference.maister_version);
+  assert.equal(current.status, 'current');
+  assert.equal(current.exitCode, 0);
+
+  // stale: a bumped maister_version -> exit 1 with a "re-derive" message.
+  const stale = checkReference(reference, '99.0.0');
+  assert.equal(stale.status, 'stale');
+  assert.equal(stale.exitCode, 1);
+  assert.match(stale.message, /re-derive/i);
+
+  // corrupt: a tampered/inconsistent hash -> exit 2 (precondition, never trusted).
+  const tampered = { ...reference, hash: 'deadbeef' };
+  const corrupt = checkReference(tampered, tampered.maister_version);
+  assert.equal(corrupt.status, 'corrupt');
+  assert.equal(corrupt.exitCode, 2);
+});
+
+test('4.1f checkReference keys STALE on workflow_model_version — a package bump does NOT cry wolf (C2)', () => {
+  // The fixture reference has NO workflow_model_version (fallback path exercised by 4.1e); adding
+  // one here exercises the PREFERRED keyed path. workflow_model_version is not part of the hash, so
+  // the stored hash stays valid (corrupt check passes) and only the staleness key changes.
+  const base = loadReference();
+
+  // Matching workflow model -> CURRENT regardless of a (deliberately mismatched) package version.
+  const matched = { ...base, workflow_model_version: WORKFLOW_MODEL_VERSION };
+  const current = checkReference(matched, '99.0.0');
+  assert.equal(current.status, 'current', 'a behavior-neutral package bump must stay CURRENT');
+  assert.equal(current.exitCode, 0);
+  assert.match(current.message, /workflow model/i);
+
+  // Mismatched workflow model -> STALE (re-derive), even when the package version matches.
+  const drifted = { ...base, workflow_model_version: WORKFLOW_MODEL_VERSION + 1 };
+  const stale = checkReference(drifted, drifted.maister_version);
+  assert.equal(stale.status, 'stale');
+  assert.equal(stale.exitCode, 1);
+  assert.match(stale.message, /re-derive/i);
+  assert.match(stale.message, /workflow model/i);
+
+  // Corruption still outranks the version key: a bad hash is exit 2 even with a matching model.
+  const corrupt = checkReference({ ...matched, hash: 'deadbeef' }, matched.maister_version);
+  assert.equal(corrupt.status, 'corrupt');
+  assert.equal(corrupt.exitCode, 2);
+});

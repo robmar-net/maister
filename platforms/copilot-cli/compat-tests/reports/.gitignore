@@ -2,3 +2,4 @@
 # but keep the directory (via .gitkeep) so the harness always has somewhere to write.
 compat-report-*.md
 l1-hook-effects-*.md
+l2-trace-equivalence-*.md

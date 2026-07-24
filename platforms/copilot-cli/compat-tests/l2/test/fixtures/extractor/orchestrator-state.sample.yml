@@ -1,0 +1,78 @@
+# Sample orchestrator-state.yml mirroring the REAL maister serialization shape.
+# Copied from the structure of this task's own orchestrator-state.yml (flow-array
+# completed_phases of quoted "phase-N" strings; task_characteristics nested two
+# levels under task_context; last_status under verification_context). Values here
+# represent a COMPLETED development-shaped sandbox run (add a --greet subcommand),
+# so the state parser has a realistic, non-trivial target. task.status
+# (`completed`) is deliberately DIFFERENT from verification_context.last_status
+# (`as-expected`) to exercise the key-path disambiguation (MEDIUM-2).
+orchestrator:
+  started_phase: phase-1
+  completed_phases: ["phase-1", "phase-2", "phase-5", "phase-6", "phase-7", "phase-8", "phase-10", "phase-11", "phase-14"]
+  failed_phases: []
+  auto_fix_attempts: {}
+  options:
+    html_output: false
+    mockup_format: html
+    spec_audit_enabled: true
+    skip_test_suite: false
+    e2e_enabled: false
+    user_docs_enabled: false
+    code_review_enabled: true
+    pragmatic_review_enabled: true
+    reality_check_enabled: true
+    production_check_enabled: true
+    sequential: false
+  created: 2026-07-24T09:00:00Z
+  updated: 2026-07-24T09:05:00Z
+  task_path: .maister/tasks/development/2026-07-24-add-greet-subcommand
+  task_ids:
+    phase-1: "1"
+    phase-2: "2"
+    phase-5: "3"
+    phase-6: "4"
+    phase-7: "5"
+    phase-8: "6"
+    phase-10: "7"
+    phase-11: "8"
+    phase-14: "9"
+
+task:
+  title: Add --greet subcommand to the sample CLI
+  description: >
+    Add a small --greet <name> subcommand to the sandbox sample CLI, including a
+    test, via the maister development workflow.
+  status: completed
+  tags: [sandbox, development, l2, greet]
+  priority: medium
+
+task_context:
+  risk_level: low
+  clarifications_resolved: true
+  scope_expanded: false
+  architecture_decision: "Add a --greet subcommand branch to the existing arg dispatcher; cover it with the sandbox self-test."
+  task_characteristics:
+    has_reproducible_defect: false
+    modifies_existing_code: true
+    creates_new_entities: true
+    involves_data_operations: false
+    ui_heavy: false
+  research_reference:
+    path: null
+    research_question: null
+    research_type: null
+    confidence_level: null
+  phase_summaries:
+    specification:
+      summary: >-
+        spec.md written for the --greet subcommand.
+    gap_analysis:
+      summary: >-
+        Additive feature to the sample CLI; low risk.
+
+verification_context:
+  last_status: as-expected
+  issues_found: []
+  fixes_applied: []
+  decisions_made: []
+  reverify_count: 0
