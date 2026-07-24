@@ -36,7 +36,7 @@ When `--from=PATH` is provided, the skill switches to **sync mode** — importin
    - **Missing locally**: Category or file doesn't exist in the current project
    - **Differs**: Both exist but content differs (read and compare)
    - **Identical**: No action needed
-4. Present a summary to the user via ask_user (sequential single-select):
+4. Present a summary to the user via ask_user (multi-select):
    - Group by status: "New standards to add" and "Standards that differ"
    - Each item shows: `[category]/[file]` with brief description of what it contains
    - Options: individual files to sync, plus "Select all new" / "Select all different" convenience options

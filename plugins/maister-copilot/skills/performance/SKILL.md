@@ -286,7 +286,7 @@ ask_user - Display executive summary before asking. Extract from `phase_summarie
 **Always enabled**: Reality check, pragmatic review
 **Auto-set**: `skip_test_suite: true` (full test suite already passed during implementation phase; cleared before re-verification if fixes are applied)
 
-ask_user with sequential single-select - "Which additional verification checks?"
+ask_user with multiselect - "Which additional verification checks?"
   - "Code review" (recommended)
   - "Production readiness check"
 

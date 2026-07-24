@@ -724,7 +724,7 @@ All other agents and the main agent pass through normally. When adding a new age
 ## Platform: Copilot CLI
 
 This is the Copilot CLI variant. Key differences from Claude Code:
-- **No multi-select**: When asking users to select multiple options, ask sequential single-select questions instead
+- **Structured `ask_user` forms**: `ask_user` takes a `requestedSchema` (JSON Schema) whose `properties` map allows **several fields (questions) in one call** and **multi-select** array fields (rendered as "select zero or more"). Group related decisions into one form; use a multi-select field for genuinely non-exclusive choices — do NOT downgrade to sequential single-select.
 - **Command names**: No plugin prefix in names (e.g., `development`); the plugin system adds the plugin-id prefix automatically
 - **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
