@@ -1,0 +1,60 @@
+name: L2 trace-equivalence (on-demand, credit-free)
+
+# L2 is the OCCASIONAL layer (compat-tests/L2-DESIGN.md §10): L0/L1 are the per-build guardrails;
+# L2 runs ON DEMAND, never automatically. This workflow is manual-trigger ONLY (workflow_dispatch)
+# and runs ONLY the CREDIT-FREE subset:
+#   1. the pure-module + pipeline unit suite (no Copilot seat, no AI credits), and
+#   2. the reference staleness/tamper guard (`run.sh --check-reference`) per scenario — exit 1 if a
+#      committed reference diverges from the workflow model, exit 2 if its hash is inconsistent.
+# It NEVER drives a live Copilot session and NEVER spends AI credits. The live equivalence drive
+# stays LOCAL + seat-gated (`make test-l2` / `run.sh --scenario=<id> --yes`); a CI live mode could be
+# added later as an explicit opt-in input (seat-secret-gated), but is deliberately absent here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Which committed reference(s) to staleness-check"
+        type: choice
+        options:
+          - both
+          - development
+          - research
+        default: both
+
+# Least privilege: this workflow only reads the repo and runs tests — no writes, no commits.
+permissions:
+  contents: read
+
+jobs:
+  l2-credit-free:
+    name: L2 credit-free checks (unit suite + reference staleness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Pure modules (extractor / normalize / compare / usage / aggregate) + the end-to-end pipeline
+      # (development + research) over committed fixtures. No seat, no credits; node ships on the runner.
+      - name: L2 unit suite (pure modules + pipeline; no seat, no credits)
+        run: node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs
+
+      # Credit-free staleness/tamper verdict per scenario. `run.sh --check-reference` short-circuits
+      # BEFORE the seat preflight (LOW-4), so it works with no seat and touches no operator config.
+      # exit 0 current · exit 1 stale (re-derive) · exit 2 corrupt — any non-zero fails the run.
+      - name: Reference staleness/tamper guard (credit-free, per scenario)
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+        run: |
+          set -euo pipefail
+          rc=0
+          if [ "$SCENARIO" = "both" ] || [ "$SCENARIO" = "development" ]; then
+            echo "::group::development reference"
+            bash platforms/copilot-cli/compat-tests/l2/run.sh --check-reference || rc=$?
+            echo "::endgroup::"
+          fi
+          if [ "$SCENARIO" = "both" ] || [ "$SCENARIO" = "research" ]; then
+            echo "::group::research reference"
+            bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=research --check-reference || rc=$?
+            echo "::endgroup::"
+          fi
+          exit "$rc"
