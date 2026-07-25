@@ -41,6 +41,21 @@ chmod +x "$OUT/hooks/block-destructive-commands.sh"
 cp "$SCRIPT_DIR/hooks-overrides/skill-invocation-reminder.sh" "$OUT/hooks/skill-invocation-reminder.sh"
 chmod +x "$OUT/hooks/skill-invocation-reminder.sh"
 
+# WS2d: drop the SessionStart `compact`-matched entry from hooks.json. On Copilot, SessionStart
+# does NOT support a matcher and has no `compact` source (sources: startup/resume/new); a real
+# compaction fires `preCompact` (before), never SessionStart, and there is no `postCompact`
+# (verified live + hooks-configuration reference). Shipped unchanged, Copilot IGNORES the matcher
+# and fires post-compact-reminder on EVERY session start (over-fire + misleading "post-compaction"
+# wording), while true post-compaction nudging is impossible. So de-register it here; its
+# state-reread nudge is folded (reworded) into the WS2c skill-invocation reminder that already
+# fires every start. The orphaned post-compact-reminder.sh is left in place (still exercised by the
+# L1 harness) but unwired. Claude source hooks.json is untouched — SessionStart:compact works there.
+# Guarded: the compact block must match exactly once.
+perl -0777 -i -pe '
+  $c = s/      \{\n        "matcher": "compact",\n.*?\n      \},\n//s;
+  END { exit($c == 1 ? 0 : 1) }
+' "$OUT/hooks/hooks.json" || { echo "FAIL: WS2d: SessionStart compact block not found exactly once in \$OUT/hooks/hooks.json (source drift?)" >&2; exit 1; }
+
 # 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
 #    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
 sedi -e 's/"name": "maister"/"name": "maister-copilot"/' \
@@ -296,6 +311,7 @@ This is the Copilot CLI variant. Key differences from Claude Code:
 - **Delegation to agents**: Use the `task` tool with `agent_type: "maister-copilot:<agent>"` (Copilot's delegation tool; there is no `Task`/`subagent_type` call). Copilot infers and runs the named custom agent.
 - **Task/todo tracking**: There is no `TaskCreate`/`TaskUpdate`/`TaskList` tool on Copilot CLI. Task items and their dependencies live in the SQL session store — use the `sql` tool over the pre-seeded tables `todos` (`id`, `title`, `description`, `status`, `created_at`, `updated_at`) and `todo_deps` (`todo_id`, `depends_on`). Create with `INSERT INTO todos (...)`, update state with `UPDATE todos SET status = 'in_progress'|'done' WHERE id = '...'` (note: the status value is `done`, not `completed`), record a dependency with `INSERT INTO todo_deps (todo_id, depends_on) VALUES (...)`, and list/check with `SELECT * FROM todos`.
 - **Destructive-command guard**: Copilot hook payloads carry no agent identifier, so (unlike Claude) the guard can't scope to subagents. The Copilot variant instead asks you to confirm any destructive shell command (`git reset --hard`, `rm -rf`, …) via `permissionDecision: ask`; under `--allow-all-tools` the command is held until confirmed (fail-closed in headless runs).
+- **No post-compaction hook**: Copilot's `SessionStart` has no `matcher` and no `compact` source (sources: startup/resume/new); a compaction fires `preCompact` (before), never `SessionStart`, and there is no `postCompact`. So the Claude `SessionStart:compact` reminder is de-registered here (Copilot would otherwise fire it on *every* start), and its "re-read `orchestrator-state.yml`" nudge is folded into the always-on `SessionStart` reminder — the closest available substitute.
 EOF
 
 # 10. Prepend a human-facing banner to the TOP of CLAUDE.md — authored LAST so no sed pass
