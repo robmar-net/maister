@@ -85,6 +85,9 @@ export const scenario = {
   sandboxTemplate: 'sample-cli',
   prompt,
   expectedShape: 'development',
+  // Selects the extractor's development TREE_PROFILE + the findStateYaml `.maister/tasks/development/`
+  // subtree. Explicit for symmetry with sibling scenarios; 'development' is also the harness default.
+  taskType: 'development',
   // Generous by design. A full live development run (many phases + subagents +
   // gates) is long, and `sendAndWait` THROWS on timeout (it does not abort
   // in-flight work), so an under-sized value would false-INCOMPLETE a slow-but-

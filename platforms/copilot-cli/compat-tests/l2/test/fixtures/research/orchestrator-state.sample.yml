@@ -1,0 +1,58 @@
+# Sample orchestrator-state.yml for a COMPLETED research-shaped sandbox run, mirroring the REAL
+# maister serialization shape. Research shares the orchestrator core with development
+# (`orchestrator: completed_phases` flow-array of quoted "phase-N"; a top-level `task:` block with
+# `status`), and adds a `research_context` block INSTEAD of `task_context.task_characteristics` —
+# there is no gap-analyzer in research, so the state parser legitimately finds no characteristics
+# (one harmless warning) and the reference models that by absence.
+orchestrator:
+  started_phase: phase-1
+  completed_phases: ["phase-1", "phase-2", "phase-3", "phase-4", "phase-5", "phase-6"]
+  failed_phases: []
+  auto_fix_attempts: {}
+  options:
+    html_output: false
+    brainstorming_enabled: true
+    design_enabled: true
+    sequential: false
+  created: 2026-07-25T09:00:00Z
+  updated: 2026-07-25T09:12:00Z
+  task_path: .maister/tasks/research/2026-07-25-sample-cli-arg-parsing
+  task_ids:
+    phase-1: "1"
+    phase-2: "2"
+    phase-3: "3"
+    phase-4: "4"
+    phase-5: "5"
+    phase-6: "6"
+
+task:
+  title: How the sample CLI parses arguments and dispatches subcommands
+  description: >
+    Investigate how the sandbox sample CLI parses command-line arguments and dispatches its
+    subcommands, via the maister research workflow, and document the findings.
+  status: completed
+  tags: [sandbox, research, l2, arg-parsing]
+  priority: medium
+
+research_context:
+  research_type: technical
+  research_question: How does the sample CLI parse arguments and dispatch subcommands?
+  confidence_level: high
+  scope:
+    included: [arg parsing, subcommand dispatch]
+    excluded: [runtime behavior of external tools]
+    constraints: []
+  gathering_strategy:
+    categories: [codebase, documentation]
+    count: 2
+    source: planner
+  phase_summaries:
+    phase-1:
+      summary: >-
+        Planned the methodology, gathered from the codebase + docs, synthesized a research report.
+    phase-3:
+      summary: >-
+        Generated solution alternatives for documenting the dispatch structure.
+    phase-5:
+      summary: >-
+        High-level design of the arg-parse -> dispatch flow with decision records.

@@ -1,0 +1,28 @@
+{
+  "_comment": "Committed snapshot of the normalized skeleton for the research fixtures (events + state + task-tree). Regenerated only when the research extractor/normalize contract intentionally changes; drift here catches an unintended change before a Copilot seat is spent.",
+  "skeleton": [
+    "created_artifact(analysis/synthesis.md)",
+    "created_artifact(outputs/decision-log.md)",
+    "created_artifact(outputs/high-level-design.md)",
+    "created_artifact(outputs/research-report.md)",
+    "created_artifact(outputs/solution-exploration.md)",
+    "created_artifact(planning/research-brief.md)",
+    "created_artifact(planning/research-plan.md)",
+    "created_artifact(planning/sources.md)",
+    "delegated(information-gatherer)",
+    "delegated(research-planner)",
+    "delegated(research-synthesizer)",
+    "delegated(solution-brainstormer)",
+    "delegated(solution-designer)",
+    "gate_fired(ask)",
+    "invoked_skill(research)",
+    "phase_completed(1)",
+    "phase_completed(2)",
+    "phase_completed(3)",
+    "phase_completed(4)",
+    "phase_completed(5)",
+    "phase_completed(6)",
+    "reached_terminal(completion)",
+    "task_status(completed)"
+  ]
+}

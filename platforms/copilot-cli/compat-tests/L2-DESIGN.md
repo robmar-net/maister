@@ -4,8 +4,10 @@
 > equivalence was confirmed on a live **Copilot CLI 1.0.74** run — the maister-copilot development
 > workflow's predicate skeleton **conforms** to the reference (**AS-EXPECTED**) after a justified N=1
 > reference calibration. The `--runs=N` noise-calibration mode is built + credit-free-tested; the live
-> **N=3** band-measurement is deferred (monthly Copilot AI-credit quota). The design below is retained
-> as the rationale of record; where the build refined it, notes say so.
+> **N=3** band-measurement is deferred (monthly Copilot AI-credit quota). A **second scenario**
+> (`research`) is now implemented + credit-free-tested — a generalized extractor tree profile, a
+> `--scenario=<id>` selector, and a model-derived reference — with its live drive likewise deferred.
+> The design below is retained as the rationale of record; where the build refined it, notes say so.
 > **Layer:** L2 of the Copilot-CLI compatibility framework. L0 (wiring) and L1 (hook
 > effects) already ship; see [`README.md`](README.md) and [`L1-FINDINGS.md`](L1-FINDINGS.md).
 > **Upstream framework proposal:** SkillPanel/maister#9 · **Epic:** robmar-net/maister#3
@@ -213,18 +215,25 @@ Workflows act on a codebase, so runs need a fixed, small **sandbox project**:
   actually exercises the phases each scenario targets (e.g. a known reproducible bug for the
   bugfix scenario).
 
-## 9. Scenarios (three, exercising different mechanisms)
+## 9. Scenarios (exercising different mechanisms)
 
-Chosen to stress different parts of the engine, so the net is genuinely broad:
+Chosen to stress different parts of the engine, so the net is genuinely broad. Selected at run time
+with `--scenario=<id>` (default `development`); each has its own committed
+`reference/<id>.skeleton.json`.
 
-1. **quick-bugfix** *(MVP)* — short, gated (TDD red/green), cheap. Best first target: it
-   exercises gates, hooks, and terminal success without a full multi-agent fan-out.
-2. **development with a reproducible defect** — the full chain: gap → spec → plan → implement
-   → verify, TDD gates, parallel implementation waves, hooks. The richest trace.
-3. **research** — a *different* orchestrator: parallel gatherers + synthesizer, a different
-   agent set and phase model. Catches breakage the development path wouldn't touch.
+1. **development** *(first built; proven live)* — the full chain: analyse → spec → plan → implement
+   → verify, gates, parallel implementation waves, hooks. The richest trace, and the scenario the
+   MVP conformance loop was proven on (AS-EXPECTED, Copilot 1.0.74).
+2. **research** *(implemented; live deferred)* — a *different* orchestrator: a planner + parallel
+   information-gatherers + a synthesizer (plus conditional brainstorming/design), a different agent
+   set and phase model, no implementation phase. Catches breakage the development path wouldn't
+   touch. Credit-free plumbing (generalized tree profile + model-derived reference) is committed +
+   unit-tested; the live drive awaits AI-credit quota.
+3. **quick-bugfix** *(planned)* — short, gated via plan-mode (`ExitPlanMode`), cheap. Uniquely probes
+   the plan-mode gate the other two don't. Needs a seeded-bug sandbox, and its predicate skeleton is
+   thin under the current grammar (skill + plan gate + terminal), so it is a deliberate next step.
 
-Start with #1; add #2 and #3 once the harness is proven.
+The MVP was proven on #1; #2 is implemented credit-free; #3 is the next scenario.
 
 ## 10. Cost & cadence
 
@@ -267,10 +276,11 @@ Results feed the per-version **compatibility matrix** (SkillPanel/maister#9), ke
 1. **Spike** — prove we can deterministically answer `ask_user` on Copilot. Go/no-go for L2.
 2. **Extractor** — reduce a run (task-dir + `orchestrator-state.yml` + log) to a predicate
    set; define the schema.
-3. **MVP** — one scenario (quick-bugfix), sandbox, `N = 3`, derive + commit the reference
-   skeleton, produce the first equivalence report.
-4. **Scale** — add the development and research scenarios; wire reports into the compatibility
-   matrix (#9).
+3. **MVP** — one scenario (**development**), sandbox, reference derived + committed, proven live
+   (AS-EXPECTED, Copilot 1.0.74, N=1). `--runs=N` noise-calibration built; live N=3 deferred (quota).
+4. **Scale** — add further scenarios behind `--scenario=<id>`. **research** is implemented +
+   credit-free-tested (live deferred); **quick-bugfix** is the next planned scenario. Wire reports
+   into the compatibility matrix (#9).
 
 ---
 
