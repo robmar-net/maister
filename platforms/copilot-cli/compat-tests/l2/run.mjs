@@ -17,6 +17,12 @@
 // SDK import or session is constructed. The SDK is a DYNAMIC import inside runLive() only, so
 // importing this module or running `--check-reference` never spends a credit.
 //
+// CREDIT-SPEND CONFIRMATION (fail-closed, node side): a LIVE drive spends AI credits, so runLive()
+// requires explicit consent BEFORE the SDK import / any session — `--yes` (or COMPAT_L2_YES=1), or an
+// interactive y/N prompt on a TTY. A non-interactive run without consent REFUSES (exit 2) and spends
+// nothing. Every finished drive also SELF-REPORTS its AI-credit cost (AIU + API requests), read from
+// the session.shutdown event's totalNanoAiu / modelMetrics.
+//
 // EXIT CODES (spec § Preflight + verdict -> exit code, via compare.EXIT):
 //   0 AS-EXPECTED / current / help    1 REGRESSED / stale    2 INCOMPLETE / precondition / bad args
 //
@@ -71,10 +77,11 @@ function preconditionError(message) {
 
 // --------------------------------------------------------------------------- arg parsing (house style)
 export function parseArgs(argv) {
-  const opts = { checkReference: false, keepRundir: false, help: false, runs: 1, runsError: null, unknown: [] };
+  const opts = { checkReference: false, keepRundir: false, help: false, yes: false, runs: 1, runsError: null, unknown: [] };
   for (const a of argv) {
     if (a === '--check-reference') opts.checkReference = true;
     else if (a === '--keep-rundir') opts.keepRundir = true;
+    else if (a === '--yes') opts.yes = true;
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a.startsWith('--runs=')) {
       // Noise-calibration sample size (L2-DESIGN §4). Valid domain is a positive integer >=1;
@@ -92,7 +99,7 @@ function printUsage(stream = process.stdout) {
   stream.write([
     'L2 — Trace-Equivalence Testing Harness (run.mjs)',
     '',
-    'Usage: node run.mjs [--check-reference] [--runs=N] [--keep-rundir] [-h|--help]',
+    'Usage: node run.mjs [--check-reference] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
     '',
     'Flags:',
     '  --check-reference   Credit-free, offline: recompute the reference hash + check its version',
@@ -103,6 +110,10 @@ function printUsage(stream = process.stdout) {
     '                      keeps predicates present in ALL runs as the STABLE skeleton (compared to',
     '                      the reference), and reports the measured noise band. N must be an integer',
     '                      >=1 (0 / non-integer -> exit 2). Each extra run consumes a seat/credits.',
+    '  --yes               Confirm you understand a live run CONSUMES AI CREDITS and proceed without the',
+    '                      interactive y/N prompt. REQUIRED for non-interactive/CI live runs — without it',
+    '                      a non-TTY live run fails closed (exit 2) and spends nothing. Same as',
+    '                      COMPAT_L2_YES=1. Does not affect --check-reference / --help (already credit-free).',
     '  --keep-rundir       Retain a self-created mktemp rundir for debugging (direct invocation).',
     '  -h, --help          Print this usage and exit 0.',
     '',
@@ -110,6 +121,8 @@ function printUsage(stream = process.stdout) {
     '  COMPAT_PLUGIN_DIR        Plugin under test (default <repo>/plugins/maister-copilot).',
     '  COMPAT_RUNDIR            Rundir with the sandbox already copied in (set by run.sh).',
     '  COMPAT_KEEP_RUNDIR=1     Retain a self-created rundir (same as --keep-rundir).',
+    '  COMPAT_L2_YES=1          Confirm AI-credit spend for a live run (same as --yes). Required to proceed',
+    '                           non-interactively; unset -> a non-TTY live run fails closed (exit 2).',
     '  COMPAT_MAISTER_VERSION   Override the repo maister version --check-reference compares against',
     '                           (test/operator seam; default read from',
     '                           plugins/maister/.claude-plugin/plugin.json).',
@@ -246,6 +259,58 @@ function bulletList(items) {
   return arr.length ? arr.map((i) => `- \`${esc(i)}\``) : ['- _(none)_'];
 }
 
+// Round an AIU value for human display (the raw nano/1e9 value is retained in the data object).
+const round4 = (n) => Math.round(n * 1e4) / 1e4;
+
+// Terse one-line AI-credit suffix for the stdout verdict line:
+//   ' — ~1.23 AIU, 45 API req'  (known)   |   ' — AIU: unknown'  (no session.shutdown usage captured)
+function usageSuffix(u) {
+  if (!u || u.aiu == null) return ' — AIU: unknown';
+  const req = u.apiRequests != null ? `${u.apiRequests} API req` : 'API req unknown';
+  return ` — ~${round4(u.aiu)} AIU, ${req}`;
+}
+
+// Render the "## AI-credit cost" report section. N=1 -> a single "This run" line from `usage`; N>1 ->
+// a per-run AIU/API-request table from `usageTotal.perRun` plus the summed TOTAL across ALL attempted
+// runs (an incomplete drive still spends credits, so it is billed too).
+function renderCreditCost(L, usage, usageTotal) {
+  L.push('## AI-credit cost');
+  L.push('');
+  L.push(
+    '_A live L2 run drives a full maister development workflow via the Copilot SDK and spends AI ' +
+    'credits (premium API requests) whether or not it reaches a verdict. Figures are read from the ' +
+    '`session.shutdown` event (`totalNanoAiu` / `modelMetrics`); AIU = totalNanoAiu / 1e9._',
+  );
+  L.push('');
+  if (usageTotal) {
+    L.push('| Run | Status | AIU | API requests |');
+    L.push('|-----|--------|-----|--------------|');
+    for (const r of usageTotal.perRun || []) {
+      const u = r.usage;
+      const aiu = u && u.aiu != null ? `~${round4(u.aiu)}` : 'unknown';
+      const req = u && u.apiRequests != null ? String(u.apiRequests) : 'unknown';
+      L.push(`| ${esc(r.run)} | ${esc(r.status)} | ${aiu} | ${req} |`);
+    }
+    L.push('');
+    const totAiu = usageTotal.aiu != null ? `~${round4(usageTotal.aiu)} AIU` : 'AIU unknown';
+    const totReq = usageTotal.apiRequests != null ? `${usageTotal.apiRequests} API req` : 'API req unknown';
+    L.push(
+      `**Total across all ${usageTotal.n} attempted run(s)** — including any INCOMPLETE drive, which ` +
+      `still spends credits: **${totAiu}, ${totReq}**.`,
+    );
+    L.push('');
+  } else if (usage && usage.aiu != null) {
+    const req = usage.apiRequests != null
+      ? `${usage.apiRequests} API request(s)`
+      : 'an unknown number of API requests';
+    L.push(`- **This run:** ~${round4(usage.aiu)} AIU across ${req}.`);
+    L.push('');
+  } else {
+    L.push('- **This run:** AIU unknown — no `session.shutdown` usage data was captured.');
+    L.push('');
+  }
+}
+
 // Render the MEASURED noise band (N>1 calibration, L2-DESIGN §4) into the report line buffer:
 // stable count, a frequency table for flapping predicates, and the 3 reference-tuning insight lists.
 function renderNoiseBand(L, nb) {
@@ -298,6 +363,7 @@ export function buildReport(ctx) {
     scenarioId, mode, overall, counts, observed, reference, result,
     incompleteReason, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null,
+    usage = null, usageTotal = null,
   } = ctx;
 
   const L = [];
@@ -409,6 +475,8 @@ export function buildReport(ctx) {
     L.push('');
   }
 
+  renderCreditCost(L, usage, usageTotal);
+
   L.push('## Version stamps');
   L.push('');
   L.push(`- maister: \`${maisterVersion}\``);
@@ -484,6 +552,72 @@ export function aggregateRuns(sets) {
   return { n, stable, noise, union };
 }
 
+// --------------------------------------------------------------------------- AI-credit usage (pure)
+/**
+ * Extract AI-credit usage from a live session's typed event stream. PURE — no I/O, no SDK; fully
+ * credit-free unit-testable over an inline events array. Reads the SDK's `session.shutdown` event,
+ * whose `data.totalNanoAiu` is the session-wide accumulated NANO-AI-units (AIU = totalNanoAiu / 1e9)
+ * and whose `data.modelMetrics` maps model -> { requests: { count?, cost? }, totalNanoAiu?, usage }.
+ *
+ * @param {Array<{type?:string,data?:object}>} events merged typed stream (onEvent recorder + getEvents)
+ * @returns {{ aiu:number|null, nanoAiu:number|null, apiRequests:number|null, models:Object|null }}
+ *   All-null when there is no `session.shutdown` event. `apiRequests` is null (unknown) when the
+ *   shutdown carries no `modelMetrics` — never fabricated as 0.
+ */
+export function extractUsage(events) {
+  const NONE = { aiu: null, nanoAiu: null, apiRequests: null, models: null };
+  const list = Array.isArray(events) ? events : [];
+  const shutdown = list.find((e) => e && e.type === 'session.shutdown');
+  if (!shutdown) return NONE;
+
+  const data = shutdown.data || {};
+  const nanoAiu = data.totalNanoAiu != null ? data.totalNanoAiu : null;
+  const metrics = data.modelMetrics && typeof data.modelMetrics === 'object' ? data.modelMetrics : null;
+
+  // Total API requests = sum of per-model requests.count across every modelMetrics entry.
+  let apiRequests = null;
+  let models = null;
+  if (metrics) {
+    apiRequests = Object.values(metrics).reduce((s, m) => s + (m?.requests?.count || 0), 0);
+    models = {};
+    for (const [model, m] of Object.entries(metrics)) {
+      const mNano = m?.totalNanoAiu != null ? m.totalNanoAiu : null;
+      models[model] = { requests: m?.requests?.count || 0, aiu: mNano != null ? mNano / 1e9 : null };
+    }
+  }
+
+  return {
+    aiu: nanoAiu != null ? nanoAiu / 1e9 : null,
+    nanoAiu,
+    apiRequests,
+    models,
+  };
+}
+
+/**
+ * Sum AI-credit usage across runs (the aggregate bill of a --runs=N session). PURE. A field stays
+ * null iff NO input reported it, so "unknown" is never silently rendered as 0. Credit-free.
+ *
+ * @param {Array<{nanoAiu?:number|null, apiRequests?:number|null}|null|undefined>} usages
+ * @returns {{ aiu:number|null, nanoAiu:number|null, apiRequests:number|null }}
+ */
+export function sumUsage(usages) {
+  let anyAiu = false;
+  let anyReq = false;
+  let nanoAiu = 0;
+  let apiRequests = 0;
+  for (const u of Array.isArray(usages) ? usages : []) {
+    if (!u) continue;
+    if (u.nanoAiu != null) { nanoAiu += u.nanoAiu; anyAiu = true; }
+    if (u.apiRequests != null) { apiRequests += u.apiRequests; anyReq = true; }
+  }
+  return {
+    aiu: anyAiu ? nanoAiu / 1e9 : null,
+    nanoAiu: anyAiu ? nanoAiu : null,
+    apiRequests: anyReq ? apiRequests : null,
+  };
+}
+
 // --------------------------------------------------------------------------- live drive (seat-gated)
 
 // Drive ONE trace on its OWN fresh client (fresh runtime): create+start a CopilotClient -> fresh
@@ -531,10 +665,16 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
       await session.sendAndWait(sc.prompt, sc.timeoutMs);
     } catch (timeoutErr) {
       try { await session.abort(); } catch { /* best-effort */ }
+      // A timed-out / aborted drive may STILL have spent credits — best-effort collect whatever events
+      // we have (onEvent recorder + a post-abort getEvents attempt) and self-report any usage.
+      let history = [];
+      try { history = await session.getEvents(); } catch { history = []; }
+      const usage = extractUsage(mergeEvents(recorded, history));
       return {
         status: 'incomplete',
         reason: `sendAndWait did not complete (timeout or session error): ${timeoutErr?.message ?? timeoutErr}`,
         run: runIndex,
+        usage,
       };
     }
 
@@ -542,6 +682,7 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
     let history = [];
     try { history = await session.getEvents(); } catch { history = []; }
     const events = mergeEvents(recorded, history);
+    const usage = extractUsage(events); // AI-credit cost from the session.shutdown event (may be all-null)
 
     // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/development/*).
     const stateYaml = findStateYaml(rundir);
@@ -549,9 +690,9 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
-    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex };
+    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage };
 
-    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex };
+    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage };
   } finally {
     // Bounded per-run teardown: disconnect the session, THEN stop + forceStop THIS run's OWN client
     // (the SDK client spawned an app.js runtime subprocess whose IPC handles keep the event loop alive —
@@ -564,6 +705,45 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
       try { fs.rmSync(rundir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   }
+}
+
+// FAIL-CLOSED credit-spend confirmation (B). A live L2 run drives a FULL maister development workflow
+// on Copilot via the SDK and CONSUMES AI CREDITS. Returns true to PROCEED, false to ABORT (the caller
+// returns EXIT.INCOMPLETE — exit 2, nothing spent). Three paths: explicit consent (--yes /
+// COMPAT_L2_YES=1) -> proceed; interactive TTY -> y/N prompt (proceed only on 'y'/'yes'); non-TTY
+// without consent -> REFUSE (protects background / CI runs from silently burning a quota).
+async function confirmCreditSpend(opts, n) {
+  const warning =
+    '⚠️  L2 live run: drives a FULL maister development workflow on Copilot via the SDK and ' +
+    'CONSUMES AI CREDITS (many premium API requests — enough that ~1-2 runs can exhaust a monthly ' +
+    `Copilot quota). N=${n} multiplies the cost by ${n}.`;
+
+  // Explicit consent via flag or env -> proceed (non-interactive-safe).
+  if (opts.yes || process.env.COMPAT_L2_YES === '1') {
+    process.stdout.write(`${warning}\n(confirmed via --yes/COMPAT_L2_YES)\n`);
+    return true;
+  }
+
+  // Interactive terminal -> prompt; proceed ONLY on an explicit y / yes.
+  if (process.stdin.isTTY) {
+    process.stdout.write(`${warning}\n`);
+    const readline = await import('node:readline');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise((resolve) => rl.question('Proceed and spend AI credits? [y/N] ', resolve));
+    rl.close();
+    const a = String(answer).trim().toLowerCase();
+    if (a === 'y' || a === 'yes') return true;
+    process.stdout.write('Aborted (no credits spent).\n');
+    return false;
+  }
+
+  // Non-interactive with no consent -> FAIL CLOSED.
+  process.stdout.write(
+    `${warning}\n` +
+    'Refusing to spend AI credits without confirmation in a non-interactive run. ' +
+    'Pass --yes (or COMPAT_L2_YES=1) to proceed.\n',
+  );
+  return false;
 }
 
 async function runLive(opts) {
@@ -582,6 +762,11 @@ async function runLive(opts) {
 
   // Reference must exist + be valid JSON before we spend a credit (precondition -> exit 2).
   const reference = loadReference(scenario.id).reference;
+
+  // FAIL-CLOSED credit-spend confirmation (B) — AFTER the reference precondition, BEFORE any SDK import
+  // or driveOnce, so a refusal spends NOTHING. Credit-free paths (--check-reference, -h/--help) already
+  // returned in main() and never reach here.
+  if (!(await confirmCreditSpend(opts, N))) return EXIT.INCOMPLETE;
 
   // NO shared client — each run owns its OWN client (fresh runtime) inside driveOnce (a shared client
   // could not cleanly serve a 2nd session after the 1st completed; runs 2..N failed fast at N=3).
@@ -624,7 +809,7 @@ function finalizeSingleRun(res, ctx) {
   } = ctx;
   const base = {
     scenarioId, mode: 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, finalN: 1, sdkPath,
+    pluginDir, pluginName, finalN: 1, sdkPath, usage: res.usage ?? null,
   };
   const INCOMPLETE_COUNTS = { pass: 0, limitation: 0, skip: 0, fail: 0 };
 
@@ -634,7 +819,7 @@ function finalizeSingleRun(res, ctx) {
       ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
       observed: null, result: null, incompleteReason: res.reason, parseWarnings: [],
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (no verdict) — ${res.reason}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (no verdict) — ${res.reason}${usageSuffix(res.usage)}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -645,7 +830,7 @@ function finalizeSingleRun(res, ctx) {
       observed: normalize(res.ex.records), result: null,
       incompleteReason: res.reason, parseWarnings: res.ex.parseWarnings,
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (sanity floor) — ${res.reason}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (sanity floor) — ${res.reason}${usageSuffix(res.usage)}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -672,7 +857,7 @@ function finalizeSingleRun(res, ctx) {
       ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
       observed, result, incompleteReason: reason, parseWarnings: ex.parseWarnings,
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (widened sanity floor) — ${reason}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (widened sanity floor) — ${reason}${usageSuffix(res.usage)}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -685,7 +870,7 @@ function finalizeSingleRun(res, ctx) {
   }), ts);
   process.stdout.write(
     `\nL2: ${result.overall} — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
-    `${counts.fail} FAIL\nReport: ${rp}\n`,
+    `${counts.fail} FAIL${usageSuffix(res.usage)}\nReport: ${rp}\n`,
   );
   return result.exitCode; // 0 AS-EXPECTED / 1 REGRESSED
 }
@@ -699,9 +884,18 @@ function finalizeMultiRun(results, ctx) {
     reference, N, scenarioId, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, sdkPath,
   } = ctx;
+
+  // AI-credit cost across ALL attempted runs — an INCOMPLETE drive still spends credits, so every
+  // attempted run (not just the verdict-eligible ones) is billed here. No silent omission.
+  const usageTotal = {
+    ...sumUsage(results.map((r) => r.usage)),
+    n: N,
+    perRun: results.map((r) => ({ run: r.run, status: r.status, usage: r.usage ?? null })),
+  };
+
   const base = {
     scenarioId, mode: 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, finalN: N, sdkPath,
+    pluginDir, pluginName, finalN: N, sdkPath, usageTotal,
   };
 
   // PER-RUN OUTCOMES — the diagnosis surface (no silent caps). One entry per drive, in run order,
@@ -730,7 +924,7 @@ function finalizeMultiRun(results, ctx) {
       ...base, overall: 'INCOMPLETE', counts: { pass: 0, limitation: 0, skip: 0, fail: 0 },
       observed: null, result: null, incompleteReason: reason, parseWarnings: [], perRun,
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (N=${N}) — ${reason}\n${perRunStdout}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (N=${N}) — ${reason}${usageSuffix(usageTotal)}\n${perRunStdout}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -769,6 +963,7 @@ function finalizeMultiRun(results, ctx) {
   }), ts);
   process.stdout.write(
     `\nL2: ${result.overall} (N=${N}) — stable ${agg.stable.length}, noise ${agg.noise.length}` +
+    usageSuffix(usageTotal) +
     (shortfall ? `\n${shortfall}` : '') +
     `\n${perRunStdout}` +
     `\nReport: ${rp}\n`,
