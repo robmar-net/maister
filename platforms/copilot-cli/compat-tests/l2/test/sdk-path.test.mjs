@@ -87,7 +87,14 @@ test('excludes tmp and universal directories from version candidates (LOW-5)', (
   try {
     const resolved = resolveSdkPath({ home });
     assert.equal(selectedVersion(resolved), '1.0.73');
-    assert.ok(!/[/\\](tmp|universal)[/\\]/.test(resolved), 'tmp/universal never selected');
+    // Check the VERSION SEGMENT specifically — NOT a whole-path substring. The fake home lives under
+    // os.tmpdir(), which is literally `/tmp` on Linux/CI, so a `/[/\\](tmp|universal)[/\\]/` path scan
+    // false-positives there (it does not on macOS, where tmpdir is /var/folders/.../T). The invariant
+    // is that the SELECTED VERSION dir is never `tmp`/`universal`.
+    assert.ok(
+      !['tmp', 'universal'].includes(selectedVersion(resolved)),
+      'tmp/universal never selected as the version dir',
+    );
   } finally {
     rm(home);
   }
