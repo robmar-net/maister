@@ -2,11 +2,11 @@
 #
 # L2 — Trace-equivalence testing harness: thin bash operator wrapper for run.mjs.
 #
-# Drives ONE development-shaped Copilot workflow through the bundled @github/copilot-sdk
-# (via l2/run.mjs), reduces the typed trace + task-dir tree + orchestrator-state.yml to a
-# normalized predicate Set, and set-compares it to the committed maister-model-derived
-# reference. Answers "did this Copilot release or generator change break the maister
-# development workflow?" with one `make test-l2` — without false-alarming on legitimate LLM
+# Drives ONE Copilot workflow (development by default, or research via --scenario) through the
+# bundled @github/copilot-sdk (via l2/run.mjs), reduces the typed trace + task-dir tree +
+# orchestrator-state.yml to a normalized predicate Set, and set-compares it to the committed
+# maister-model-derived reference. Answers "did this Copilot release or generator change break the
+# maister workflow?" with one `make test-l2` — without false-alarming on legitimate LLM
 # non-determinism, and honestly SKIPping when there is no seat.
 #
 # This wrapper is INTENTIONALLY thin: all asserted logic lives in the credit-free ESM modules
@@ -17,7 +17,9 @@
 #
 # Usage:
 #   bash run.sh                        # full live run (needs an authenticated Copilot seat + AI credits)
+#   bash run.sh --scenario=research    # drive the research workflow instead of development (default)
 #   bash run.sh --check-reference      # CREDIT-FREE: staleness/tamper verdict for the committed reference
+#   bash run.sh --scenario=research --check-reference  # CREDIT-FREE verdict for the research reference
 #   bash run.sh --keep-rundir          # retain the throwaway sandbox rundir (debugging)
 #   bash run.sh -h | --help            # print this header and exit 0
 #
@@ -52,9 +54,10 @@ PLUGIN_DIR="${COMPAT_PLUGIN_DIR:-$REPO_ROOT/plugins/maister-copilot}"
 # shellcheck disable=SC2034  # defined for L0-parity + operator documentation; run.mjs writes the report
 REPORTS_DIR="$SCRIPT_DIR/../reports"          # reports live at compat-tests/reports (one level up from l2/)
 RUN_MJS="$SCRIPT_DIR/run.mjs"
-SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli"
-# The single MVP scenario, hardcoded internally — no user-facing flag or env override (L3).
+# Scenario to drive (default development; override with --scenario=<id>). SANDBOX_TEMPLATE is
+# re-resolved + validated from $SCENARIO after arg parsing (live path); this is the safe default.
 SCENARIO="development"
+SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli"
 
 # ---------------------------------------------------------------------------- config-restore state
 # REAL_CONFIG is overridable via COPILOT_CONFIG (a documented test/operator seam); NEUTRALIZED is
@@ -124,6 +127,7 @@ for a in "$@"; do
   case "$a" in
     -h|--help)          print_header; exit 0 ;;
     --check-reference)  CHECK_REFERENCE=1 ;;
+    --scenario=*)       SCENARIO="${a#--scenario=}" ;;
     --keep-rundir)      COMPAT_KEEP_RUNDIR=1 ;;
     *) echo "Unknown argument: $a" >&2; exit 2 ;;
   esac
@@ -134,8 +138,17 @@ done
 # so a missing seat can never mask it as a SKIP. `exec` is safe here: no config mutation, no rundir,
 # nothing for a trap to clean. run.mjs's --check-reference likewise constructs no SDK session.
 if [ "$CHECK_REFERENCE" = "1" ]; then
-  exec node "$RUN_MJS" --check-reference
+  exec node "$RUN_MJS" --check-reference --scenario="$SCENARIO"
 fi
+
+# ---------------------------------------------------------------------------- scenario -> sandbox (live path)
+# Resolve + validate the sandbox template for the selected scenario. Both current scenarios reuse
+# sample-cli (research investigates the same codebase read-only); add a case for a new sandbox.
+# --check-reference already exec'd above (it needs no sandbox), so this guards only the live path.
+case "$SCENARIO" in
+  development|research) SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli" ;;
+  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research)" >&2; exit 2 ;;
+esac
 
 # ---------------------------------------------------------------------------- seat preflight (mirrors L1 :262-267 no-seat idiom)
 # Best-effort: the copilot binary must exist AND the operator must have a Copilot config (written on
@@ -204,7 +217,7 @@ chmod +x "$RUNDIR"/*.sh 2>/dev/null || true
 echo "  … driving one live '${SCENARIO}' workflow via run.mjs (consumes AI credits) …"
 set +e
 env COMPAT_RUNDIR="$RUNDIR" COMPAT_PLUGIN_DIR="$PLUGIN_DIR" \
-  node "$RUN_MJS"
+  node "$RUN_MJS" --scenario="$SCENARIO"
 RC=$?
 set -e
 

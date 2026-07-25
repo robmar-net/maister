@@ -55,7 +55,18 @@ import { resolveSdkPath } from './sdk-path.mjs';
 import { extract } from './extractor.mjs';
 import { normalize } from './normalize.mjs';
 import { compare, checkReference, EXIT } from './compare.mjs';
-import scenario from './scenarios/development.mjs';
+import developmentScenario from './scenarios/development.mjs';
+import researchScenario from './scenarios/research.mjs';
+
+// --------------------------------------------------------------------------- scenario registry
+// Keyed by id. `development` is the MVP-proven default; `research` is the second workflow shape, added
+// once the MVP conformance loop was proven live. `--scenario=<id>` selects; `getScenario()` resolves
+// from here. Adding a scenario = import it + list it here (+ commit its reference/<id>.skeleton.json).
+const SCENARIOS = Object.freeze({
+  [developmentScenario.id]: developmentScenario,
+  [researchScenario.id]: researchScenario,
+});
+const DEFAULT_SCENARIO_ID = developmentScenario.id;
 
 // --------------------------------------------------------------------------- paths
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,12 +88,18 @@ function preconditionError(message) {
 
 // --------------------------------------------------------------------------- arg parsing (house style)
 export function parseArgs(argv) {
-  const opts = { checkReference: false, keepRundir: false, help: false, yes: false, runs: 1, runsError: null, unknown: [] };
+  const opts = { checkReference: false, keepRundir: false, help: false, yes: false, runs: 1, runsError: null, scenario: DEFAULT_SCENARIO_ID, scenarioError: null, unknown: [] };
   for (const a of argv) {
     if (a === '--check-reference') opts.checkReference = true;
     else if (a === '--keep-rundir') opts.keepRundir = true;
     else if (a === '--yes') opts.yes = true;
     else if (a === '-h' || a === '--help') opts.help = true;
+    else if (a.startsWith('--scenario=')) {
+      // Select the workflow shape to drive / check. Unknown id -> bad arg (exit 2), listing choices.
+      const id = a.slice('--scenario='.length);
+      if (Object.prototype.hasOwnProperty.call(SCENARIOS, id)) opts.scenario = id;
+      else opts.scenarioError = id;
+    }
     else if (a.startsWith('--runs=')) {
       // Noise-calibration sample size (L2-DESIGN §4). Valid domain is a positive integer >=1;
       // a non-integer, a decimal, or <1 (e.g. 0 / -2) is a bad arg -> exit 2 "invalid --runs".
@@ -99,9 +116,11 @@ function printUsage(stream = process.stdout) {
   stream.write([
     'L2 — Trace-Equivalence Testing Harness (run.mjs)',
     '',
-    'Usage: node run.mjs [--check-reference] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
+    'Usage: node run.mjs [--scenario=ID] [--check-reference] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
     '',
     'Flags:',
+    '  --scenario=ID       Workflow shape to drive / check: development (default) | research. Selects the',
+    '                      live drive AND which reference/<ID>.skeleton.json --check-reference reads.',
     '  --check-reference   Credit-free, offline: recompute the reference hash + check its version',
     '                      stamp (workflow-model, or maister package as fallback). No SDK session,',
     '                      no credits. Exits 0 (current) / 1 (stale — re-derive) / 2 (corrupt).',
@@ -159,13 +178,12 @@ function readRepoMaisterVersion() {
   }
 }
 
-// Credit-free staleness/tamper guard. No SDK import on this path. The scenario is hardcoded
-// internally (single MVP value) — there is no user-facing --scenario flag (L3).
-export function runCheckReference() {
+// Credit-free staleness/tamper guard for the selected scenario's reference. No SDK import on this path.
+export function runCheckReference(scenarioId = DEFAULT_SCENARIO_ID) {
   let reference;
   let version;
   try {
-    reference = loadReference(scenario.id).reference;
+    reference = loadReference(scenarioId).reference;
     version = readRepoMaisterVersion();
   } catch (err) {
     process.stdout.write(`--check-reference: INCOMPLETE — ${err.message}\n`);
@@ -178,8 +196,9 @@ export function runCheckReference() {
 
 // --------------------------------------------------------------------------- scenario + rundir + state
 function getScenario(id) {
-  if (id === scenario.id) return scenario;
-  throw preconditionError(`unknown scenario "${id}" (MVP implements only "${scenario.id}")`);
+  const sc = SCENARIOS[id];
+  if (sc) return sc;
+  throw preconditionError(`unknown scenario "${id}" (available: ${Object.keys(SCENARIOS).join(', ')})`);
 }
 
 // Create a FRESH isolated rundir for ONE trace: resolve l2/sandbox/<template>/ (relative to this
@@ -197,13 +216,14 @@ function makeFreshRundir(sc) {
   return rundir;
 }
 
-// Read the run's orchestrator-state.yml from the rundir task tree (first development task dir).
-function findStateYaml(rundir) {
-  const devDir = path.join(rundir, '.maister', 'tasks', 'development');
-  if (!isDir(devDir)) return null;
-  for (const e of fs.readdirSync(devDir, { withFileTypes: true })) {
+// Read the run's orchestrator-state.yml from the rundir task tree (first task dir of the scenario's
+// workflow type — `.maister/tasks/<taskType>/*/`).
+function findStateYaml(rundir, taskType) {
+  const typeDir = path.join(rundir, '.maister', 'tasks', taskType);
+  if (!isDir(typeDir)) return null;
+  for (const e of fs.readdirSync(typeDir, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
-    const sp = path.join(devDir, e.name, 'orchestrator-state.yml');
+    const sp = path.join(typeDir, e.name, 'orchestrator-state.yml');
     if (isFile(sp)) return fs.readFileSync(sp, 'utf8');
   }
   return null;
@@ -684,9 +704,10 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
     const events = mergeEvents(recorded, history);
     const usage = extractUsage(events); // AI-credit cost from the session.shutdown event (may be all-null)
 
-    // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/development/*).
-    const stateYaml = findStateYaml(rundir);
-    const ex = extract({ events, taskDirRoot: rundir, stateYaml });
+    // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/<taskType>/*); the scenario's
+    // taskType selects both the state subtree and the extractor's tree profile.
+    const stateYaml = findStateYaml(rundir, sc.taskType);
+    const ex = extract({ events, taskDirRoot: rundir, stateYaml, taskType: sc.taskType });
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
@@ -747,7 +768,7 @@ async function confirmCreditSpend(opts, n) {
 }
 
 async function runLive(opts) {
-  const sc = getScenario(scenario.id); // hardcoded single MVP scenario (L3)
+  const sc = getScenario(opts.scenario); // selected via --scenario (default development)
   const N = opts.runs;
   const ts = utcStamp();
   const maisterVersion = readRepoMaisterVersion();
@@ -761,7 +782,7 @@ async function runLive(opts) {
         : 'mktemp rundir (created by run.mjs direct-invocation fallback)');
 
   // Reference must exist + be valid JSON before we spend a credit (precondition -> exit 2).
-  const reference = loadReference(scenario.id).reference;
+  const reference = loadReference(sc.id).reference;
 
   // FAIL-CLOSED credit-spend confirmation (B) — AFTER the reference precondition, BEFORE any SDK import
   // or driveOnce, so a refusal spends NOTHING. Credit-free paths (--check-reference, -h/--help) already
@@ -977,6 +998,12 @@ export async function main(argv = process.argv.slice(2)) {
 
   if (opts.help) { printUsage(); return EXIT.AS_EXPECTED; }
 
+  if (opts.scenarioError != null) {
+    process.stderr.write(`invalid --scenario: ${opts.scenarioError} (available: ${Object.keys(SCENARIOS).join(', ')})\n`);
+    printUsage(process.stderr);
+    return EXIT.INCOMPLETE; // bad args -> exit 2
+  }
+
   if (opts.runsError != null) {
     process.stderr.write(`invalid --runs: ${opts.runsError} (expected an integer >= 1)\n`);
     printUsage(process.stderr);
@@ -990,7 +1017,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   // --check-reference RETURNS BEFORE ANY SDK IMPORT OR SESSION (credit-free; LOW-4 node side).
-  if (opts.checkReference) return runCheckReference();
+  if (opts.checkReference) return runCheckReference(opts.scenario);
 
   // Live conformance drive (the seat-consuming path; Group 10 exercises it).
   return runLive(opts);

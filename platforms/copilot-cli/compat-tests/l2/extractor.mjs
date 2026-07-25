@@ -254,15 +254,52 @@ export function extractFromEvents(events) {
 }
 
 // ---------------------------------------------------------------------------
-// Tree reduction (source b)
+// Tree reduction (source b) — scenario-parameterized via TREE_PROFILES
 // ---------------------------------------------------------------------------
+//
+// Each workflow lays its task dir out differently, so `created_artifact` extraction is driven by a
+// per-scenario TREE PROFILE, not development-hardcoded constants:
+//   taskType       - the `.maister/tasks/<taskType>/` subtree this workflow writes into
+//   exactArtifacts - task-dir-relative files that each count as ONE created_artifact token
+//   collapseDirs   - dirs whose EVERY file collapses to a single `<dir>/*` token at normalize time
+//                    (development: `verification` -> `verification/*`; research: none)
+//   fallbackDirs   - marker dirs proving `root` is ITSELF a single task dir (rundir-less fixtures)
+// The default profile is `development`, so any caller that omits a profile (e.g. the direct
+// extractFromTree / extract unit tests) gets byte-identical behavior to the pre-scenario harness.
+export const TREE_PROFILES = Object.freeze({
+  development: {
+    taskType: 'development',
+    exactArtifacts: [
+      'implementation/spec.md',
+      'implementation/implementation-plan.md',
+      'implementation/work-log.md',
+    ],
+    collapseDirs: ['verification'],
+    fallbackDirs: ['implementation', 'verification'],
+  },
+  research: {
+    taskType: 'research',
+    // Stable research deliverables (task-dir-relative). The Phase-1 report + synthesis are the
+    // always-produced core (modelled `required`); planning/* and the brainstorming/design outputs
+    // are legitimately conditional (modelled `optional`). `analysis/findings/*` is deliberately NOT
+    // modelled — it is variable + category-prefixed and already implied by
+    // delegated(information-gatherer); capturing it would need a normalize collapse rule for no gain.
+    exactArtifacts: [
+      'planning/research-brief.md',
+      'planning/research-plan.md',
+      'planning/sources.md',
+      'analysis/synthesis.md',
+      'outputs/research-report.md',
+      'outputs/solution-exploration.md',
+      'outputs/high-level-design.md',
+      'outputs/decision-log.md',
+    ],
+    collapseDirs: [],
+    fallbackDirs: ['outputs', 'analysis', 'planning'],
+  },
+});
 
-// created_artifact is restricted to these three exact files plus any file under `verification/`.
-const EXACT_ARTIFACTS = [
-  'implementation/spec.md',
-  'implementation/implementation-plan.md',
-  'implementation/work-log.md',
-];
+const DEFAULT_TREE_PROFILE = TREE_PROFILES.development;
 
 const isDir = (p) => {
   try { return fs.statSync(p).isDirectory(); } catch { return false; }
@@ -271,43 +308,45 @@ const isFile = (p) => {
   try { return fs.statSync(p).isFile(); } catch { return false; }
 };
 
-// Resolve the development task directory/directories under `root`. Robust to `root` being the
-// sandbox rundir (contains `.maister/tasks/development/*/`) OR a single task dir directly.
-function findTaskDirs(root) {
+// Resolve the task directory/directories under `root` for the profile's workflow type. Robust to
+// `root` being the sandbox rundir (contains `.maister/tasks/<taskType>/*/`) OR a single task dir.
+function findTaskDirs(root, profile) {
   const dirs = [];
-  const devDir = path.join(root, '.maister', 'tasks', 'development');
-  if (isDir(devDir)) {
-    for (const e of fs.readdirSync(devDir, { withFileTypes: true })) {
-      if (e.isDirectory()) dirs.push(path.join(devDir, e.name));
+  const typeDir = path.join(root, '.maister', 'tasks', profile.taskType);
+  if (isDir(typeDir)) {
+    for (const e of fs.readdirSync(typeDir, { withFileTypes: true })) {
+      if (e.isDirectory()) dirs.push(path.join(typeDir, e.name));
     }
     if (dirs.length) return dirs;
   }
-  // Fallback: root is itself a task dir.
-  if (isDir(path.join(root, 'implementation')) || isDir(path.join(root, 'verification'))) {
+  // Fallback: root is itself a task dir (proven by any of the profile's marker dirs).
+  if (profile.fallbackDirs.some((d) => isDir(path.join(root, d)))) {
     return [root];
   }
   return dirs;
 }
 
-// Walk the task-dir tree; emit created_artifact records for the allowed artifact set only. The
-// verification-path collapse (any verification report -> the single canonical token) is normalize's
-// job, so here we emit the concrete `verification/<file>` relpath as observed.
-export function extractFromTree(taskDirRoot) {
+// Walk the task-dir tree; emit created_artifact records for the PROFILE's allowed artifact set only.
+// Any collapse-dir file (e.g. development's `verification/<report>`) is emitted as its concrete
+// relpath here; the single-token collapse (`verification/*`) is normalize's job.
+export function extractFromTree(taskDirRoot, profile = DEFAULT_TREE_PROFILE) {
   const records = [];
   if (!taskDirRoot || !isDir(taskDirRoot)) return records;
 
-  for (const taskDir of findTaskDirs(taskDirRoot)) {
-    for (const rel of EXACT_ARTIFACTS) {
+  for (const taskDir of findTaskDirs(taskDirRoot, profile)) {
+    for (const rel of profile.exactArtifacts) {
       if (isFile(path.join(taskDir, rel))) {
         records.push({ kind: 'created_artifact', name: rel, source: 'tree', evidence: `file present: ${rel}` });
       }
     }
-    const vDir = path.join(taskDir, 'verification');
-    if (isDir(vDir)) {
-      for (const e of fs.readdirSync(vDir, { withFileTypes: true })) {
-        if (e.isFile()) {
-          const rel = `verification/${e.name}`;
-          records.push({ kind: 'created_artifact', name: rel, source: 'tree', evidence: `file present: ${rel}` });
+    for (const dir of profile.collapseDirs) {
+      const cDir = path.join(taskDir, dir);
+      if (isDir(cDir)) {
+        for (const e of fs.readdirSync(cDir, { withFileTypes: true })) {
+          if (e.isFile()) {
+            const rel = `${dir}/${e.name}`;
+            records.push({ kind: 'created_artifact', name: rel, source: 'tree', evidence: `file present: ${rel}` });
+          }
         }
       }
     }
@@ -322,15 +361,18 @@ export function extractFromTree(taskDirRoot) {
 // Merge all three sources into one raw-record array. Applies the MEDIUM-2 sanity floor and surfaces
 // state parse warnings. No SDK import — plain data in, plain data out.
 //
-// Returns { records, incomplete, incompleteReason, parseWarnings }.
-export function extract({ events = [], taskDirRoot = null, stateYaml = null } = {}) {
+// `taskType` selects the tree profile (default 'development' -> byte-identical to the pre-scenario
+// harness; 'research' -> the research task layout). An unknown type falls back to the development
+// profile. Returns { records, incomplete, incompleteReason, parseWarnings }.
+export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development' } = {}) {
   const state = stateYaml != null
     ? parseState(stateYaml)
     : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'] };
 
+  const profile = TREE_PROFILES[taskType] || DEFAULT_TREE_PROFILE;
   const stateRecords = stateToRecords(state);
   const eventRecords = extractFromEvents(events);
-  const treeRecords = taskDirRoot ? extractFromTree(taskDirRoot) : [];
+  const treeRecords = taskDirRoot ? extractFromTree(taskDirRoot, profile) : [];
 
   const records = [...stateRecords, ...eventRecords, ...treeRecords];
 

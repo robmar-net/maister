@@ -1,0 +1,44 @@
+{
+  "scenario": "research",
+  "maister_version": "2.2.2",
+  "schema_version": 1,
+  "workflow_model_version": 1,
+  "required": [
+    "phase_completed(1)",
+    "delegated(research-planner)",
+    "delegated(information-gatherer)",
+    "delegated(research-synthesizer)",
+    "created_artifact(analysis/synthesis.md)",
+    "created_artifact(outputs/research-report.md)",
+    "gate_fired(ask)",
+    "task_status(completed)",
+    "reached_terminal(completion)"
+  ],
+  "optional": [
+    "phase_completed(2)",
+    "phase_completed(3)",
+    "phase_completed(4)",
+    "phase_completed(5)",
+    "phase_completed(6)",
+    "invoked_skill(research)",
+    "delegated(solution-brainstormer)",
+    "delegated(solution-designer)",
+    "delegated(explore)",
+    "created_artifact(planning/research-brief.md)",
+    "created_artifact(planning/research-plan.md)",
+    "created_artifact(planning/sources.md)",
+    "created_artifact(outputs/solution-exploration.md)",
+    "created_artifact(outputs/high-level-design.md)",
+    "created_artifact(outputs/decision-log.md)",
+    "gate_fired(permission)",
+    "gate_fired(exit_plan_mode)"
+  ],
+  "allowlist": [
+    {
+      "predicate": "hook_effect(destructive_guard=ask)",
+      "classification": "LIMITATION",
+      "reason": "L1 destructive-guard deny->ask platform adaptation"
+    }
+  ],
+  "hash": "abed5d31d2ff2b9043ae1033c9cf2a73eb78f8c14f596e2835cd1734ea96e895"
+}

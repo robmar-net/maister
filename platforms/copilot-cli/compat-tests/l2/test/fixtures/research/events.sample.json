@@ -1,0 +1,22 @@
+[
+  { "type": "session.start", "id": "e0", "data": {} },
+  { "type": "session.skills_loaded", "id": "e1", "data": { "skills": [
+    { "name": "research" },
+    { "name": "development" },
+    { "name": "codebase-analyzer" },
+    { "name": "quick-bugfix" }
+  ] } },
+  { "type": "skill.invoked", "id": "e2", "data": { "name": "research" } },
+  { "type": "subagent.started", "id": "e3", "data": { "agentName": "maister-copilot:research-planner" } },
+  { "type": "assistant.message", "id": "e4", "data": { "text": "Planning the research methodology and sources." } },
+  { "type": "subagent.started", "id": "e5", "data": { "agentName": "maister-copilot:information-gatherer" } },
+  { "type": "subagent.started", "id": "e6", "data": { "agentName": "maister-copilot:information-gatherer" } },
+  { "type": "tool.execution_start", "id": "e7", "data": { "tool": "Grep", "args": { "pattern": "argv" } } },
+  { "type": "subagent.started", "id": "e8", "data": { "agentName": "maister-copilot:research-synthesizer" } },
+  { "type": "user_input.requested", "id": "e9", "data": { "prompt": "Research foundation complete. Continue to brainstorming evaluation?" } },
+  { "type": "subagent.started", "id": "e10", "data": { "agentName": "maister-copilot:solution-brainstormer" } },
+  { "type": "user_input.requested", "id": "e11", "data": { "prompt": "Which approach for each decision area?" } },
+  { "type": "subagent.started", "id": "e12", "data": { "agentName": "maister-copilot:solution-designer" } },
+  { "type": "session.idle", "id": "e13", "data": {} },
+  { "type": "session.shutdown", "id": "e14", "data": { "totalNanoAiu": 0 } }
+]
