@@ -31,7 +31,7 @@ validate:
 	@! grep -rnE '\bClaude\b' plugins/maister-copilot --include='*.md' | grep -v '/CLAUDE.md:' || (echo "FAIL: standalone 'Claude' found above (should be 'Copilot'); the root CLAUDE.md is exempt (intentional carry-over). Regenerate with make build" && exit 1)
 	@echo "Checking no AskUserQuestion residual (must be ask_user) (WS5.9)..."
 	@! grep -rl 'AskUserQuestion' plugins/maister-copilot/skills plugins/maister-copilot/commands plugins/maister-copilot/agents --include='*.md' 2>/dev/null || (echo "FAIL: AskUserQuestion residual found above (should be rewritten to ask_user); regenerate with make build" && exit 1)
-	@echo "Checking no Claude task/delegation tool-name residual (TaskCreate/TaskUpdate/TaskList/TaskGet/subagent_type) (WS5.11)..."
+	@echo "Checking no Claude task/delegation tool-name residual (TaskCreate/TaskUpdate/TaskList/TaskGet/subagent_type) (WS5.12)..."
 	@! grep -rnE 'TaskCreate|TaskUpdate|TaskList|TaskGet|subagent_type' plugins/maister-copilot/skills plugins/maister-copilot/commands plugins/maister-copilot/agents --include='*.md' 2>/dev/null || (echo "FAIL: Claude task/delegation tool-name residual found above (should be task(agent_type) / sql todos+todo_deps); regenerate with make build" && exit 1)
 	@echo "Checking the destructive-command guard is the Copilot 'ask' override (WS5.10)..."
 	@grep -q 'permissionDecision": "ask"' plugins/maister-copilot/hooks/block-destructive-commands.sh || (echo "FAIL: output destructive-command guard is not the Copilot 'ask' override (build.sh WS2b overlay missing?)" && exit 1)
