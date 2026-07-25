@@ -6,17 +6,19 @@ contracts, emitting a timestamped markdown report. It is the acceptance + regres
 mechanism for the generator remediation: **green** on a correct build, **red** on any
 runtime-contract regression.
 
-## Two levels: L0 (fire) vs L1 (effect)
+## Three levels: L0 (fire) · L1 (effect) · L2 (whole-workflow equivalence)
 
 | Level | Script / target | Asserts | Report |
 |-------|-----------------|---------|--------|
 | **L0** | `run.sh` / `make test-copilot` | The 7 runtime **contracts** hold — plugin/skills/agents/task/skill/hooks/mcp load & resolve, and hooks **fire**. | `reports/compat-report-*.md` |
 | **L1** | `l1-hook-effects.sh` / `make test-hooks` | Each of the 3 maister hooks has its intended **effect** on Copilot — and honestly flags where the effect is a **no-op**. | `reports/l1-hook-effects-*.md` |
+| **L2** | [`l2/`](./l2/) / `make test-l2` | A whole **development workflow** driven live via `@github/copilot-sdk` yields a predicate skeleton that **conforms** to a committed maister-model reference (trace equivalence). Proven live on Copilot 1.0.74 (**AS-EXPECTED**). | `reports/l2-trace-equivalence-*.md` |
 
-L0 proves the hooks *run*; L1 proves what they *do*. In L1, a **LIMITATION** verdict is the
+L0 proves the hooks *run*; L1 proves what they *do*; **L2** proves a whole *workflow behaves
+equivalently* (the layer L0/L1 don't cover). In L1 **and L2**, a **LIMITATION** verdict is the
 correct detection of a real platform divergence (not a harness bug); the run only goes red on an
-**unexpected regression** (a hook script's own logic breaking). Findings are written up in
-[`L1-FINDINGS.md`](./L1-FINDINGS.md).
+**unexpected regression**. Findings: [`L1-FINDINGS.md`](./L1-FINDINGS.md); L2 design + live result:
+[`L2-DESIGN.md`](./L2-DESIGN.md) + [`L2-SPIKE-FINDINGS.md`](./L2-SPIKE-FINDINGS.md).
 
 It formalizes the ad-hoc `~/Projects/maister-tests/` prototype (see
 `COMPAT-TEST-REPORT.md`, reproduction commands T1–T13) into repo-committed scripts +
@@ -32,6 +34,12 @@ bash platforms/copilot-cli/compat-tests/run.sh
 bash platforms/copilot-cli/compat-tests/run.sh --no-live            # L0 auth-free subset (CI without a seat)
 bash platforms/copilot-cli/compat-tests/l1-hook-effects.sh          # L1 full (deterministic + one live session)
 bash platforms/copilot-cli/compat-tests/l1-hook-effects.sh --no-live # L1 deterministic subset (no auth/credits)
+make test-l2               # L2: `make build`, then ONE live dev-workflow trace vs the reference.
+                           #     WARNING: spends AI credits — a full dev workflow is MANY premium API requests
+                           #     (~1-2 runs can exhaust a monthly Copilot quota). The harness PROMPTS for
+                           #     confirmation first; pass --yes / COMPAT_L2_YES=1 to skip the prompt in automation.
+node platforms/copilot-cli/compat-tests/l2/run.mjs --check-reference  # L2 CREDIT-FREE: reference staleness/tamper guard
+node platforms/copilot-cli/compat-tests/l2/run.mjs --runs=3 --yes     # L2 noise calibration (N=3 -> N x the credits)
 ```
 
 Exit code `0` = all asserted contracts GREEN; `1` = at least one RED. A report is

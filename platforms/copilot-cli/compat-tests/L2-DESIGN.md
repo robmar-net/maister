@@ -1,6 +1,11 @@
 # L2 — Trace-Equivalence Testing (Design / RFC)
 
-> **Status:** Design / RFC — open for discussion. Nothing here is built yet.
+> **Status:** ✅ **Implemented + proven live.** The harness ships in [`l2/`](l2/) (`make test-l2`);
+> equivalence was confirmed on a live **Copilot CLI 1.0.74** run — the maister-copilot development
+> workflow's predicate skeleton **conforms** to the reference (**AS-EXPECTED**) after a justified N=1
+> reference calibration. The `--runs=N` noise-calibration mode is built + credit-free-tested; the live
+> **N=3** band-measurement is deferred (monthly Copilot AI-credit quota). The design below is retained
+> as the rationale of record; where the build refined it, notes say so.
 > **Layer:** L2 of the Copilot-CLI compatibility framework. L0 (wiring) and L1 (hook
 > effects) already ship; see [`README.md`](README.md) and [`L1-FINDINGS.md`](L1-FINDINGS.md).
 > **Upstream framework proposal:** SkillPanel/maister#9 · **Epic:** robmar-net/maister#3
