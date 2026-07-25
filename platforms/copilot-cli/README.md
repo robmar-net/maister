@@ -28,6 +28,11 @@ make test-hooks          # L1: hook-effect checks
 - **Custom instructions** are discovered from the workspace/user locations only
   (`.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` at the repo/cwd, `$HOME/.copilot/...`),
   never from inside a plugin directory.
+- **Destructive commands need a human.** The guard confirms every destructive shell command via
+  `permissionDecision: ask` (no agent scoping on Copilot). Run destructive-heavy workflows
+  **interactively**. In headless `--allow-all-tools` a matched command is held fail-closed
+  (denied-and-continued, not a deadlock), and orchestrators can't run headless anyway
+  (`ask_user` gates are unavailable in `-p`).
 
 ## Documentation
 
