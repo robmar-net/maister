@@ -1,0 +1,40 @@
+[
+  {
+    "_comment": "Group 3 normalize fixture: raw predicate records { kind, name, value?, source, evidence } per the Shared Data Contract. `name` is the payload AS OBSERVED (still carries maister:/maister-copilot: prefixes and platform verb forms). Deliberately includes BOTH Claude and Copilot verb forms, BOTH prefix forms, two different verification reports (collapse+dedup), an EXCLUDED noise record, and duplicates so normalize's sort+dedup+collapse is exercised end-to-end. 23 grammar records -> 16 distinct sorted tokens; 1 noise record dropped."
+  },
+
+  { "kind": "delegated", "name": "Task(subagent_type:\"maister:gap-analyzer\")", "source": "events", "evidence": "subagent.started agentName=maister:gap-analyzer (Claude Task-tool literal form)" },
+  { "kind": "delegated", "name": "task(agent_type:\"maister-copilot:gap-analyzer\")", "source": "events", "evidence": "task tool agent_type=maister-copilot:gap-analyzer (Copilot literal form)" },
+  { "kind": "delegated", "name": "maister:gap-analyzer", "source": "events", "evidence": "subagent.started agentName=maister:gap-analyzer (already-extracted prefixed form)" },
+  { "kind": "delegated", "name": "maister-copilot:gap-analyzer", "source": "events", "evidence": "subagent.started agentDisplayName=maister-copilot:gap-analyzer (already-extracted prefixed form)" },
+  { "kind": "delegated", "name": "maister:specification-creator", "source": "events", "evidence": "subagent.started agentName=maister:specification-creator" },
+
+  { "kind": "invoked_skill", "name": "Skill(skill:\"maister:codebase-analyzer\")", "source": "events", "evidence": "Skill tool skill=maister:codebase-analyzer (Claude literal form)" },
+  { "kind": "invoked_skill", "name": "skill(\"codebase-analyzer\")", "source": "events", "evidence": "skill.invoked name=codebase-analyzer (Copilot literal form)" },
+  { "kind": "invoked_skill", "name": "maister:implementation-plan-executor", "source": "events", "evidence": "skill.invoked name=maister:implementation-plan-executor" },
+  { "kind": "invoked_skill", "name": "implementation-plan-executor", "source": "events", "evidence": "skill(\"implementation-plan-executor\") (Copilot bare form of same skill)" },
+
+  { "kind": "gate_fired", "name": "AskUserQuestion", "source": "events", "evidence": "AskUserQuestion tool (Claude gate form)" },
+  { "kind": "gate_fired", "name": "ask_user", "source": "events", "evidence": "user_input.requested via ask_user (Copilot gate form)" },
+  { "kind": "gate_fired", "name": "exit_plan_mode.requested", "source": "events", "evidence": "exit_plan_mode.requested event" },
+  { "kind": "gate_fired", "name": "permission.requested", "source": "events", "evidence": "permission.requested event" },
+
+  { "kind": "created_artifact", "name": "verification/verification-report.md", "source": "tree", "evidence": "task-dir tree: verification report #1" },
+  { "kind": "created_artifact", "name": "verification/spec-audit.md", "source": "tree", "evidence": "task-dir tree: verification report #2 (different filename, same canonical token)" },
+  { "kind": "created_artifact", "name": "implementation/spec.md", "source": "tree", "evidence": "task-dir tree (non-verification artifact, NOT collapsed)" },
+  { "kind": "created_artifact", "name": "implementation/implementation-plan.md", "source": "tree", "evidence": "task-dir tree (non-verification artifact, NOT collapsed)" },
+  { "kind": "created_artifact", "name": "implementation/work-log.md", "source": "tree", "evidence": "task-dir tree (non-verification artifact, NOT collapsed)" },
+
+  { "kind": "phase_completed", "name": 8, "source": "state", "evidence": "orchestrator-state.yml completed_phases" },
+  { "kind": "phase_completed", "name": 10, "source": "state", "evidence": "orchestrator-state.yml completed_phases" },
+  { "kind": "phase_completed", "name": 2, "source": "state", "evidence": "orchestrator-state.yml completed_phases" },
+
+  { "kind": "task_characteristic", "name": "ui_heavy", "value": false, "source": "state", "evidence": "task_context.task_characteristics.ui_heavy" },
+  { "kind": "task_characteristic", "name": "has_reproducible_defect", "value": false, "source": "state", "evidence": "task_context.task_characteristics.has_reproducible_defect" },
+
+  { "kind": "task_status", "name": "completed", "source": "state", "evidence": "task.status (disambiguated from verification_context.last_status)" },
+
+  { "kind": "reached_terminal", "name": "completion", "source": "events", "evidence": "session.idle with no session.error" },
+
+  { "kind": "tool_execution", "name": "Bash(git status)", "source": "events", "evidence": "EXCLUDED tool.execution payload - must produce NO token" }
+]

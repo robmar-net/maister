@@ -1,4 +1,4 @@
-.PHONY: build validate check-deterministic test-copilot test-hooks clean watch
+.PHONY: build validate check-deterministic test-copilot test-hooks test-l2 clean watch
 
 build:
 	bash platforms/copilot-cli/build.sh
@@ -69,6 +69,20 @@ test-copilot:
 test-hooks:
 	$(MAKE) build
 	bash platforms/copilot-cli/compat-tests/l1-hook-effects.sh
+
+# L2 — trace-EQUIVALENCE checks. Where test-copilot (L0) proves the runtime contracts hold and
+# test-hooks (L1) proves each hook's effect, this answers "did this Copilot release or generator
+# change break the maister DEVELOPMENT workflow?". Rebuilds the plugin, then drives ONE
+# development-shaped Copilot session through the bundled @github/copilot-sdk (a few AI credits),
+# reduces the typed trace + task-dir tree + orchestrator-state.yml to a normalized predicate Set,
+# and set-compares it to the committed maister-model-derived reference — without false-alarming on
+# legitimate LLM non-determinism. No authenticated seat -> loud SKIP (exit 0), never a failure.
+# Credit-free staleness/tamper verdict without a seat:
+#   bash platforms/copilot-cli/compat-tests/l2/run.sh --check-reference
+# See platforms/copilot-cli/compat-tests/l2/ (run.sh + run.mjs).
+test-l2:
+	$(MAKE) build
+	bash platforms/copilot-cli/compat-tests/l2/run.sh
 
 clean:
 	rm -rf plugins/maister-copilot/

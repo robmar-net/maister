@@ -169,6 +169,14 @@ allowlist's governance (who adds to it, how it's reviewed) is an open item (§12
 
 ## 7. The interactive-gate problem (the crux / make-or-break)
 
+> **✅ RESOLVED (Copilot CLI 1.0.73) — see [`L2-SPIKE-FINDINGS.md`](L2-SPIKE-FINDINGS.md).**
+> The bundled Node SDK (`@github/copilot-sdk`) answers this directly:
+> `createSession({ onUserInputRequest, onPermissionRequest, onExitPlanModeRequest })` lets a
+> client answer `ask_user` / permission / plan-mode gates deterministically **while they still
+> fire**, and a typed `SessionEvent` stream (`session.on` / `getEvents`) supplies the trace.
+> (`copilot --acp` and `--output-format json` also exist; the SDK is the cleanest path.) The
+> analysis below is kept for context.
+
 maister workflows **pause at gates** (`ask_user` / `AskUserQuestion`) for a user decision. To
 run a workflow N times unattended we need a **deterministic auto-responder** that answers each
 gate the same way every time (e.g. always pick the recommended default). This is the single
@@ -185,9 +193,9 @@ biggest feasibility risk, and it is **asymmetric**:
   live in the routine loop, the Claude-side gate problem disappears** — we only need to solve
   gate-answering on **Copilot**.
 
-**Recommended first step for the whole of L2: a short spike** to confirm we can
-programmatically answer `ask_user` on the target Copilot version. If that's infeasible even
-via `pexpect`, L2's scope shrinks to gate-free workflows and this doc needs revisiting.
+**First step (DONE): a short spike** confirmed we can programmatically answer `ask_user` on
+Copilot CLI 1.0.73 via the SDK — see [`L2-SPIKE-FINDINGS.md`](L2-SPIKE-FINDINGS.md). The
+`pexpect` fallback is not needed. Next is a live smoke test of the SDK loop (spike → MVP).
 
 ## 8. Sandbox project
 

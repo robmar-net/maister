@@ -1,0 +1,6 @@
+# Stray operator Copilot-config copies from de-shadow / test runs must NEVER be committed.
+# run.sh de-shadows ~/.copilot/config.json into an mktemp rundir; a config.json landing here
+# is always an accident (test seam / cwd mishap). Belt-and-suspenders so it can't be pushed.
+config.json
+config.json.orig
+*.tmp

@@ -1,0 +1,24 @@
+{
+  "scenario": "development",
+  "maister_version": "9.9.9-test",
+  "schema_version": 1,
+  "required": [
+    "phase_completed(1)",
+    "phase_completed(8)",
+    "delegated(gap-analyzer)",
+    "created_artifact(implementation/spec.md)",
+    "task_status(completed)"
+  ],
+  "optional": [
+    "phase_completed(6)",
+    "delegated(spec-auditor)"
+  ],
+  "allowlist": [
+    {
+      "predicate": "hook_effect(destructive_guard=ask)",
+      "classification": "LIMITATION",
+      "reason": "L1 destructive-guard deny->ask platform adaptation"
+    }
+  ],
+  "hash": "4b3caecb24924fb99b38b54850d8b93288f0d8fd5e1230fe6c9211758cf43760"
+}
