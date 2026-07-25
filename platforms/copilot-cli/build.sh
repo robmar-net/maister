@@ -46,6 +46,19 @@ chmod +x "$OUT/hooks/skill-invocation-reminder.sh"
 sedi -e 's/"name": "maister"/"name": "maister-copilot"/' \
      -e 's#for Claude Code#for GitHub Copilot CLI#' "$OUT/.claude-plugin/plugin.json"
 
+# 1b. Declare the MCP servers in the manifest so INSTALLED plugins load them. Copilot reads a
+#     plugin's `.mcp.json` directly only via `--plugin-dir`; for an installed plugin, the
+#     `mcpServers` field in plugin.json is the primary mechanism (per the CLI plugin reference).
+#     Without it, `copilot` reports "Loaded MCP config from installed plugins: 0 server(s)" and
+#     the bundled Playwright MCP never starts — breaking mockup-studio's visual companion and
+#     e2e-test-verifier in normal (installed) use. Point it at the shipped root `.mcp.json`.
+#     Inserted after the (now-renamed) name line via perl for a portable, byte-stable edit.
+#     Guarded by `make validate` (WS5.13). Claude source plugin.json stays untouched.
+perl -0777 -i -pe '
+  $c = s/("name": "maister-copilot",\n)/$1  "mcpServers": ".mcp.json",\n/;
+  END { exit($c == 1 ? 0 : 1) }
+' "$OUT/.claude-plugin/plugin.json" || { echo "FAIL: step 1b: could not insert mcpServers into plugin.json (name line not found once?)" >&2; exit 1; }
+
 # 2. Strip plugin prefix from command names: "maister:foo" → "foo"
 #    Plugin system adds the plugin-id prefix automatically
 find "$OUT/commands" -name "*.md" | while read f; do
