@@ -27,6 +27,8 @@ validate:
 	@echo "Checking branding residue and plugin description (WS5.5)..."
 	@! grep -rnE 'code\.claude\.com|claude\.ai/code|## Claude Code Documentation' plugins/maister-copilot --include='*.md' || (echo "FAIL: Claude Code residue (doc URLs or docs-section heading) found above" && exit 1)
 	@grep -q 'GitHub Copilot CLI' plugins/maister-copilot/.claude-plugin/plugin.json || (echo "FAIL: plugin.json description must mention 'GitHub Copilot CLI'" && exit 1)
+	@echo "Checking plugin.json declares mcpServers so installed plugins load MCP (WS5.13)..."
+	@grep -q '"mcpServers"' plugins/maister-copilot/.claude-plugin/plugin.json || (echo "FAIL: plugin.json must declare \"mcpServers\" (installed plugins load MCP from the manifest, not a bare .mcp.json); regenerate with make build" && exit 1)
 	@echo "Checking no standalone 'Claude' assistant-name leak outside CLAUDE.md (WS5.11)..."
 	@! grep -rnE '\bClaude\b' plugins/maister-copilot --include='*.md' | grep -v '/CLAUDE.md:' || (echo "FAIL: standalone 'Claude' found above (should be 'Copilot'); the root CLAUDE.md is exempt (intentional carry-over). Regenerate with make build" && exit 1)
 	@echo "Checking no AskUserQuestion residual (must be ask_user) (WS5.9)..."

@@ -1,5 +1,6 @@
 {
   "name": "maister-copilot",
+  "mcpServers": ".mcp.json",
   "version": "2.2.2",
   "description": "Structured, standards-aware development workflows for GitHub Copilot CLI",
   "author": {
