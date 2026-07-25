@@ -77,11 +77,16 @@ test-hooks:
 # L2 — trace-EQUIVALENCE checks. Where test-copilot (L0) proves the runtime contracts hold and
 # test-hooks (L1) proves each hook's effect, this answers "did this Copilot release or generator
 # change break the maister DEVELOPMENT workflow?". Rebuilds the plugin, then drives ONE
-# development-shaped Copilot session through the bundled @github/copilot-sdk (a few AI credits),
-# reduces the typed trace + task-dir tree + orchestrator-state.yml to a normalized predicate Set,
-# and set-compares it to the committed maister-model-derived reference — without false-alarming on
-# legitimate LLM non-determinism. No authenticated seat -> loud SKIP (exit 0), never a failure.
-# Credit-free staleness/tamper verdict without a seat:
+# development-shaped Copilot session through the bundled @github/copilot-sdk, reduces the typed trace
+# + task-dir tree + orchestrator-state.yml to a normalized predicate Set, and set-compares it to the
+# committed maister-model-derived reference — without false-alarming on legitimate LLM non-determinism.
+# No authenticated seat -> loud SKIP (exit 0), never a failure.
+#
+# !!  CONSUMES AI CREDITS: a full development workflow = MANY premium API requests — enough that ~1-2
+#     runs can EXHAUST a monthly Copilot quota (--runs=N multiplies it). The harness PROMPTS for
+#     confirmation before spending (or pass --yes / COMPAT_L2_YES=1 for automation) and self-reports
+#     the AIU cost in the report + stdout.
+# Credit-free (no seat, no credits) staleness/tamper verdict:
 #   bash platforms/copilot-cli/compat-tests/l2/run.sh --check-reference
 # See platforms/copilot-cli/compat-tests/l2/ (run.sh + run.mjs).
 test-l2:
