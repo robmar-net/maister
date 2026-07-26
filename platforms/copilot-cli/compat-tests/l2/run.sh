@@ -216,7 +216,7 @@ chmod +x "$RUNDIR"/*.sh 2>/dev/null || true
 # (0 AS-EXPECTED / 1 REGRESSED / 2 INCOMPLETE); we propagate it.
 echo "  … driving one live '${SCENARIO}' workflow via run.mjs (consumes AI credits) …"
 set +e
-env COMPAT_RUNDIR="$RUNDIR" COMPAT_PLUGIN_DIR="$PLUGIN_DIR" \
+env COMPAT_RUNDIR="$RUNDIR" COMPAT_PLUGIN_DIR="$PLUGIN_DIR" COMPAT_KEEP_RUNDIR="${COMPAT_KEEP_RUNDIR:-0}" \
   node "$RUN_MJS" --scenario="$SCENARIO"
 RC=$?
 set -e

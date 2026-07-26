@@ -144,6 +144,38 @@ test('T5 state: completed_phases parses inline flow-array AND block-sequence; ph
   assert.deepEqual(empty.phases, []);
 });
 
+test('T5b state: completed_phases as BARE integers (LLM serialization variance) parses via fallback', () => {
+  // A run may serialize completed_phases as bare ints instead of the maister "phase-N" convention
+  // (observed once on Copilot 1.0.75). The fallback must still yield the phases so a format-only
+  // difference does not read as zero phases -> false sanity-floor INCOMPLETE.
+  const flow = parseState('orchestrator:\n  completed_phases: [1, 2, 5, 7, 8, 10, 11, 14]\ntask:\n  status: completed\n');
+  assert.deepEqual(flow.phases, [1, 2, 5, 7, 8, 10, 11, 14]);
+  assert.equal(flow.status, 'completed');
+  // Block-sequence bare-int form too.
+  const block = parseState('orchestrator:\n  completed_phases:\n    - 1\n    - 2\n    - 6\n');
+  assert.deepEqual(block.phases, [1, 2, 6]);
+  // The "phase-N" form is unaffected (the bare-int fallback fires ONLY when phase-N yields nothing).
+  const pref = parseState('orchestrator:\n  completed_phases: ["phase-1", "phase-2"]\n');
+  assert.deepEqual(pref.phases, [1, 2]);
+});
+
+test('T5c state: Copilot 1.0.75 real shape — all under orchestrator:, bare-int phases, orchestrator.status', () => {
+  // Real-shape 1.0.75 state: NO top-level task: block; task status at orchestrator.status; a decoy
+  // per-phase `phases:` map (each {status: completed}). parseState must still yield the phases (bare
+  // int), the task status (from orchestrator.status, NOT a per-phase one), and the characteristics.
+  const yaml = fs.readFileSync(path.join(FIX, 'orchestrator-state.copilot-1.0.75.sample.yml'), 'utf8');
+  const s = parseState(yaml);
+  assert.deepEqual(s.phases, [1, 2, 5, 6, 7, 8, 10, 11, 14], 'bare-int completed_phases under orchestrator');
+  assert.equal(s.status, 'completed', 'task status from orchestrator.status (fallback: no top-level task: block)');
+  assert.deepEqual(s.characteristics, {
+    has_reproducible_defect: false,
+    modifies_existing_code: true,
+    creates_new_entities: false,
+    involves_data_operations: false,
+    ui_heavy: false,
+  });
+});
+
 test('T6 state: 5 task_characteristics under task_context; task.status disambiguated from last_status', () => {
   const s = parseState(STATE_YAML);
 

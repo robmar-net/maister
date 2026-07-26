@@ -724,6 +724,10 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
     if (client) { await bounded(client.stop?.(), 5000); try { client.forceStop?.(); } catch { /* ignore */ } }
     if (!opts.keepRundir && process.env.COMPAT_KEEP_RUNDIR !== '1') {
       try { fs.rmSync(rundir, { recursive: true, force: true }); } catch { /* ignore */ }
+    } else {
+      // Kept for diagnosis — surface the path (this fresh rundir is NOT run.sh's COMPAT_RUNDIR, so it
+      // is otherwise unlogged and hard to find under os.tmpdir()).
+      process.stderr.write(`L2: kept rundir (run ${runIndex}): ${rundir}\n`);
     }
   }
 }
@@ -733,9 +737,10 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
 // returns EXIT.INCOMPLETE — exit 2, nothing spent). Three paths: explicit consent (--yes /
 // COMPAT_L2_YES=1) -> proceed; interactive TTY -> y/N prompt (proceed only on 'y'/'yes'); non-TTY
 // without consent -> REFUSE (protects background / CI runs from silently burning a quota).
-async function confirmCreditSpend(opts, n) {
+async function confirmCreditSpend(opts, n, sc) {
+  const shape = sc?.expectedShape || sc?.id || 'development';
   const warning =
-    '⚠️  L2 live run: drives a FULL maister development workflow on Copilot via the SDK and ' +
+    `⚠️  L2 live run: drives a FULL maister ${shape} workflow on Copilot via the SDK and ` +
     'CONSUMES AI CREDITS (many premium API requests — enough that ~1-2 runs can exhaust a monthly ' +
     `Copilot quota). N=${n} multiplies the cost by ${n}.`;
 
@@ -787,7 +792,7 @@ async function runLive(opts) {
   // FAIL-CLOSED credit-spend confirmation (B) — AFTER the reference precondition, BEFORE any SDK import
   // or driveOnce, so a refusal spends NOTHING. Credit-free paths (--check-reference, -h/--help) already
   // returned in main() and never reach here.
-  if (!(await confirmCreditSpend(opts, N))) return EXIT.INCOMPLETE;
+  if (!(await confirmCreditSpend(opts, N, sc))) return EXIT.INCOMPLETE;
 
   // NO shared client — each run owns its OWN client (fresh runtime) inside driveOnce (a shared client
   // could not cleanly serve a 2nd session after the 1st completed; runs 2..N failed fast at N=3).
