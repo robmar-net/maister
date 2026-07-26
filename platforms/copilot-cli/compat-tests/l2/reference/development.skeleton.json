@@ -51,7 +51,12 @@
     "delegated(explore)",
     "delegated(codebase-analysis-reporter)",
     "delegated(user-docs-generator)",
-    "delegated(e2e-test-verifier)"
+    "delegated(e2e-test-verifier)",
+    "invoked_skill(reviews-code)",
+    "invoked_skill(reviews-pragmatic)",
+    "invoked_skill(reviews-spec-audit)",
+    "invoked_skill(reviews-reality-check)",
+    "invoked_skill(reviews-production-readiness)"
   ],
   "allowlist": [
     {
@@ -60,5 +65,5 @@
       "reason": "L1 destructive-guard deny->ask platform adaptation"
     }
   ],
-  "hash": "64b0d3b2484542871b098d5e5c0e5b1ef92288a47bcba7fa2e754392dedb790b"
+  "hash": "261ce1811909a55b2ba2499eb4b6848bf821c8289ef44bce2f36261d1c0e504c"
 }

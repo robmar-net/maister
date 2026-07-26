@@ -95,6 +95,19 @@ function parseCompletedPhases(lines, warnings) {
     const n = parseInt(m[1], 10);
     if (!Number.isNaN(n) && !nums.includes(n)) nums.push(n);
   }
+  // Fallback for LLM serialization variance: a run may serialize completed_phases as BARE integers
+  // (`[1, 2, 5]`) instead of the maister `"phase-N"` convention. ONLY when the phase[-_]N form yielded
+  // nothing, extract bare integers from the (bounded) value region, so a format-only difference does
+  // not read as zero completed phases — which would trip the sanity floor into a false INCOMPLETE.
+  if (nums.length === 0) {
+    const reInt = /\d+/g;
+    let mi;
+    while ((mi = reInt.exec(region)) !== null) {
+      const n = parseInt(mi[0], 10);
+      if (!Number.isNaN(n) && n >= 1 && !nums.includes(n)) nums.push(n);
+    }
+    if (nums.length > 0) warnings.push('completed_phases parsed as bare integers (no phase-N prefix)');
+  }
   nums.sort((a, b) => a - b);
   return nums;
 }
@@ -125,29 +138,49 @@ function parseCharacteristics(lines, warnings) {
   return out;
 }
 
-// Read `task.status` from within the top-level `task:` block. The block anchor disambiguates it from
-// `verification_context.last_status`; additionally `^\s*status\s*:` cannot match `last_status:`.
-function parseTaskStatus(lines, warnings) {
-  const idx = lines.findIndex((l) => /^task\s*:\s*$/.test(l));
-  if (idx === -1) {
-    warnings.push('task: block not found for status');
+// Clean a raw status value: strip quotes; treat empty / null / ~ as absent.
+function cleanStatusValue(raw, warnings) {
+  const v = String(raw).trim().replace(/^["']|["']$/g, '');
+  if (v === '' || v.toLowerCase() === 'null' || v === '~') {
+    warnings.push('task.status is null/empty');
     return null;
   }
-  for (let i = idx + 1; i < lines.length; i++) {
-    const l = lines[i];
-    if (l.trim() === '') continue;
-    if (indentOf(l) === 0) break; // next top-level key -> end of the task: block
+  return v;
+}
+
+// Read the task status. PRIMARY: `task.status` inside a top-level `task:` block (maister schema; the
+// block anchor disambiguates from `verification_context.last_status`, and `^\s*status\s*:` cannot match
+// `last_status:`). FALLBACK (LLM serialization variance — e.g. Copilot 1.0.75 nests everything under
+// `orchestrator:` with NO top-level `task:` block): the FIRST line-anchored `status:` at indent <= 2
+// (`orchestrator.status`). indent <= 2 excludes per-phase statuses (indent >= 4, or inline in a flow
+// map), and the `status`-not-`last_status` anchor excludes verification_context.
+function parseTaskStatus(lines, warnings) {
+  // PRIMARY: the top-level `task:` block (maister schema).
+  const idx = lines.findIndex((l) => /^task\s*:\s*$/.test(l));
+  if (idx !== -1) {
+    for (let i = idx + 1; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.trim() === '') continue;
+      if (indentOf(l) === 0) break; // next top-level key -> end of the task: block
+      const mm = l.match(/^\s*status\s*:\s*(.+?)\s*$/);
+      if (mm) return cleanStatusValue(mm[1], warnings);
+    }
+    warnings.push('task.status not found within task: block');
+    // fall through to the fallback (some serializations omit the task: block entirely)
+  }
+  // FALLBACK: `orchestrator.status` (or any top-level status:) — indent <= 2, first match wins.
+  for (const l of lines) {
+    if (!/^\s{0,2}status\s*:/.test(l)) continue;
     const mm = l.match(/^\s*status\s*:\s*(.+?)\s*$/);
     if (mm) {
-      const v = mm[1].trim().replace(/^["']|["']$/g, '');
-      if (v === '' || v.toLowerCase() === 'null' || v === '~') {
-        warnings.push('task.status is null/empty');
-        return null;
+      const v = cleanStatusValue(mm[1], warnings);
+      if (v != null) {
+        warnings.push('task status read from a top-level status: key (no task: block — LLM serialization variance)');
+        return v;
       }
-      return v;
     }
   }
-  warnings.push('task.status not found within task: block');
+  if (idx === -1) warnings.push('task: block not found for status');
   return null;
 }
 

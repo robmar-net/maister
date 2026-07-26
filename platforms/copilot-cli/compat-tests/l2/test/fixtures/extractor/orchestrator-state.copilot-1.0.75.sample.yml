@@ -1,0 +1,48 @@
+# Real-shape sample of a Copilot 1.0.75 orchestrator-state.yml (development workflow). Captured from
+# the 2026-07-26 live L2 run (rundir l2-rundir-rpGCac), trimmed. Copilot's model serializes the state
+# DIFFERENTLY from maister's documented schema: EVERYTHING nests under `orchestrator:` (there is NO
+# top-level `task:` block), `completed_phases` is a flow array of BARE INTEGERS (not "phase-N"), the
+# task status lives at `orchestrator.status`, and a `phases:` map carries decoy per-phase statuses.
+# Guards the parseState fallbacks (bare-int completed_phases + orchestrator.status) against regression.
+orchestrator:
+  workflow: development
+  version: "1.0"
+  created: "2026-07-26T07:24:04Z"
+  updated: "2026-07-26T07:31:16Z"
+  options:
+    html_output: true
+    mockup_format: html
+    spec_audit_enabled: true
+    skip_test_suite: false
+    e2e_enabled: false
+    user_docs_enabled: false
+    code_review_enabled: true
+    pragmatic_review_enabled: true
+    reality_check_enabled: true
+    production_check_enabled: true
+  task_context:
+    description: "Add a small --greet <name> subcommand to the sample CLI that prints Hello, <name>!, including a test."
+    risk_level: low
+    clarifications_resolved: true
+    scope_expanded: false
+    architecture_decision: null
+    task_characteristics:
+      has_reproducible_defect: false
+      modifies_existing_code: true
+      creates_new_entities: false
+      involves_data_operations: false
+      ui_heavy: false
+    phase_summaries:
+      specification:
+        summary: "Specification defines the documented POSIX-sh --greet command and one regression test."
+      verification:
+        summary: "Verification passed with issues: 4/4 tests pass, plan complete, no critical findings."
+  completed_phases: [1, 2, 5, 6, 7, 8, 10, 11, 14]
+  current_phase: 14
+  status: completed
+  phases:
+    1: {name: "Codebase Analysis & Clarifications", status: completed}
+    2: {name: "Gap Analysis & Scope Clarification", status: completed}
+    8: {name: "Implementation", status: completed}
+    11: {name: "Implementation Verification", status: completed}
+    14: {name: "Finalization", status: completed}
