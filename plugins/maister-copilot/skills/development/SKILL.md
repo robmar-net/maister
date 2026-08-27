@@ -232,9 +232,11 @@ ask_user - "TDD red gate complete. Continue to Phase 4?"
 
 mockup-studio runs design-resource discovery first (binding standards/tokens/components), then renders. Record its returned `format_used`/`notes` in `phase_summaries.ui_mockups` (e.g. an html→ascii fallback). On the gate's "revise", re-invoke mockup-studio.
 
+**Companion-server lifecycle (HTML path — CRITICAL for operator review):** the Phase 4 gate below is where the operator actually reviews the mockups, and that gate fires AFTER mockup-studio returns. So the live gallery MUST still be up at the gate. mockup-studio (Step 7) is instructed to leave the server running in `iteration: single` mode — do NOT shut it down before the gate, and never `POST /shutdown` yourself between generation and the gate. When mockup-studio reports a live gallery URL (e.g. `http://localhost:3847`), **include that URL verbatim in the gate question** so the operator knows where to look and can click through every screen (gallery grid → each screen → prev/next → ⊞ Gallery). Only AFTER the operator approves (the gate resolves to "continue") do you tear the companion down: `curl -s -X POST http://localhost:${port}/shutdown`. On "revise", leave it running — re-invoking mockup-studio reuses the same server (it also auto-restores screens from the on-disk manifest if it was stopped). If the HTML companion never came up (ASCII fallback, or browser/port failure), skip the URL and just reference the saved mockup files.
+
 → **MANDATORY GATE** — fires regardless of permission mode, session-reminders, or prior approval patterns. Invoke `ask_user` now. Proceeding without a user response is a protocol violation (orchestrator-patterns.md § 2 / § 2.1).
 
-ask_user - "UI mockups complete. Continue to Phase 5?"
+ask_user - "UI mockups complete — review the live gallery at [companion URL] (click any card → screen → prev/next). Continue to Phase 5?"
 
 ---
 
