@@ -26,8 +26,8 @@
 #     under its REAL name (preserving the maister-copilot:<agent> namespace contract).
 #   * Live mode  : runs under the real HOME (ambient auth) and temporarily removes the
 #     installed maister-copilot from ~/.copilot/config.json (JSONC-safe), restoring the
-#     file BYTE-IDENTICALLY via a trap. Copilot 1.0.73 has no `plugin disable` subcommand;
-#     this is the reversible equivalent.
+#     file BYTE-IDENTICALLY via a trap. Copilot CLI (verified through 1.0.76) has no `plugin
+#     disable` subcommand; this is the reversible equivalent.
 #   * No-live mode: seeds an ISOLATED temp HOME (a copy of ~/.copilot minus session/log
 #     state, with the install filtered out) — the real config is never touched at all.
 #
@@ -308,11 +308,19 @@ else
       record "C2" "Skills register (0 load failures)" "FAIL" "skills absent from <available_skills>:[${missing_ls} ]"
     fi
 
-    # C4 — a live task(agent_type) delegation executed (SessionAgentExecutor ground truth)
-    if grep -q "SessionAgentExecutor.execute() called for \"${PLUGIN_NAME}:${PROBE_AGENT}\"" "$LIVE_LOG"; then
-      record "C4" "task(agent_type) delegation" "PASS" "debug log: SessionAgentExecutor.execute() for \"${PLUGIN_NAME}:${PROBE_AGENT}\""
+    # C4 — a live task(agent_type) delegation to <plugin>:<agent> executed. Two ground-truth
+    # signals accepted, so the check spans CLI versions:
+    #   • pre-1.0.76:    the `SessionAgentExecutor.execute() called for "<plugin>:<agent>"` line.
+    #   • 1.0.76+ (Rust runtime, which dropped that line): the model's task tool CALL — its
+    #     `arguments` JSON carries `"agent_type":"<plugin>:<agent>"`. We match a single log line
+    #     that has `arguments` AND `agent_type` AND the agent name, which is the tool-call record.
+    #     The scripted prompt's echo lives in a `text` field with no `arguments`, so it can NOT
+    #     self-satisfy this (verified: the prompt line is excluded).
+    if grep -qa "SessionAgentExecutor.execute() called for \"${PLUGIN_NAME}:${PROBE_AGENT}\"" "$LIVE_LOG" \
+       || { grep -a 'agent_type' "$LIVE_LOG" | grep -a 'arguments' | grep -qa "${PLUGIN_NAME}:${PROBE_AGENT}"; }; then
+      record "C4" "task(agent_type) delegation" "PASS" "debug log: task tool invoked with agent_type \"${PLUGIN_NAME}:${PROBE_AGENT}\" (1.0.76 tool-call args, or pre-1.0.76 SessionAgentExecutor.execute())"
     else
-      record "C4" "task(agent_type) delegation" "FAIL" "no SessionAgentExecutor.execute() for \"${PLUGIN_NAME}:${PROBE_AGENT}\" in debug log"
+      record "C4" "task(agent_type) delegation" "FAIL" "no task(agent_type) delegation to \"${PLUGIN_NAME}:${PROBE_AGENT}\" in debug log (checked 1.0.76 tool-call args + pre-1.0.76 SessionAgentExecutor)"
     fi
 
     # C5 — a skill(<name>) invocation succeeded. Ground truth is the skill tool's output
@@ -348,17 +356,24 @@ else
       record "C6" "Hooks fire (SessionStart+PreToolUse, \${CLAUDE_PLUGIN_ROOT})" "FAIL" "abs=$abs_ok var=$var_ok pretool=$pre_ok root_expanded=$root_ok plugin_hooks_present=$plugin_hooks_present plugin_hook=$plugin_hook_fired"
     fi
 
-    # C7 — plugin .mcp.json loaded at runtime (server initialized from --plugin-dir)
+    # C7 — plugin .mcp.json loaded at runtime (the server(s) it declares were started by the CLI).
+    # Version-tolerant load line, requiring each declared server to appear by name:
+    #   • pre-1.0.76:    `Loaded MCP config from plugin-dir plugins …` (explicitly plugin-scoped).
+    #   • 1.0.76+ (Rust runtime): `[rust:copilot_runtime::session::mcp::session_host] mcp
+    #     discover_and_start_root …`, whose config signature lists the started servers by name.
+    # On 1.0.76 that line is not textually "plugin-dir"-scoped (the Rust runtime merges MCP
+    # sources), but the harness removes the operator's installed maister-copilot first, so the
+    # plugin's --plugin-dir .mcp.json is the only source of these server names.
     PLUGIN_MCP_SERVERS="$(json_get "$PLUGIN_DIR/.mcp.json" mcpServers)"
-    mcp_line="$(grep -E 'Loaded MCP config from plugin-dir plugins' "$LIVE_LOG" | tail -1 || true)"
-    mcp_hit=0
-    if [ -n "$mcp_line" ]; then
-      for srv in $PLUGIN_MCP_SERVERS; do printf '%s' "$mcp_line" | grep -q "$srv" && mcp_hit=1; done
-    fi
+    mcp_hit=0; mcp_line=""
+    for srv in $PLUGIN_MCP_SERVERS; do
+      line="$(grep -aE 'Loaded MCP config from plugin-dir plugins|mcp discover_and_start_root' "$LIVE_LOG" | grep -a "$srv" | tail -1 || true)"
+      [ -n "$line" ] && { mcp_hit=1; mcp_line="$line"; }
+    done
     if [ "$mcp_hit" = 1 ]; then
-      record "C7" "Plugin .mcp.json loads" "PASS" "debug log: ${mcp_line#*] }"
+      record "C7" "Plugin .mcp.json loads" "PASS" "debug log: runtime MCP load line names plugin server(s) [${PLUGIN_MCP_SERVERS}]"
     else
-      record "C7" "Plugin .mcp.json loads" "FAIL" "no plugin-dir MCP load line mentioning [${PLUGIN_MCP_SERVERS}] in debug log"
+      record "C7" "Plugin .mcp.json loads" "FAIL" "no MCP load line (pre-1.0.76 'Loaded MCP config' or 1.0.76 'discover_and_start_root') mentioning [${PLUGIN_MCP_SERVERS}] in debug log"
     fi
   fi
 
