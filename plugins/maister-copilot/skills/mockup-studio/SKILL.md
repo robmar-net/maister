@@ -109,8 +109,10 @@ Read `references/visual-companion.md` for the full protocol. Then:
 
 ### Step 7 — Teardown & return
 
-- If this skill started the server (and owns its lifecycle for this run — typically `iteration: single` or standalone completion), shut it down: `curl -s -X POST http://localhost:${port}/shutdown`. When an orchestrator keeps the companion alive across a phase, leave it running per the caller's instruction.
-- Return the result block (Step "Returns" above) to the caller.
+- **Do NOT shut the server down when `iteration: single` (orchestrator mode).** In that mode the caller's *review gate fires after this skill returns* — the operator reviews the gallery at that gate, so the companion MUST stay running until the caller leaves the design stage. Shutting down here strands the reviewer with a dead `localhost` (the gallery survives on disk, but the live browsable gallery — the whole point — is gone). Leave it running and tell the caller the gallery URL; the orchestrator tears it down when it advances past the design/mockup phase (or on a "revise" it re-invokes this skill, which reuses the still-running server).
+- Only shut the server down when this skill genuinely owns the *entire* lifecycle end-to-end: **standalone `iteration: full`** after the user has approved and the interactive loop is complete. Then `curl -s -X POST http://localhost:${port}/shutdown`.
+- On restart the server auto-restores previously-saved screens from the on-disk manifest (`<output_subdir>/.mockups.json`), so a companion that was stopped can be brought back with the full gallery intact by re-running the same start command — no re-POST needed.
+- Return the result block (Step "Returns" above) to the caller, including the live gallery URL so the caller can surface it at its review gate.
 
 ---
 
