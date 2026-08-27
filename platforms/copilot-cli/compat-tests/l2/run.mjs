@@ -1029,7 +1029,17 @@ export async function main(argv = process.argv.slice(2)) {
 }
 
 // Run main() only when invoked directly (`node run.mjs …`); importing this module is side-effect-free.
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// Symlink-robust: `path.resolve()` does NOT resolve symlinks, but Node derives import.meta.url from
+// the file's REALPATH, so on a symlinked invocation path (macOS `/tmp` -> `/private/tmp`, or any
+// symlinked checkout) a naive `===` is a FALSE negative — main() silently never runs and the process
+// exits 0 with no verdict (a fail-open false-green; observed when run.sh passes an absolute /tmp path
+// to node). Compare realpaths on both sides, falling back to the naive compare only if realpath fails.
+const modulePath = fileURLToPath(import.meta.url);
+const sameFile = (a, b) => {
+  try { return fs.realpathSync(a) === fs.realpathSync(b); }
+  catch { return path.resolve(a) === path.resolve(b); }
+};
+const isMain = !!process.argv[1] && sameFile(process.argv[1], modulePath);
 if (isMain) {
   main()
     .then((code) => { process.exitCode = code; })
