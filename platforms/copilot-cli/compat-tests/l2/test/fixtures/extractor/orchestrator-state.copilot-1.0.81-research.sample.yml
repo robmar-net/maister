@@ -1,0 +1,129 @@
+# Real-shape sample of a Copilot 1.0.81 orchestrator-state.yml (RESEARCH workflow). Captured from the
+# 2026-08-27 live L2 run (rundir l2-rundir-97Ckto). Copilot's model serialized this run with NO
+# `completed_phases` key at all: completed phases live ONLY as a `phase_summaries:` MAP with `phase-N:`
+# entry keys (each carrying a summary/artifacts/steps_completed), under `research_context`, with
+# `orchestrator.phase: complete`. Guards the parseState fallback (derive phases from phase_summaries
+# phase-N keys when no completed_phases array exists) against regression — without it the sanity floor
+# trips to a false INCOMPLETE even though the workflow completed.
+orchestrator:
+  workflow: research
+  phase: complete
+  created: "2026-08-27T23:25:08Z"
+  updated: "2026-08-27T23:33:09Z"
+  options:
+    html_output: true
+    brainstorming_enabled: true
+    design_enabled: true
+research_context:
+  research_type: technical
+  research_question: "How does the sample CLI in this project parse command-line arguments and dispatch its subcommands?"
+  scope:
+    included:
+      - "cli.sh argument parsing and dispatch"
+      - "README.md usage documentation"
+      - "run-tests.sh behavioral checks"
+    excluded:
+      - "Code changes"
+      - "Unrelated shell CLI best practices"
+      - "External frameworks and libraries"
+    constraints:
+      - "Investigation only"
+  methodology:
+    - "Technical codebase analysis with iterative deepening"
+    - "Execution-flow tracing"
+    - "Multi-source triangulation across implementation, docs, and tests"
+  sources: []
+  confidence_level: high
+  project_doc_paths: []
+  gathering_strategy:
+    categories: []
+    count: 0
+    source: planner
+  phase_summaries:
+    phase-1:
+      summary: "Technical research completed across implementation, documentation, and tests. CLI uses first-token case dispatch with default help; aliases and unknown-command status were identified."
+      decisions:
+        - "Treat cli.sh as implementation authority."
+        - "No external research required."
+      risks:
+        - "Aliases and edge cases are undocumented and untested."
+      artifacts:
+        - path: "planning/research-brief.md"
+          label: "Research brief"
+          html: null
+        - path: "planning/research-plan.md"
+          label: "Research plan"
+          html: null
+        - path: "planning/sources.md"
+          label: "Source inventory"
+          html: null
+        - path: "analysis/findings/"
+          label: "Gathered findings"
+          html: null
+        - path: "analysis/synthesis.md"
+          label: "Research synthesis"
+          html: null
+        - path: "outputs/research-report.md"
+          label: "Research report"
+          html: "outputs/research-report.html"
+      steps_completed:
+        - initialize
+        - plan
+        - gather
+        - synthesize
+    phase-2:
+      summary: "Brainstorming and design were enabled after evaluation."
+      decisions:
+        - "Explore alternatives."
+        - "Continue to design."
+      risks: []
+      artifacts: []
+    phase-3:
+      summary: "Explored documentation depth, test confidence, and dispatch explanation alternatives."
+      decisions:
+        - "Dedicated CLI contract."
+        - "Focused contract-test expansion."
+        - "Parsing flow plus dispatch table."
+      risks:
+        - "Documenting edge behavior may freeze accidental semantics."
+      artifacts:
+        - path: "outputs/solution-exploration.md"
+          label: "Solution exploration"
+          html: "outputs/solution-exploration.html"
+    phase-4:
+      summary: "User selected dedicated contract documentation, focused tests, and parsing flow plus dispatch table."
+      decisions:
+        - "Dedicated CLI contract."
+        - "Focused contract-test expansion."
+        - "Parsing flow plus dispatch table."
+      risks: []
+      artifacts: []
+      decision_areas:
+        - area: "Documentation depth"
+          alternatives_count: 3
+          chosen_approach: "Dedicated CLI contract"
+        - area: "Behavioral confidence"
+          alternatives_count: 3
+          chosen_approach: "Focused contract-test expansion"
+        - area: "Dispatch explanation"
+          alternatives_count: 3
+          chosen_approach: "Parsing flow plus dispatch table"
+      deferred_ideas:
+        - "Generic option parser"
+        - "Argument validation"
+        - "Replacing POSIX shell"
+    phase-5:
+      summary: "High-level design preserves current runtime and integrates contract documentation with focused shell tests."
+      decisions:
+        - "No parser redesign."
+      risks:
+        - "Edge behavior needs explicit maintenance confirmation."
+      artifacts:
+        - path: "outputs/high-level-design.md"
+          label: "High-level design"
+          html: "outputs/high-level-design.html"
+        - path: "outputs/decision-log.md"
+          label: "Decision log"
+          html: "outputs/decision-log.html"
+      architecture_style: "Layered documentation and executable contract around unchanged POSIX dispatcher"
+      decisions_count: 3
