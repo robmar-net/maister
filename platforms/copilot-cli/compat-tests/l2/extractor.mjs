@@ -54,9 +54,42 @@ const indentOf = (line) => {
 // Extract the completed-phase integers, bounded to the `completed_phases` value region only, so
 // unrelated `phase-N` occurrences (`started_phase: phase-1`, the `task_ids:` mapping) are never
 // captured. Tolerant of inline flow arrays and block `- "phase-N"` sequences.
+// Derive completed-phase integers from a `phase_summaries:` map's `phase-N:` entry keys, bounded to
+// that block so unrelated `phase-N` tokens elsewhere are never captured. Each entry key is a phase the
+// orchestrator recorded a summary/artifacts/steps for = a completed phase. Used as the fallback when
+// no `completed_phases` key exists at all.
+function phasesFromPhaseSummaries(lines) {
+  const psIdx = lines.findIndex((l) => /^\s*phase_summaries\s*:/.test(l));
+  if (psIdx === -1) return [];
+  const psIndent = indentOf(lines[psIdx]);
+  const nums = [];
+  for (let i = psIdx + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() === '') continue;
+    if (indentOf(l) <= psIndent) break; // dedent -> end of the phase_summaries block
+    const mm = l.match(/^\s*phase[-_](\d+)\s*:/); // an entry key inside the block
+    if (mm) {
+      const n = parseInt(mm[1], 10);
+      if (!Number.isNaN(n) && !nums.includes(n)) nums.push(n);
+    }
+  }
+  nums.sort((a, b) => a - b);
+  return nums;
+}
+
 function parseCompletedPhases(lines, warnings) {
   const idx = lines.findIndex((l) => /^\s*completed_phases\s*:/.test(l));
   if (idx === -1) {
+    // No `completed_phases` key at all. Fallback for LLM serialization variance (observed on Copilot
+    // 1.0.81's research workflow): the orchestrator records completed phases as a `phase_summaries:`
+    // MAP with `phase-N:` entry keys (each carrying a summary/artifacts/steps_completed) instead of a
+    // `completed_phases` array. Derive the phase integers from those keys so a format-only difference
+    // does not read as zero completed phases — which would trip the sanity floor into a false INCOMPLETE.
+    const fromSummaries = phasesFromPhaseSummaries(lines);
+    if (fromSummaries.length > 0) {
+      warnings.push('completed_phases derived from phase_summaries phase-N keys (no completed_phases key — LLM serialization variance)');
+      return fromSummaries;
+    }
     warnings.push('completed_phases key not found');
     return [];
   }

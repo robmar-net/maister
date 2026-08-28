@@ -176,6 +176,20 @@ test('T5c state: Copilot 1.0.75 real shape — all under orchestrator:, bare-int
   });
 });
 
+test('T5d state: Copilot 1.0.81 research shape — NO completed_phases key; phases derived from phase_summaries', () => {
+  // Real-shape 1.0.81 research state: the model serialized NO `completed_phases` array at all —
+  // completed phases live only as a `phase_summaries:` map with `phase-N:` entry keys (under
+  // research_context), with `orchestrator.phase: complete`. Without the fallback, parseState yields
+  // zero phases and the sanity floor trips to a false INCOMPLETE even though the workflow completed.
+  const yaml = fs.readFileSync(path.join(FIX, 'orchestrator-state.copilot-1.0.81-research.sample.yml'), 'utf8');
+  const s = parseState(yaml);
+  assert.deepEqual(s.phases, [1, 2, 3, 4, 5], 'phases derived from phase_summaries phase-N keys (no completed_phases array)');
+  // Research state carries no `status:` key and no task_characteristics block (task_status comes from
+  // the event stream, characteristics are a development/gap-analyzer concept) — both legitimately absent.
+  assert.equal(s.status, null, 'no state-sourced task status in this research shape');
+  assert.deepEqual(s.characteristics, {}, 'no task_characteristics in the research shape');
+});
+
 test('T6 state: 5 task_characteristics under task_context; task.status disambiguated from last_status', () => {
   const s = parseState(STATE_YAML);
 
