@@ -84,9 +84,13 @@ delegated(specification-creator)
 invoked_skill(codebase-analyzer)
 created_artifact(implementation/spec.md)    # task-dir tree
 gate_fired_at(phase-5)                       # workflow paused for a user decision (ask_user)
+outcome(tests-pass) = pass                   # FUNCTIONAL ORACLE (§3.1): the scenario's deliverable
+                                             # actually runs and passes — asserted post-drive in the
+                                             # rundir. IS a grammar head (GRAMMAR_HEADS, normalize.mjs:47),
+                                             # unlike hook_effect below.
 hook_effect(destructive_guard = ask)         # illustrative ONLY — hook_effect is intentionally
                                              # outside the implemented L2 grammar (GRAMMAR_HEADS,
-                                             # normalize.mjs:38-47); hook behaviour is L1's concern
+                                             # normalize.mjs:38-48); hook behaviour is L1's concern
 reached_terminal(completion)                 # workflow finished, not stalled/errored
 ```
 
@@ -100,11 +104,79 @@ Predicates are **far more stable across runs** than sequences, and they are exac
 - **Execution trace** — the delegation/gate/hook events, extracted from the run log: which
   agents/skills were invoked, where the run gated for the user, which hooks fired and with
   what effect, and whether it reached terminal success.
+- **Functional-oracle trace** *(added issue #48, Stage 2)* — the `outcome(<id>)` predicate: the
+  scenario's produced deliverable is actually **run** and checked to work. Unlike the two traces
+  above (which observe *that the workflow moved*), the oracle observes *that the work is correct*.
+  See §3.1.
 
 **Granularity is the whole game.** Too fine (exact args, exact ordering) → even same-platform
 runs disagree → the skeleton is empty → no signal. Too coarse (just "did it finish") → real
 regressions slip through. Predicate sets are the sweet spot; the exact predicate schema is an
 open item (§12).
+
+### 3.1 The functional oracle — `outcome(<id>) = pass | fail`
+
+*(issue #48, Stage 2; `WORKFLOW_MODEL_VERSION` bumped 1→2)*
+
+The state/event/tree traces confirm a workflow **moved** — phases completed, agents delegated,
+artifacts appeared. They do **not** confirm the deliverable **works**: a run can produce a
+`spec.md`, an `implementation-plan.md`, and touched source files, reach terminal success, and
+still ship a broken feature. `outcome(<id>)` closes that gap. It is a **grammar head**
+(`GRAMMAR_HEADS`, [`normalize.mjs:47`](l2/normalize.mjs)) — it **is** part of the implemented L2
+grammar (unlike the illustrative `hook_effect`, which is intentionally *outside* it and remains
+L1's concern). Its token shape mirrors `task_characteristic`: a free-form id and a boolean-ish
+value, `outcome(<id>)=pass|fail` ([`normalize.mjs:111-113`](l2/normalize.mjs)). It asserts one
+thing: **the scenario's deliverable actually runs and succeeds**, evaluated **post-drive /
+pre-cleanup in the throwaway rundir**.
+
+#### Trust model
+
+The oracle executes model-adjacent code, so it is built to be **un-neuterable by the model under
+test** ([`extractor.mjs:478-617`](l2/extractor.mjs)):
+
+- **Where it runs.** Post-drive, pre-cleanup, in the throwaway rundir, with `cwd = rundir`
+  ([`extractor.mjs:543-547`](l2/extractor.mjs)). The rundir is discarded after extraction.
+- **Restaged oracle (MEDIUM-5 tamper-resistance).** For command-type outcomes the trusted
+  script (default `run-tests.sh`) is **re-copied from the committed sandbox template over the
+  model-touched rundir copy** immediately before it runs
+  ([`extractor.mjs:528-539`](l2/extractor.mjs)). The model's own copy of the oracle is discarded,
+  so it cannot weaken its own test.
+- **Commands are committed, never model-authored.** Every command string and assertion lives in
+  the committed scenario files ([`l2/scenarios/*.mjs`](l2/scenarios/)), not in anything the model
+  produced.
+- **Sandboxed execution.** 30 s fixed POSIX-`sh` timeout
+  (`OUTCOME_TIMEOUT_MS = 30000`, [`extractor.mjs:491`](l2/extractor.mjs)), no network, `sh -c`
+  only.
+
+Per scenario:
+
+| Scenario | id | Oracle | Pass condition |
+|----------|----|--------|----------------|
+| **development** | `tests-pass` | `sh run-tests.sh` (restaged) | exit 0. The sandbox `run-tests.sh` includes a `--greet` deliverable check that **fails on the pristine tree** (HIGH-3), so the oracle only passes when the workflow genuinely added the feature — real detection power, not a rubber stamp. |
+| **quick-bugfix** | `bug-fixed` | `sh run-tests.sh` (restaged) | exit 0 — requires the seeded `upper` bug to be fixed. |
+| **research** | `report-produced` | `research-deliverables` content assertion | `outputs/research-report.md` present and **≥ 200 bytes / ≥ 5 non-blank lines / ≥ 1 markdown heading**, **and** `analysis/synthesis.md` present ([`extractor.mjs:567-598`](l2/extractor.mjs)). |
+
+#### Fail-closed semantics
+
+- **Any non-pass is a `fail`.** Mismatch, fails-to-run (ENOENT), or timeout all normalize to
+  `outcome(<id>)=fail` ([`extractor.mjs:552-562`](l2/extractor.mjs)) → a **candidate regression**
+  → **REGRESSED**, never a silent pass.
+- **Outcome-aware short-circuit (MEDIUM-2 → MEDIUM-4).** The sanity floor that downgrades a
+  "zero completed phases but artifacts exist" run to **INCOMPLETE** is now **suppressed when any
+  outcome failed** ([`extractor.mjs:644-649`](l2/extractor.mjs)): a failing functional oracle is
+  the most trustworthy signal we have and must surface as **REGRESSED**, not be masked as an
+  inconclusive INCOMPLETE.
+- **Id-namespace guard is HYGIENE, not floor protection.** Outcome ids may not start with
+  `phase_completed` / `task_characteristic` / `task_status` (`OUTCOME_ID_NAMESPACE_GUARD`,
+  [`extractor.mjs:493-512`](l2/extractor.mjs)). This only keeps ids from shadowing state-predicate
+  namespaces in reports/derivations — it protects **no floor**: an emitted `outcome(...)` token
+  can never match the `STATE_SOURCED` / widened-F3 regex regardless of its id.
+- **Model-version bump.** Adding a required predicate to the grammar is a workflow-model change,
+  so `WORKFLOW_MODEL_VERSION` is bumped **1→2** ([`compare.mjs:29`](l2/compare.mjs)); a reference
+  stamped v1 now reads as stale and forces a re-derive ([`compare.mjs:207-222`](l2/compare.mjs)).
+  All three references were re-stamped and each edit logged in
+  [`l2/reference/CALIBRATION-LOG.md`](l2/reference/CALIBRATION-LOG.md) entries **#10 (development),
+  #11 (research), #12 (quick-bugfix)**.
 
 ## 4. Noise calibration
 
