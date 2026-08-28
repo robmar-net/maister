@@ -61,7 +61,7 @@ import quickBugfixScenario from './scenarios/quick-bugfix.mjs';
 
 // --------------------------------------------------------------------------- scenario registry
 // Keyed by id. `development` is the MVP-proven default; `research` is the second workflow shape, added
-// once the MVP conformance loop was proven live. `--scenario=<id>` selects; `getScenario()` resolves
+// once the MVP conformance loop was first verified live. `--scenario=<id>` selects; `getScenario()` resolves
 // from here. Adding a scenario = import it + list it here (+ commit its reference/<id>.skeleton.json).
 const SCENARIOS = Object.freeze({
   [developmentScenario.id]: developmentScenario,

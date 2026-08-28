@@ -30,7 +30,7 @@ notes. Provenance for the back-fill entries is the commit messages themselves
 | 1 | 2026-07-24 | development | full initial required/optional partition | ∅ → genesis | maister 2.2.2 workflow model (development SKILL.md); live N=1 confirmatory, Copilot 1.0.74, AS-EXPECTED — see note 1 | ∅ → `64b0d3b2…` | `6938a8f` |
 | 2 | 2026-07-25 | research | full initial required/optional partition | ∅ → genesis | model-derived, credit-free (research orchestrator model: Phase-1 foundation required; conditional brainstorming/design + root skill optional); hash stamped via `compare.computeHash` | ∅ → `abed5d31…` | `db26a46` |
 | 3 | 2026-07-26 | development | `invoked_skill(reviews-code)`, `(reviews-pragmatic)`, `(reviews-spec-audit)`, `(reviews-reality-check)`, `(reviews-production-readiness)` | absent → `optional` | "legitimate platform variance" after the 1.0.75 live run — see note 3; **retro-note: superseded by entry 7** (optional → allowlist/LIMITATION) | `64b0d3b2…` → `261ce181…` | `d92651e` |
-| 4 | 2026-08-28 | quick-bugfix | full initial partition (required `invoked_skill(quick-bugfix)`, `gate_fired(ask)`, `reached_terminal(completion)`; permission/exit_plan_mode gates optional) | ∅ → genesis | maister 2.2.3; **"calibrated from the live N=1 run"** (Copilot 1.0.81, AS-EXPECTED 2/2) — honestly flagged, see note 4 | ∅ → `f925c9a4…` | `86f3198` |
+| 4 | 2026-08-28 | quick-bugfix | full initial partition (required `invoked_skill(quick-bugfix)`, `gate_fired(ask)`, `reached_terminal(completion)`; permission/exit_plan_mode gates optional) | ∅ → genesis | maister 2.2.3; **"calibrated from the live N=1 run"** (Copilot 1.0.81, AS-EXPECTED 2/2 vs the pre-calibration 2-required partition — see note 4 figure-provenance disclosure) | ∅ → `f925c9a4…` | `86f3198` |
 | 5 | 2026-08-28 | (all) | none | no reference edit | parseState completion-signal union — extractor fix for LLM state-serialization variance, **not** a workflow-model change; see note 5 | hash-neutral (no edit) | `1f6cc88` / PR #46 |
 | 6 | 2026-08-28 | development | `hook_effect(destructive_guard=ask)` | `allowlist` → removed (dead entry) | predicate head is outside `GRAMMAR_HEADS` (`normalize.mjs:38-47`) — it can never be emitted into a skeleton, so the allowlist entry is unobservable by construction; see note 6 | `261ce181…` → `a48a64e3…` | PR #49 |
 | 7 | 2026-08-28 | development | `invoked_skill(reviews-code)`, `(reviews-pragmatic)`, `(reviews-spec-audit)`, `(reviews-reality-check)`, `(reviews-production-readiness)` | `optional` → `allowlist`/LIMITATION | platform divergence, citation `implementation-verifier/SKILL.md:108-142` — exact reason string in note 7 | shares entry 6's re-stamp: `261ce181…` → `a48a64e3…` | PR #49 |
@@ -78,7 +78,14 @@ pattern (it is not part of maister's workflow model on either platform's *model*
 Reference committed with the quick-bugfix scenario (maister 2.2.3); live drive AS-EXPECTED
 2 PASS / 0 FAIL. The commit message states the partition was **"calibrated from the live N=1
 run"** — honestly flagged here: that is exactly the practice this governance rule now prohibits
-without a model citation. The per-reference derivation record
+without a model citation. **Figure-provenance disclosure**: the live run was judged against the
+PRE-calibration partition (2 required: `invoked_skill(quick-bugfix)` + `reached_terminal(completion)`;
+`gate_fired(ask)` still optional) — hence "2 PASS". `gate_fired(ask)` was then promoted to required
+in the same commit (hash-neutral move), so the COMMITTED 3-required reference was never itself
+re-judged live. The observed skeleton did contain `gate_fired(ask)` (diff NONE with it in optional),
+so the committed reference would pass 3/3 on that same skeleton — but that is inference from the
+recorded skeleton, not a judged run. Any future live quick-bugfix drive judges the committed
+3-required partition. The per-reference derivation record
 (`quick-bugfix.derivation.md`) retro-supplies the SKILL.md citations for each predicate (the
 required `gate_fired(ask)` is the divergence-tagged template case). Full hash:
 `∅ → f925c9a423561611fa1d3ad346b45623ef1caa086e0fb24b8d28b0a7f7488319`.

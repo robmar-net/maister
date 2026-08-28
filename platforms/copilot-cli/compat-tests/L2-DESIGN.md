@@ -6,7 +6,7 @@
 > (`make test-l2`); all **three scenarios'** predicate skeletons **conform** to their committed
 > workflow-model references on live **Copilot CLI 1.0.81** runs — **development AS-EXPECTED
 > (25/25, post-#46 parser fix)**, **research AS-EXPECTED (9/9)**, **quick-bugfix AS-EXPECTED
-> (2/2)**. Scenarios are selected with `--scenario=<id>`; each has a model-derived committed
+> (2/2 — judged pre-calibration; see CALIBRATION-LOG note 4)**. Scenarios are selected with `--scenario=<id>`; each has a model-derived committed
 > reference. The `--runs=N` noise-calibration mode is built + credit-free-tested; the live
 > **N=3** band-measurement is deferred (monthly Copilot AI-credit quota).
 > The design below is retained as the rationale of record; where the build refined it, notes say so.
@@ -246,7 +246,7 @@ with `--scenario=<id>` (default `development`); each has its own committed
 3. **quick-bugfix** *(shipped; conformance verified live)* — short, gated via plan-mode
    (`ExitPlanMode`), cheap. Uniquely probes the plan-mode gate the other two don't. Uses a
    seeded-bug sandbox; its predicate skeleton is deliberately thin under the current grammar
-   (events-only shape: skill + plan gate + terminal). Verified live: AS-EXPECTED 2/2 on Copilot
+   (events-only shape: skill + plan gate + terminal). Verified live: AS-EXPECTED 2/2 (pre-calibration partition; CALIBRATION-LOG note 4) on Copilot
    1.0.81.
 
 All three scenarios are implemented and conformance-verified live on Copilot 1.0.81.
@@ -300,7 +300,7 @@ Results feed the per-version **compatibility matrix** (SkillPanel/maister#9), ke
    deferred (quota).
 4. **Scale** — add further scenarios behind `--scenario=<id>`. **research** is implemented +
    verified live (AS-EXPECTED 9/9, Copilot 1.0.81); **quick-bugfix** is shipped + verified live
-   (AS-EXPECTED 2/2, Copilot 1.0.81). Wire reports into the compatibility matrix (#9).
+   (AS-EXPECTED 2/2 pre-calibration, Copilot 1.0.81; CALIBRATION-LOG note 4). Wire reports into the compatibility matrix (#9).
 
 ---
 

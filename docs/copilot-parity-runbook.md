@@ -84,6 +84,6 @@ sqlite3 ~/.copilot/session-store.db \
 | L0 / WS7 (7 contracts) | 1.0.76 & 1.0.81 | ✅ 7/7 |
 | L2 research | 1.0.81 | ✅ AS-EXPECTED (9/9, diff NONE) |
 | L2 development | 1.0.81 | ✅ AS-EXPECTED (25/25, diff NONE) — post-#46 parser fix |
-| L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2, diff NONE) |
+| L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2 vs pre-calibration partition, diff NONE — see CALIBRATION-LOG note 4) |
 
 _(Record each new live run in the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix).)_
