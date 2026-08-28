@@ -32,6 +32,12 @@
 //      contract; run.mjs derives the drive prompt from COMPAT_PROMPT_FILE when set (source-level
 //      assertion at the sendAndWait call site, build-integration source-check idiom); run.sh hands
 //      COMPAT_PROMPT_FILE off ONLY for MUTATION=M1 (stub-harness behavioral assertion).
+//   I. Explicit-source-arg happy path — `mutate.sh M1 <dir>` builds the mutant FROM that dir (a
+//      marker file proves provenance; defaulting to the repo plugin would silently mutate the wrong
+//      source), and a nonexistent source is the documented exit-2 "nothing created" reject.
+//   J. Source-arg hand-off — run.sh passes its (COMPAT_PLUGIN_DIR-derived) PLUGIN_DIR to mutate.sh
+//      as the source argument: an operator override must compose with --mutation, or the mutant
+//      would be built from the default repo plugin while the report claims the override was tested.
 //
 // Idioms copied from run-sh.test.mjs: guard-before-spawn, spawnSync, mkdtemp + finally cleanup,
 // no writes to reports/ or the repo.
@@ -469,6 +475,82 @@ test('H (prompt-override plumbing): neutral-prompt contract; run.mjs COMPAT_PROM
     payload = stubPayload(res.stdout);
     assert.equal(payload.promptFile, null, 'positive runs must NEVER set COMPAT_PROMPT_FILE');
     assert.equal(payload.pluginDir, path.join(dir, 'plugin-src'), 'a positive run must keep the original plugin dir');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// -------------------------------------------------------------------------- Test I (gap-fill: explicit source arg)
+// Test D exercises the explicit source arg only on the DOCTORED-failure path; this pins the happy
+// path — the mutant must be built FROM the explicit source (marker-file provenance) — and the
+// missing-source exit-2 reject (mutate.sh usage contract: exit 2 = nothing created).
+test('I (explicit source arg): mutant is built from the given dir, not the default; missing source -> exit 2, nothing created', () => {
+  assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
+
+  const customSrc = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-custom-src-'));
+  let mutant = '';
+  try {
+    fs.cpSync(SOURCE_PLUGIN, customSrc, { recursive: true });
+    // Provenance marker: present ONLY in the custom source, never in the repo plugin.
+    fs.writeFileSync(path.join(customSrc, 'CUSTOM-SOURCE-MARKER.txt'), 'explicit-source provenance\n');
+
+    const res = runMutate(['M1', customSrc]);
+    assert.equal(res.status, 0, `M1 with explicit source must exit 0 (got ${res.status}) — stderr:\n${res.stderr}`);
+    const lines = res.stdout.split('\n').filter((l) => l.length > 0);
+    assert.equal(lines.length, 1, `stdout must be exactly one line, got:\n${res.stdout}`);
+    mutant = lines[0];
+
+    // Built from the EXPLICIT source: the marker made it into the copy...
+    assert.ok(
+      fs.existsSync(path.join(mutant, 'CUSTOM-SOURCE-MARKER.txt')),
+      'mutant must carry the custom-source marker (built from the explicit source, not the default)'
+    );
+    // ...and the mutation targeted the copy of THAT source, leaving the custom source unwritten.
+    assert.doesNotMatch(read(mutant, 'skills/quick-bugfix/SKILL.md'), /EnterPlanMode|ExitPlanMode/, 'M1 strip applied in the copy');
+    assert.match(read(customSrc, 'skills/quick-bugfix/SKILL.md'), /EnterPlanMode/, 'the explicit source itself must stay unmutated');
+
+    // Nonexistent source: documented exit-2 reject, nothing created (mutate.sh:55-56 branch).
+    const before = mutantEntries();
+    const bad = runMutate(['M1', path.join(customSrc, 'no-such-dir')]);
+    assert.equal(bad.status, 2, `missing source must exit 2 (got ${bad.status}) — stderr:\n${bad.stderr}`);
+    assert.equal(bad.stdout, '', 'missing source must print nothing to stdout');
+    assert.deepEqual(mutantEntries().filter((n) => !before.includes(n)), [], 'missing source must create no l2-mutant-* dir');
+  } finally {
+    if (mutant) fs.rmSync(mutant, { recursive: true, force: true });
+    fs.rmSync(customSrc, { recursive: true, force: true });
+  }
+});
+
+// -------------------------------------------------------------------------- Test J (gap-fill: run.sh source hand-off)
+// Test H proves run.sh repoints the plugin dir AT the stub's mutant, but its stub ignores $2 — so
+// nothing yet fails if run.sh stops passing PLUGIN_DIR to mutate.sh (the builder would silently
+// fall back to the repo default while the operator believes their COMPAT_PLUGIN_DIR override is
+// under test). This stub records its argv; the assertion pins the --mutation x COMPAT_PLUGIN_DIR
+// composition.
+test('J (source-arg hand-off): run.sh passes the COMPAT_PLUGIN_DIR-derived plugin dir to mutate.sh as the source', () => {
+  assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
+
+  // Stub mutate.sh: record "$@" beside the harness root ($0 = <dir>/mutations/mutate.sh), then
+  // behave like the real builder (one-line mutant path on stdout).
+  const dir = makeRunShHarness([
+    '#!/bin/sh',
+    'root="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"',
+    'printf \'%s\\n\' "$@" > "$root/mutate-args.txt"',
+    'd="$(mktemp -d "${TMPDIR:-/tmp}/l2-mutant-${1}-XXXXXX")"',
+    'echo "$d"',
+    '',
+  ].join('\n'));
+  try {
+    const res = runHarness(dir, ['--scenario=quick-bugfix', '--mutation=M2']);
+    assert.equal(res.status, 0, `harness M2 run must exit 0 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+    const argsFile = path.join(dir, 'mutate-args.txt');
+    assert.ok(fs.existsSync(argsFile), 'the mutate.sh stub must have been invoked (args file missing)');
+    const argv = fs.readFileSync(argsFile, 'utf8').split('\n').filter((l) => l.length > 0);
+    assert.deepEqual(
+      argv,
+      ['M2', path.join(dir, 'plugin-src')],
+      'mutate.sh must receive <id> + the COMPAT_PLUGIN_DIR-derived PLUGIN_DIR as its source argument'
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
