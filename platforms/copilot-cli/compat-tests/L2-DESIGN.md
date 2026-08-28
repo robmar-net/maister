@@ -1,12 +1,14 @@
-# L2 — Trace-Equivalence Testing (Design / RFC)
+# L2 — Workflow-Model Conformance Testing (Design / RFC)
 
-> **Status:** ✅ **Implemented + proven live.** The harness ships in [`l2/`](l2/) (`make test-l2`);
-> equivalence was confirmed on a live **Copilot CLI 1.0.74** run — the maister-copilot development
-> workflow's predicate skeleton **conforms** to the reference (**AS-EXPECTED**) after a justified N=1
-> reference calibration. The `--runs=N` noise-calibration mode is built + credit-free-tested; the live
-> **N=3** band-measurement is deferred (monthly Copilot AI-credit quota). A **second scenario**
-> (`research`) is now implemented + credit-free-tested — a generalized extractor tree profile, a
-> `--scenario=<id>` selector, and a model-derived reference — with its live drive likewise deferred.
+*(formerly: Trace-Equivalence Testing)*
+
+> **Status:** ✅ **Implemented + conformance-verified live.** The harness ships in [`l2/`](l2/)
+> (`make test-l2`); all **three scenarios'** predicate skeletons **conform** to their committed
+> workflow-model references on live **Copilot CLI 1.0.81** runs — **development AS-EXPECTED
+> (25/25, post-#46 parser fix)**, **research AS-EXPECTED (9/9)**, **quick-bugfix AS-EXPECTED
+> (2/2)**. Scenarios are selected with `--scenario=<id>`; each has a model-derived committed
+> reference. The `--runs=N` noise-calibration mode is built + credit-free-tested; the live
+> **N=3** band-measurement is deferred (monthly Copilot AI-credit quota).
 > The design below is retained as the rationale of record; where the build refined it, notes say so.
 > **Layer:** L2 of the Copilot-CLI compatibility framework. L0 (wiring) and L1 (hook
 > effects) already ship; see [`README.md`](README.md) and [`L1-FINDINGS.md`](L1-FINDINGS.md).
@@ -14,11 +16,11 @@
 
 ## TL;DR
 
-- **What:** the highest layer of the compat framework — prove that the **generated
-  `maister-copilot` plugin drives the same workflow behaviour on GitHub Copilot CLI that
-  `maister` drives on Claude Code**, well enough to catch a regression when a new Copilot
+- **What:** the highest layer of the compat framework — assert that the **generated
+  `maister-copilot` plugin, driven on GitHub Copilot CLI, conforms to maister's documented
+  workflow model**, well enough to catch a regression when a new Copilot
   release (or a generator change) silently breaks something.
-- **Why a whole layer:** proof of equivalence ≈ regression detection. We **cannot predict
+- **Why a whole layer:** conformance-to-model checking ≈ regression detection. We **cannot predict
   where** a break will land, so a narrow check ("just test hooks") gives false confidence.
   L2 casts the **broadest observable net** and compares it at a level that survives LLM
   non-determinism.
@@ -45,8 +47,8 @@
 
 ## 1. Guiding principle
 
-**Proof of equivalence ≈ regression detection.** A regression is a break in equivalence
-versus a known-good baseline. Because we cannot predict *where* a future Copilot version — or
+**Conformance to the workflow model ≈ regression detection.** A regression is a break in
+conformance versus a known-good baseline. Because we cannot predict *where* a future Copilot version — or
 a generator change — will break the generated plugin, any narrow checker gives false
 confidence. So the design goal is to capture the **broadest observable execution trace** and
 compare it; a wide net catches the unknown-unknowns.
@@ -61,9 +63,9 @@ always non-empty and meaningless. L2's whole design is about picking that level.
 |-------|---------------------|------|---------|
 | **L0** — wiring (`make test-copilot`) | Does the generated plugin *load & register* (plugin/skills/agents/task/skill/hooks/mcp)? | cheap, deterministic | every build / Copilot version |
 | **L1** — hook effects (`make test-hooks`) | Does each hook have the *right effect* (and where is it a no-op)? | cheap, deterministic | every build / Copilot version |
-| **L2** — trace equivalence (this doc) | Does a *whole workflow run* behave equivalently end-to-end? | expensive | occasionally (major Copilot release / large generator change) |
+| **L2** — workflow-model conformance (this doc) | Does a *whole workflow run* conform to the documented workflow model end-to-end? | expensive | occasionally (major Copilot release / large generator change) |
 
-L0/L1 are the fast guardrails. L2 is the deep, occasional equivalence proof that also covers
+L0/L1 are the fast guardrails. L2 is the deep, occasional conformance check that also covers
 everything L0/L1 don't explicitly assert (phase ordering, delegation graph, gate placement,
 artifact production, terminal success).
 
@@ -82,7 +84,9 @@ delegated(specification-creator)
 invoked_skill(codebase-analyzer)
 created_artifact(implementation/spec.md)    # task-dir tree
 gate_fired_at(phase-5)                       # workflow paused for a user decision (ask_user)
-hook_effect(destructive_guard = ask)         # observed hook behaviour
+hook_effect(destructive_guard = ask)         # illustrative ONLY — hook_effect is intentionally
+                                             # outside the implemented L2 grammar (GRAMMAR_HEADS,
+                                             # normalize.mjs:38-47); hook behaviour is L1's concern
 reached_terminal(completion)                 # workflow finished, not stalled/errored
 ```
 
@@ -128,7 +132,8 @@ Two ways to get something to compare against:
   2× and folds Claude's own non-determinism (and the hard problem of driving Claude
   non-interactively — §7) into every run.
 - **(B) Conformance (CHOSEN)** — derive the **expected skeleton once** (from maister's
-  documented phase model, confirmed by a few Claude runs), **commit it as the reference**,
+  documented **workflow model** — the SKILL.md files are the source of truth; Claude runs are
+  confirmatory, not the derivation source), **commit it as the reference**,
   and let routine L2 runs exercise **only Copilot**, checking its skeleton against the
   reference. Cheaper, repeatable per Copilot version, and it removes Claude's noise and
   Claude's gate-driving problem from the routine loop.
@@ -143,15 +148,20 @@ release**. This is the key operational rule (raised in review):
 
 - **Change maister's Claude source in a way that changes workflow behaviour** — add/reorder a
   phase, change which agent a phase delegates to, change gate placement, rename an
-  artifact — and **the reference is stale**. It must be **re-derived on Claude** for the new
-  maister version before L2 can judge Copilot again. In short: *touch the workflow → rebuild
-  the golden skeleton.*
+  artifact — and **the reference is stale**. It must be **re-derived from the workflow model
+  (the SKILL.md files)** for the new maister version before L2 can judge Copilot again. In
+  short: *touch the workflow → rebuild the golden skeleton.*
 - **Generator-only changes** (`build.sh`, naming rewrites, hook overrides) that do **not**
   change workflow *behaviour* do **not** require re-deriving the reference — they are exactly
   what L2 is meant to test. Re-run Copilot conformance against the existing reference.
 - **Version stamp.** Store the reference with `maister vX.Y.Z` + a skeleton content hash, so a
   drift between "reference maister version" and "current maister version" is detectable and
   forces a rebuild rather than silently comparing against an outdated golden.
+- **Derivation records.** Each committed reference's entry-by-entry derivation from the model —
+  every predicate's SKILL.md citation, or its documented divergence justification — is recorded
+  in [`l2/reference/development.derivation.md`](l2/reference/development.derivation.md),
+  [`l2/reference/research.derivation.md`](l2/reference/research.derivation.md), and
+  [`l2/reference/quick-bugfix.derivation.md`](l2/reference/quick-bugfix.derivation.md).
 
 A lightweight guard can compare the committed reference's maister version against the current
 one and **fail loudly** ("reference skeleton is for maister v2.2.2, repo is v2.3.0 — re-derive
@@ -172,7 +182,10 @@ The two platforms name the same concepts differently, so both skeletons are mapp
 Plus an explicit **allowlist of expected differences** — divergences we already understand and
 accept (e.g. the destructive-guard's `deny`→`ask` adaptation from L1, or naming-only
 differences). An allowlisted difference is reported as *expected*, not as a regression. The
-allowlist's governance (who adds to it, how it's reviewed) is an open item (§12).
+allowlist's governance is **resolved** — it is governed by
+[`l2/reference/CALIBRATION-LOG.md`](l2/reference/CALIBRATION-LOG.md): any edit to a committed
+reference (required, optional, or allowlist) requires a log entry with a workflow-model
+citation or an explicit platform-divergence justification.
 
 ## 7. The interactive-gate problem (the crux / make-or-break)
 
@@ -221,19 +234,22 @@ Chosen to stress different parts of the engine, so the net is genuinely broad. S
 with `--scenario=<id>` (default `development`); each has its own committed
 `reference/<id>.skeleton.json`.
 
-1. **development** *(first built; proven live)* — the full chain: analyse → spec → plan → implement
-   → verify, gates, parallel implementation waves, hooks. The richest trace, and the scenario the
-   MVP conformance loop was proven on (AS-EXPECTED, Copilot 1.0.74).
-2. **research** *(implemented; live deferred)* — a *different* orchestrator: a planner + parallel
-   information-gatherers + a synthesizer (plus conditional brainstorming/design), a different agent
-   set and phase model, no implementation phase. Catches breakage the development path wouldn't
-   touch. Credit-free plumbing (generalized tree profile + model-derived reference) is committed +
-   unit-tested; the live drive awaits AI-credit quota.
-3. **quick-bugfix** *(planned)* — short, gated via plan-mode (`ExitPlanMode`), cheap. Uniquely probes
-   the plan-mode gate the other two don't. Needs a seeded-bug sandbox, and its predicate skeleton is
-   thin under the current grammar (skill + plan gate + terminal), so it is a deliberate next step.
+1. **development** *(first built; conformance verified live)* — the full chain: analyse → spec →
+   plan → implement → verify, gates, parallel implementation waves, hooks. The richest trace, and
+   the scenario the MVP conformance loop was first verified on (AS-EXPECTED, Copilot 1.0.74);
+   latest live verification: AS-EXPECTED 25/25 on Copilot 1.0.81 (post-#46 parser fix).
+2. **research** *(implemented; conformance verified live)* — a *different* orchestrator: a planner +
+   parallel information-gatherers + a synthesizer (plus conditional brainstorming/design), a
+   different agent set and phase model, no implementation phase. Catches breakage the development
+   path wouldn't touch. Credit-free plumbing (generalized tree profile + model-derived reference) is
+   committed + unit-tested; verified live: AS-EXPECTED 9/9 on Copilot 1.0.81.
+3. **quick-bugfix** *(shipped; conformance verified live)* — short, gated via plan-mode
+   (`ExitPlanMode`), cheap. Uniquely probes the plan-mode gate the other two don't. Uses a
+   seeded-bug sandbox; its predicate skeleton is deliberately thin under the current grammar
+   (events-only shape: skill + plan gate + terminal). Verified live: AS-EXPECTED 2/2 on Copilot
+   1.0.81.
 
-The MVP was proven on #1; #2 is implemented credit-free; #3 is the next scenario.
+All three scenarios are implemented and conformance-verified live on Copilot 1.0.81.
 
 ## 10. Cost & cadence
 
@@ -250,7 +266,8 @@ time and model credits. Therefore:
 
 ## 11. Output / report
 
-Per scenario, an **equivalence report**:
+Per scenario, a **conformance report** (the report filename slug `l2-trace-equivalence-*.md`
+is retained as a stable, historical artifact identifier):
 
 - the Copilot skeleton and the reference skeleton,
 - the diff, each entry classified as **expected** (allowlisted — §6) or **candidate
@@ -267,7 +284,9 @@ Results feed the per-version **compatibility matrix** (SkillPanel/maister#9), ke
    first; this gates everything.*
 2. **Exact predicate schema** (§3) — the precise list of predicates and their granularity.
 3. **Sandbox shape** (§8) — one shared sandbox vs one per scenario; language/stack.
-4. **Allowlist governance** (§6) — how expected-difference entries are added and reviewed.
+4. **Allowlist governance** (§6) — ✅ **RESOLVED**: governed by
+   [`l2/reference/CALIBRATION-LOG.md`](l2/reference/CALIBRATION-LOG.md) — any reference edit
+   requires a log entry with a workflow-model citation or a divergence justification.
 5. **Reference-staleness guard** (§5) — how strictly to enforce the maister-version stamp
    (warn vs hard-fail).
 
@@ -276,11 +295,12 @@ Results feed the per-version **compatibility matrix** (SkillPanel/maister#9), ke
 1. **Spike** — prove we can deterministically answer `ask_user` on Copilot. Go/no-go for L2.
 2. **Extractor** — reduce a run (task-dir + `orchestrator-state.yml` + log) to a predicate
    set; define the schema.
-3. **MVP** — one scenario (**development**), sandbox, reference derived + committed, proven live
-   (AS-EXPECTED, Copilot 1.0.74, N=1). `--runs=N` noise-calibration built; live N=3 deferred (quota).
+3. **MVP** — one scenario (**development**), sandbox, reference derived + committed, conformance
+   verified live (AS-EXPECTED, Copilot 1.0.74, N=1). `--runs=N` noise-calibration built; live N=3
+   deferred (quota).
 4. **Scale** — add further scenarios behind `--scenario=<id>`. **research** is implemented +
-   credit-free-tested (live deferred); **quick-bugfix** is the next planned scenario. Wire reports
-   into the compatibility matrix (#9).
+   verified live (AS-EXPECTED 9/9, Copilot 1.0.81); **quick-bugfix** is shipped + verified live
+   (AS-EXPECTED 2/2, Copilot 1.0.81). Wire reports into the compatibility matrix (#9).
 
 ---
 

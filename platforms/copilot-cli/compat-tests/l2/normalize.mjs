@@ -2,7 +2,7 @@
 //
 // Turns the extractor's raw predicate records into a canonical, platform-independent
 // "normalized skeleton": a SORTED, DE-DUPLICATED Set<string> of predicate tokens. This
-// is the layer that makes a Copilot trace comparable to the maister/Claude reference.
+// is the layer that makes a Copilot trace comparable to the workflow-model reference.
 //
 // What it does (per the Shared Data Contract):
 //   1. Canonical verb map — maps BOTH platforms' verb forms to identical tokens:

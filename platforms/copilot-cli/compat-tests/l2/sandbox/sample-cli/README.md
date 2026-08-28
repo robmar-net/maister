@@ -1,7 +1,7 @@
 # sample-cli
 
 A tiny command-line utility used as the fixed sandbox for the L2
-trace-equivalence harness. It is intentionally small: a single POSIX-shell
+workflow-model conformance harness. It is intentionally small: a single POSIX-shell
 script with a couple of obvious commands and a self-contained shell test runner
 — **no Node, Python, or other toolchain required**.
 

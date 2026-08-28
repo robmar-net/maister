@@ -116,7 +116,7 @@ export function parseArgs(argv) {
 
 function printUsage(stream = process.stdout) {
   stream.write([
-    'L2 — Trace-Equivalence Testing Harness (run.mjs)',
+    'L2 — Workflow-Model Conformance Testing Harness (run.mjs)',
     '',
     'Usage: node run.mjs [--scenario=ID] [--check-reference] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
     '',
@@ -389,7 +389,7 @@ export function buildReport(ctx) {
   } = ctx;
 
   const L = [];
-  L.push('# Copilot CLI — L2 Trace-Equivalence Report');
+  L.push('# Copilot CLI — L2 Workflow-Model Conformance Report');
   L.push('');
   L.push(`- **Generated (UTC):** ${ts}`);
   L.push(`- **Copilot CLI:** \`${esc(copilotVersion)}\``);
@@ -518,7 +518,7 @@ export function buildReport(ctx) {
   L.push('- **`reached_terminal(completion)`** — the session reached idle/shutdown with no `session.error`.');
   L.push('');
   L.push(
-    '_Set-equality over these tokens is the trace-equivalence check; tool-arg values, event ordering, ' +
+    '_Set-equality over these tokens is the workflow-model conformance check; tool-arg values, event ordering, ' +
     'counts, and narration are EXCLUDED as noise._',
   );
   L.push('');

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# L2 — Trace-equivalence testing harness: thin bash operator wrapper for run.mjs.
+# L2 — Workflow-model conformance testing harness: thin bash operator wrapper for run.mjs.
 #
 # Drives ONE Copilot workflow (development by default, or research via --scenario) through the
 # bundled @github/copilot-sdk (via l2/run.mjs), reduces the typed trace + task-dir tree +
@@ -168,7 +168,7 @@ fi
 if [ -n "$SKIP_REASON" ]; then
   echo "=========================================================================="
   echo " L2 SKIP — $SKIP_REASON."
-  echo "           The trace-equivalence LIVE run needs an authenticated Copilot seat;"
+  echo "           The conformance LIVE run needs an authenticated Copilot seat;"
   echo "           skipping it is NOT a failure (exit 0)."
   echo "           Credit-free staleness check still works:  bash run.sh --check-reference"
   echo "=========================================================================="

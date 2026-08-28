@@ -1,4 +1,4 @@
-name: L2 trace-equivalence (on-demand, credit-free)
+name: L2 workflow-model conformance (on-demand, credit-free)
 
 # L2 is the OCCASIONAL layer (compat-tests/L2-DESIGN.md §10): L0/L1 are the per-build guardrails;
 # L2 runs ON DEMAND, never automatically. This workflow is manual-trigger ONLY (workflow_dispatch)
@@ -6,7 +6,7 @@ name: L2 trace-equivalence (on-demand, credit-free)
 #   1. the pure-module + pipeline unit suite (no Copilot seat, no AI credits), and
 #   2. the reference staleness/tamper guard (`run.sh --check-reference`) per scenario — exit 1 if a
 #      committed reference diverges from the workflow model, exit 2 if its hash is inconsistent.
-# It NEVER drives a live Copilot session and NEVER spends AI credits. The live equivalence drive
+# It NEVER drives a live Copilot session and NEVER spends AI credits. The live conformance drive
 # stays LOCAL + seat-gated (`make test-l2` / `run.sh --scenario=<id> --yes`); a CI live mode could be
 # added later as an explicit opt-in input (seat-secret-gated), but is deliberately absent here.
 
@@ -17,10 +17,11 @@ on:
         description: "Which committed reference(s) to staleness-check"
         type: choice
         options:
-          - both
+          - all
           - development
           - research
-        default: both
+          - quick-bugfix
+        default: all
 
 # Least privilege: this workflow only reads the repo and runs tests — no writes, no commits.
 permissions:
@@ -47,14 +48,19 @@ jobs:
         run: |
           set -euo pipefail
           rc=0
-          if [ "$SCENARIO" = "both" ] || [ "$SCENARIO" = "development" ]; then
+          if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "development" ]; then
             echo "::group::development reference"
             bash platforms/copilot-cli/compat-tests/l2/run.sh --check-reference || rc=$?
             echo "::endgroup::"
           fi
-          if [ "$SCENARIO" = "both" ] || [ "$SCENARIO" = "research" ]; then
+          if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "research" ]; then
             echo "::group::research reference"
             bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=research --check-reference || rc=$?
+            echo "::endgroup::"
+          fi
+          if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "quick-bugfix" ]; then
+            echo "::group::quick-bugfix reference"
+            bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=quick-bugfix --check-reference || rc=$?
             echo "::endgroup::"
           fi
           exit "$rc"

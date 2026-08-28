@@ -1,9 +1,10 @@
-# Copilot CLI Parity & Compatibility — Runbook
+# Copilot CLI Conformance & Compatibility — Runbook
 
-How we verify that the generated **maister-copilot** variant behaves the same as the Claude
-**maister** source on a live GitHub Copilot CLI, where we record results, and the gotchas learned
-the hard way. Downstream-only (see [`AGENTS.md`](../AGENTS.md)): we adapt to upstream + Copilot CLI
-changes; we never push upstream.
+How we verify that the generated **maister-copilot** variant, on a live GitHub Copilot CLI,
+**conforms to maister's documented workflow model** (the `SKILL.md` files), where we record
+results, and the gotchas learned the hard way. The repo docs are the **source of truth** for
+each claim; the wiki summarizes and links back to them. Downstream-only (see
+[`AGENTS.md`](../AGENTS.md)): we adapt to upstream + Copilot CLI changes; we never push upstream.
 
 ## The three test layers
 
@@ -11,7 +12,7 @@ changes; we never push upstream.
 |-------|----------------|-------------|
 | **L0 — wiring/runtime (WS7)** | The built plugin LOADS on a live Copilot CLI: plugin/skills/agents register, `task(agent_type)` delegates, `skill()` invokes, hooks fire, `.mcp.json` loads (7 contracts). | `make test-copilot` → `compat-tests/run.sh` |
 | **L1 — hook effects** | Each maister hook's EFFECT on Copilot (or an honest LIMITATION where it's a no-op/adapted). | `make test-hooks` → `compat-tests/l1-hook-effects.sh` |
-| **L2 — trace-equivalence (parity)** | A whole workflow's TRACE (delegations, skills, gates, artifacts, phases, terminal) matches a maister-model reference — the actual behavioral parity check. | `make test-l2` → `compat-tests/l2/run.sh` |
+| **L2 — workflow-model conformance** | A whole workflow's TRACE (delegations, skills, gates, artifacts, phases, terminal) conforms to a committed workflow-model reference — the behavioral conformance check. | `make test-l2` → `compat-tests/l2/run.sh` |
 
 ## Running it
 
@@ -37,12 +38,12 @@ COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=dev
 
 ## Where results are recorded — the **fork wiki**
 
-Live parity/compat results are recorded on the **`robmar-net/maister` wiki** (not in-repo — the
+Live conformance/compat results are recorded on the **`robmar-net/maister` wiki** (not in-repo — the
 timestamped reports under `compat-tests/reports/` are **git-ignored** run artifacts). Update the wiki
 after a meaningful live run:
 
 - **[Compatibility-Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix)** — the living matrix, one row per `(maister version, Copilot CLI version, OS)` × layer (L0/L1/L2). This is the headline record.
-- **[L2-Trace-Equivalence](https://github.com/robmar-net/maister/wiki/L2-Trace-Equivalence)** — L2 design + per-scenario status.
+- **[L2-Trace-Equivalence](https://github.com/robmar-net/maister/wiki/L2-Trace-Equivalence)** — L2 (workflow-model conformance) design + per-scenario status; the page keeps its historical name/URL.
 - **L0-Wiring-Contracts**, **L1-Hook-Effects**, **Copilot-CLI-Runtime-Notes**, **Running-the-Tests**, **Testing-Framework-Overview**, **Home**.
 
 Clone/edit the wiki: `git clone https://github.com/robmar-net/maister.wiki.git`.
@@ -60,6 +61,9 @@ sqlite3 ~/.copilot/session-store.db \
 ```
 - L2 reports say "AIU: unknown" because 1.0.75+ SDK sessions carry no `session.shutdown` usage — read the DB instead.
 - Rough guide: `research` L2 ≈ tens of AIU; `development` L2 ≈ a few hundred AIU (~1-2 dev runs can dent a monthly quota). Prefer credit-free checks; run live only when you must.
+  **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81; AIU weighting and request
+  multipliers change across CLI versions, and per-run vs per-arc figures are NOT directly
+  comparable — the `session-store.db` query above is the source of truth.
 
 ## Gotchas & maintenance history (READ before debugging a red/incomplete L2)
 
@@ -71,7 +75,7 @@ sqlite3 ~/.copilot/session-store.db \
 - **INCOMPLETE ≠ FAIL.** The sanity floor fail-closes when state is unparseable while artifacts exist, to avoid a false REGRESSED. Check the classified diff — `NONE` means behavior conforms; the block is a parse gap, not a divergence.
 - **`isMain` symlink false-green (fixed #43):** `run.mjs` compared `path.resolve(argv[1])` vs realpath-derived `import.meta.url`; on macOS `/tmp`→`/private/tmp` they disagreed → `main()` never ran → silent exit 0. Now compares realpaths.
 - **Harness greps Copilot-internal log strings that change per CLI version.** The 1.0.76 Rust-runtime rewrite dropped the old `SessionAgentExecutor.execute()` (C4) and `Loaded MCP config …` (C7) lines; detection is now version-tolerant (PR #42). Expect to update detection on future CLI internals changes.
-- **When to re-derive the L2 reference:** any change to maister's *workflow behaviour* (phase/delegation/gate/artifact) invalidates the reference → re-derive on Claude. Generator-only (`build.sh`) changes do NOT — those are what L2 tests.
+- **When to re-derive the L2 reference:** any change to maister's *workflow behaviour* (phase/delegation/gate/artifact) invalidates the reference → re-derive from the workflow model (the `SKILL.md` files). Generator-only (`build.sh`) changes do NOT — those are what L2 tests. Any reference edit must be logged per the governance rule in [`CALIBRATION-LOG.md`](../platforms/copilot-cli/compat-tests/l2/reference/CALIBRATION-LOG.md) (workflow-model citation or divergence justification required).
 
 ## Latest verified (maister 2.2.3)
 
@@ -79,6 +83,7 @@ sqlite3 ~/.copilot/session-store.db \
 |---|---|---|
 | L0 / WS7 (7 contracts) | 1.0.76 & 1.0.81 | ✅ 7/7 |
 | L2 research | 1.0.81 | ✅ AS-EXPECTED (9/9, diff NONE) |
-| L2 development | 1.0.81 | ⚠️ INCOMPLETE (diff NONE; blocked by state-serialization variant #3, fix pending) |
+| L2 development | 1.0.81 | ✅ AS-EXPECTED (25/25, diff NONE) — post-#46 parser fix |
+| L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2, diff NONE) |
 
 _(Record each new live run in the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix).)_

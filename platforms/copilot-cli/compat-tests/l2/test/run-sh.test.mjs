@@ -54,7 +54,7 @@ test('check 1: run.sh -h/--help reprints the header via sed and exits 0', () => 
     const res = runSh([flag]);
     assert.equal(res.status, 0, `${flag} must exit 0 (got ${res.status}) — stderr:\n${res.stderr}`);
     // Header content is reprinted (sed range over the leading comment block)...
-    assert.match(res.stdout, /Trace-equivalence testing harness/i, `${flag} should print the header title`);
+    assert.match(res.stdout, /Workflow-model conformance testing harness/i, `${flag} should print the header title`);
     assert.match(res.stdout, /Usage:/, `${flag} should print the Usage section`);
     assert.match(res.stdout, /--check-reference/, `${flag} should document --check-reference`);
     // ...with the leading "# " comment markers stripped (proves the sed reprint, not a raw cat).
