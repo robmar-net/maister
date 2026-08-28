@@ -44,6 +44,21 @@ checkouts), so **never trust the remote name — key every decision on the repos
 Before any push/PR/merge, resolve the target's slug (e.g. `git remote -v`) and confirm it is
 `robmar-net/maister`. If it resolves to `SkillPanel/maister`, do not proceed.
 
+## Compatibility & parity testing
+
+We verify the generated `maister-copilot` variant against a live Copilot CLI at three layers
+(L0 wiring / L1 hook effects / L2 trace-equivalence parity). **How to run each, credit-free vs live,
+where results are recorded, cost source, and the hard-won gotchas** (Copilot's ≥3 state-serialization
+variants, sanity-floor INCOMPLETE ≠ regression, etc.) live in the runbook — read it before running or
+debugging any compat/parity check:
+
+→ **[`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md)**
+
+Live results are recorded on the **fork wiki** (`robmar-net/maister` wiki →
+`Compatibility-Matrix`, `L2-Trace-Equivalence`, …), NOT in-repo (reports under
+`compat-tests/reports/` are git-ignored artifacts). Costs come from
+`~/.copilot/session-store.db` → `assistant_usage_events` (AIU = `total_nano_aiu`/1e9).
+
 ## Note on existing upstream work
 
 - Upstream PR #10 (generator remediation) exists from earlier. Per the rule above, do **not** add to
