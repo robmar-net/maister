@@ -681,10 +681,19 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
       onExitPlanModeRequest: (req) => ({ approved: true, selectedAction: req.recommendedAction }),
     });
 
+    // ADR-001 seam: COMPAT_PROMPT_FILE (set by run.sh ONLY for --mutation=M1) overrides sc.prompt so
+    // the negative control measures the plugin contract, not prompt-following. Set-but-unreadable is
+    // a HARD precondition (INCOMPLETE), never a silent fallback; env unset -> byte-identical default.
+    let prompt = sc.prompt;
+    if (process.env.COMPAT_PROMPT_FILE) {
+      try { prompt = fs.readFileSync(process.env.COMPAT_PROMPT_FILE, 'utf8'); }
+      catch (err) { throw preconditionError(`COMPAT_PROMPT_FILE is set but unreadable: ${process.env.COMPAT_PROMPT_FILE} — ${err.message}`); }
+    }
+
     // Drive the scenario. sendAndWait THROWS on timeout (does not abort in-flight work) -> catch ->
     // abort() -> INCOMPLETE (exit 2, "no verdict"), never a false REGRESSED.
     try {
-      await session.sendAndWait(sc.prompt, sc.timeoutMs);
+      await session.sendAndWait(prompt, sc.timeoutMs);
     } catch (timeoutErr) {
       try { await session.abort(); } catch { /* best-effort */ }
       // A timed-out / aborted drive may STILL have spent credits — best-effort collect whatever events

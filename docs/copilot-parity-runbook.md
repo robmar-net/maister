@@ -36,6 +36,99 @@ COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=dev
 - **`development` is expensive** (full analyse→spec→plan→implement→verify; ~20-25 min). Run it in the background — it will exceed a foreground timeout.
 - Verdicts (exit code): **AS-EXPECTED** (green) / **REGRESSED** (real divergence) / **INCOMPLETE** (no verdict — timeout / session error / sanity-floor; NOT a pass, NOT a regression).
 
+## Negative control (detection power)
+
+A green L2 cell only proves the run didn't go red — the negative control proves L2 **can** go red.
+It stages a deliberately broken TEMP COPY of the generated plugin (the real `plugins/maister-copilot`
+is never touched) and expects a REGRESSED verdict naming the knocked-out predicate.
+
+### One command (live; SPENDS AI CREDITS — ~1 research run, ~15 AIU)
+```bash
+COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=research --mutation=M2
+```
+**Expected: REGRESSED (exit 1)** with the classified diff naming exactly the intended knockout:
+`delegated(research-planner)` | missing | candidate-regression, plus `delegated(research-planner-renamed)`
+| extra. This is the **live-validated detection proof** (Stage-1, issue #48): M2 renames the agent
+FILE (`agents/research-planner.md`) along with its frontmatter `name:` and the SKILL delegation
+reference — the file rename is what changes the registered agent identity (see Findings below).
+
+The M1 command still runs, but M1 is a **documented NON-detecting target** on quick-bugfix — do not
+use it to prove detection power (see Findings, finding 1):
+```bash
+COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=quick-bugfix --mutation=M1
+```
+`--mutation=<id>` calls `l2/mutations/mutate.sh`, which copies the plugin into an id-named temp dir
+(`l2-mutant-<id>-*` — the id shows up on the report's "Plugin under test" line as provenance), applies
+one regex-anchored fail-closed edit, and repoints the plugin dir. The mutant is removed on exit;
+`COMPAT_KEEP_RUNDIR` does not apply to it.
+
+| Mutation | Target | Knocked-out predicate | Live status (Stage-1) |
+|---|---|---|---|
+| **M1** — gate-removed | `quick-bugfix` `SKILL.md` (plan-approval gate stripped) | `gate_fired(ask)` | **Live-run AS-EXPECTED — NOT a valid detector** on quick-bugfix: `gate_fired(ask)` is emitted by multiple `ask_user` sites (finding 1); stripping only the plan gate leaves siblings that mask it. Documented non-detecting target. |
+| **M2** — delegation-renamed | `research`: agent FILE `agents/research-planner.md` + frontmatter `name:` + SKILL delegation reference all renamed `-renamed` (`development`: same pattern for `gap-analyzer`) | `delegated(research-planner)` / `delegated(gap-analyzer)` | **Live-validated REGRESSED** (research): missing `delegated(research-planner)` + extra `delegated(research-planner-renamed)` — exactly the intended knockout. **This is the detection proof.** |
+| **M3** — artifact-suppressed | `development` + `research` `SKILL.md` (artifact instructions removed at anchored sites) | `created_artifact(spec.md)` / `created_artifact(research-report.md)` | Machinery-only; no live run (future spend gate) |
+
+### Findings (live) — Stage-1 platform mechanics
+
+Three discoveries from the 4-run Stage-1 exploration (full journey: the task's
+`verification/negative-control-finding.md`), each binding on future mutation design:
+
+1. **`gate_fired(ask)` is non-specific** — the extractor maps it from ANY `user_input.requested`
+   event, and quick-bugfix has multiple independent `ask_user` sites besides the plan-approval gate.
+   Stripping only the gate leaves siblings that still fire an ask → not a usable detection target
+   on quick-bugfix (would need predicate sub-typing first).
+2. **Renaming a SKILL delegation reference self-heals** — with the agent still registered, the model
+   cannot resolve the renamed reference and routes to the real agent anyway; `delegated(<agent>)`
+   still fires.
+3. **Copilot registers plugin agents by FILENAME, not frontmatter `name:`** — renaming the
+   frontmatter alone leaves the agent callable under its file stem. A `delegated()` knockout must
+   rename the agent FILE (`agents/<agent>.md`). This is why M2 renames the file — and what finally
+   produced the clean predicate-precise REGRESSED.
+
+### Why M1 runs under a NEUTRAL prompt
+
+The committed quick-bugfix scenario prompt itself instructs the model to "present a fix plan for
+approval" — with the plugin's gate stripped, the model could still ask **because the prompt commands
+it**, and the run would measure prompt-following, not the plugin contract (the M1 prompt confound;
+decided in ADR-001 of the Stage-1 task analysis, trigger: spec-audit finding M-2). So for
+`--mutation=M1` **only**, `run.sh` automatically exports `COMPAT_PROMPT_FILE` pointing at the
+versioned `l2/mutations/m1-neutral-prompt.txt` — same seeded bug, "use the maister quick-bugfix
+workflow", zero plan/approval phrasing. Positive (no-flag) runs never set it; env unset → `run.mjs`
+default path is byte-identical.
+
+### Acceptance (fail-closed)
+
+**PASS requires ALL of** (for the validated M2/research control):
+- exit code 1 and stdout verdict `REGRESSED`;
+- the report's classified-diff contains the row `delegated(research-planner)` | missing | candidate-regression (an extra `delegated(research-planner-renamed)` row is expected alongside);
+- the report's "Plugin under test" line shows an `l2-mutant-M2-*` path (mutation provenance in the artifact).
+
+**Non-pass outcomes — the ADR-001 fallback ladder governs, verbatim** (original M1 plan, preserved
+as run history — Stage-1 played out exactly per rung 2: M1 came back AS-EXPECTED, the finding was
+documented, and M2 on research became the validated control):
+
+> 1. **Run 1 (authorized):** M1 + neutral prompt → expect REGRESSED/`gate_fired(ask)`.
+> 2. If **AS-EXPECTED** (model plans anyway out of trained habit, no prompt pressure): that is a
+>    REAL finding — "quick-bugfix M1 is not detectable via the gate predicate on this model" —
+>    document it; **do not retry blindly**. Next candidate: **M2 on research** (no confound by
+>    construction) — requires a NEW explicit spend gate (~tens of AIU). Alternative cheap probe
+>    first: rerun **credit-free** checks of the mutated copy to confirm the strip; the ladder decision
+>    goes to the operator.
+> 3. If **INCOMPLETE (harness-side)**: one retry (already authorized).
+> 4. If **REGRESSED for a different predicate**: finding, not a pass — stop, report, operator gate.
+
+**Re-run rule**: re-run the negative control after any grammar change (Stages 2–4) and on each new
+Copilot CLI version alongside the positive run.
+
+### Cost
+
+The validated M2/research (agent-file rename) run cost **14.79 AIU / 60 weighted requests**. The
+full Stage-1 negative-control exploration cost **~39.97 AIU / 180 requests across 4 runs**
+(M1 1.44, M2 v1 13.91, M2 v2 9.83, M2 v3 14.79). Measure future negative-control runs with the query in
+[Cost — where to read it](#cost--where-to-read-it) — but record the ISO start AND end timestamps and
+bound the query at BOTH ends (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`); the base
+query bounds only the start and would sweep in later sessions.
+
 ## Where results are recorded — the **fork wiki**
 
 Live conformance/compat results are recorded on the **`robmar-net/maister` wiki** (not in-repo — the

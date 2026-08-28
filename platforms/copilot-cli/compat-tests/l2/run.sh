@@ -22,6 +22,14 @@
 #   bash run.sh --scenario=research --check-reference  # CREDIT-FREE verdict for the research reference
 #   bash run.sh --scenario=quick-bugfix --check-reference  # CREDIT-FREE verdict for the quick-bugfix reference
 #   bash run.sh --keep-rundir          # retain the throwaway sandbox rundir (debugging)
+#   bash run.sh --mutation=<M1|M2|M3>  # NEGATIVE CONTROL: stage a KNOWN-BROKEN throwaway copy of the
+#                                      # plugin (built by mutations/mutate.sh) and drive it live — the
+#                                      # run must come back REGRESSED, proving the harness detects
+#                                      # breakage. M1 also hands off the neutral prompt
+#                                      # mutations/m1-neutral-prompt.txt via COMPAT_PROMPT_FILE
+#                                      # (ADR-001: the committed prompt itself commands a plan gate,
+#                                      # which would confound the gate-removed control). Mutants are
+#                                      # never kept (--keep-rundir does not apply to them).
 #   bash run.sh -h | --help            # print this header and exit 0
 #
 # Credit-free guarantee (LOW-4):
@@ -52,6 +60,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (l2 -> compat-tests -> copilot-cli -> platforms -> <repo>), not three. run.mjs uses the same depth.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 PLUGIN_DIR="${COMPAT_PLUGIN_DIR:-$REPO_ROOT/plugins/maister-copilot}"
+# Staged negative-control mutant dir (set on the live path when --mutation=<id> is given). Empty =
+# no mutant staged; cleanup() removes it via the mandated if-form. Mutants are NEVER kept.
+MUTANT_DIR=""
 # shellcheck disable=SC2034  # defined for L0-parity + operator documentation; run.mjs writes the report
 REPORTS_DIR="$SCRIPT_DIR/../reports"          # reports live at compat-tests/reports (one level up from l2/)
 RUN_MJS="$SCRIPT_DIR/run.mjs"
@@ -99,10 +110,17 @@ restore_config() {
   fi
 }
 
-# EXIT/INT/TERM cleanup: restore config, then drop the rundir unless kept (verbatim from L0 run.sh:110-113).
+# EXIT/INT/TERM cleanup: restore config, then drop the rundir unless kept (from L0 run.sh:110-113;
+# the MUTANT_DIR removal is an L2-only addition — not in L0).
 cleanup() {
   restore_config
   [ "${COMPAT_KEEP_RUNDIR:-0}" = "1" ] || rm -rf "$RUNDIR"
+  # Negative-control mutants are NEVER kept (COMPAT_KEEP_RUNDIR does not apply). MANDATED if-form —
+  # the `[ -n … ] && rm -rf …` one-liner returns 1 when MUTANT_DIR is empty, and as the function's
+  # last statement that 1 would become cleanup()'s exit status (tests call cleanup() directly).
+  if [ -n "$MUTANT_DIR" ]; then
+    rm -rf "$MUTANT_DIR"
+  fi
 }
 
 # Reprint the header comment block (lines after the shebang, up to `set -euo pipefail`), stripping
@@ -124,15 +142,25 @@ fi
 # ============================================================================ main
 # ---------------------------------------------------------------------------- args
 CHECK_REFERENCE=0
+MUTATION=""
 for a in "$@"; do
   case "$a" in
     -h|--help)          print_header; exit 0 ;;
     --check-reference)  CHECK_REFERENCE=1 ;;
     --scenario=*)       SCENARIO="${a#--scenario=}" ;;
+    --mutation=*)       MUTATION="${a#--mutation=}" ;;
     --keep-rundir)      COMPAT_KEEP_RUNDIR=1 ;;
     *) echo "Unknown argument: $a" >&2; exit 2 ;;
   esac
 done
+
+# Validate --mutation at PARSE time (credit-free reject): an unknown id exits 2 BEFORE the
+# --check-reference short-circuit, the seat preflight, and any config mutation — no verdict, no SKIP
+# banner, nothing staged. Empty = no mutation (the positive path, byte-identical behavior).
+case "$MUTATION" in
+  ""|M1|M2|M3) ;;
+  *) echo "run.sh: unknown mutation id '$MUTATION' (expected M1|M2|M3)" >&2; exit 2 ;;
+esac
 
 # ---------------------------------------------------------------------------- LOW-4 credit-free short-circuit
 # `--check-reference` returns the staleness/tamper verdict BEFORE the seat preflight and de-shadow,
@@ -205,9 +233,38 @@ if [ -f "$REAL_CONFIG" ]; then
   fi
 fi
 
+# ---------------------------------------------------------------------------- negative-control mutation staging (R2)
+# Only when --mutation=<id> was given: manufacture a KNOWN-BROKEN throwaway copy of the plugin via
+# mutations/mutate.sh and repoint PLUGIN_DIR at it, so the live run PROVES the harness detects
+# breakage. Placement is load-bearing: AFTER the trap is armed (cleanup() removes the mutant) and
+# AFTER the de-shadow (the mutant loads under the REAL plugin name, so it must not be shadowed
+# either), BEFORE the env hand-off. The source is the CURRENT $PLUGIN_DIR, so this composes with a
+# COMPAT_PLUGIN_DIR override. (--check-reference already exec'd above and never reaches staging.)
+#
+# MANDATED form — never a bare MUTANT_DIR="$(...)" assignment: under `set -euo pipefail` a failing
+# command substitution in a plain assignment aborts the script with mutate.sh's own exit code, which
+# could leak exit 1 (= REGRESSED semantics). A failing builder is INCOMPLETE (exit 2), never exit 1.
+if [ -n "$MUTATION" ]; then
+  if ! MUTANT_DIR="$(bash "$SCRIPT_DIR/mutations/mutate.sh" "$MUTATION" "$PLUGIN_DIR")"; then
+    echo "L2 INCOMPLETE: mutation staging failed" >&2; exit 2
+  fi
+  PLUGIN_DIR="$MUTANT_DIR"
+  echo "NEGATIVE CONTROL: mutation $MUTATION staged at $MUTANT_DIR"
+  # ADR-001 (M1 only): the committed scenario prompt itself commands "present a fix plan for
+  # approval", which would re-impose the very gate M1 strips — a confounded experiment. Export the
+  # neutral prompt file instead; env(1) below passes exported vars through to run.mjs. Positive
+  # (no --mutation) runs NEVER set COMPAT_PROMPT_FILE.
+  if [ "$MUTATION" = "M1" ]; then
+    export COMPAT_PROMPT_FILE="$SCRIPT_DIR/mutations/m1-neutral-prompt.txt"
+  fi
+fi
+
 # ---------------------------------------------------------------------------- stage the sandbox rundir
-# run.mjs uses COMPAT_RUNDIR directly as the workflow's working directory, so copy the sandbox
-# CONTENTS (incl. the .maister dotfile) into the rundir root, preserving +x on the runner scripts.
+# run.mjs does NOT run the workflow in this rundir — driveOnce stages its OWN fresh per-drive mktemp
+# rundir from l2/sandbox/<template> (makeFreshRundir; the dev workflow mutates its rundir, so drives
+# never share one). A run.sh-provided COMPAT_RUNDIR otherwise surfaces only in the report's
+# isolation note. Still stage it: copy the sandbox CONTENTS (incl. the .maister dotfile) into the
+# rundir root, preserving +x on the runner scripts, so that note points at a real, populated dir.
 cp -R "$SANDBOX_TEMPLATE"/. "$RUNDIR"/
 chmod +x "$RUNDIR"/*.sh 2>/dev/null || true
 
