@@ -36,6 +36,68 @@ COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=dev
 - **`development` is expensive** (full analyse→spec→plan→implement→verify; ~20-25 min). Run it in the background — it will exceed a foreground timeout.
 - Verdicts (exit code): **AS-EXPECTED** (green) / **REGRESSED** (real divergence) / **INCOMPLETE** (no verdict — timeout / session error / sanity-floor; NOT a pass, NOT a regression).
 
+## Negative control (detection power)
+
+A green L2 cell only proves the run didn't go red — the negative control proves L2 **can** go red.
+It stages a deliberately broken TEMP COPY of the generated plugin (the real `plugins/maister-copilot`
+is never touched) and expects a REGRESSED verdict naming the knocked-out predicate.
+
+### One command (live; SPENDS AI CREDITS — ~1 quick-bugfix run)
+```bash
+COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=quick-bugfix --mutation=M1
+```
+`--mutation=<id>` calls `l2/mutations/mutate.sh`, which copies the plugin into an id-named temp dir
+(`l2-mutant-M1-*` — the id shows up on the report's "Plugin under test" line as provenance), applies
+one regex-anchored fail-closed edit, and repoints the plugin dir. The mutant is removed on exit;
+`COMPAT_KEEP_RUNDIR` does not apply to it.
+
+| Mutation | Target | Knocked-out predicate | Live-validated? |
+|---|---|---|---|
+| **M1** — gate-removed | `quick-bugfix` `SKILL.md` (plan-approval gate stripped) | `gate_fired(ask)` | **Yes** — the Stage-1 authorized run (this section's procedure) |
+| **M2** — delegation-renamed | `development` + `research` `SKILL.md` (delegation targets renamed to nonexistent agents) | `delegated(gap-analyzer)` / `delegated(research-planner)` | Machinery-only; live run needs its own spend gate |
+| **M3** — artifact-suppressed | `development` + `research` `SKILL.md` (artifact instructions removed at anchored sites) | `created_artifact(spec.md)` / `created_artifact(research-report.md)` | Machinery-only; live run needs its own spend gate |
+
+### Why M1 runs under a NEUTRAL prompt
+
+The committed quick-bugfix scenario prompt itself instructs the model to "present a fix plan for
+approval" — with the plugin's gate stripped, the model could still ask **because the prompt commands
+it**, and the run would measure prompt-following, not the plugin contract (the M1 prompt confound;
+decided in ADR-001 of the Stage-1 task analysis, trigger: spec-audit finding M-2). So for
+`--mutation=M1` **only**, `run.sh` automatically exports `COMPAT_PROMPT_FILE` pointing at the
+versioned `l2/mutations/m1-neutral-prompt.txt` — same seeded bug, "use the maister quick-bugfix
+workflow", zero plan/approval phrasing. Positive (no-flag) runs never set it; env unset → `run.mjs`
+default path is byte-identical.
+
+### Acceptance (fail-closed)
+
+**PASS requires ALL of**:
+- exit code 1 and stdout verdict `REGRESSED`;
+- the report's classified-diff contains the row `gate_fired(ask)` | missing | candidate-regression;
+- the report's "Plugin under test" line shows an `l2-mutant-M1-*` path (mutation provenance in the artifact).
+
+**Non-pass outcomes — the ADR-001 fallback ladder governs, verbatim**:
+
+> 1. **Run 1 (authorized):** M1 + neutral prompt → expect REGRESSED/`gate_fired(ask)`.
+> 2. If **AS-EXPECTED** (model plans anyway out of trained habit, no prompt pressure): that is a
+>    REAL finding — "quick-bugfix M1 is not detectable via the gate predicate on this model" —
+>    document it; **do not retry blindly**. Next candidate: **M2 on research** (no confound by
+>    construction) — requires a NEW explicit spend gate (~tens of AIU). Alternative cheap probe
+>    first: rerun **credit-free** checks of the mutated copy to confirm the strip; the ladder decision
+>    goes to the operator.
+> 3. If **INCOMPLETE (harness-side)**: one retry (already authorized).
+> 4. If **REGRESSED for a different predicate**: finding, not a pass — stop, report, operator gate.
+
+**Re-run rule**: re-run the negative control after any grammar change (Stages 2–4) and on each new
+Copilot CLI version alongside the positive run.
+
+### Cost
+
+Stage-1 authorized run (quick-bugfix + M1): `TBD — filled after the Stage-1 authorized run`
+(AIU / weighted requests). Measure future negative-control runs with the query in
+[Cost — where to read it](#cost--where-to-read-it) — but record the ISO start AND end timestamps and
+bound the query at BOTH ends (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`); the base
+query bounds only the start and would sweep in later sessions.
+
 ## Where results are recorded — the **fork wiki**
 
 Live conformance/compat results are recorded on the **`robmar-net/maister` wiki** (not in-repo — the
