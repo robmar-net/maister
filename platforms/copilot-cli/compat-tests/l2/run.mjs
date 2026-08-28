@@ -57,6 +57,7 @@ import { normalize } from './normalize.mjs';
 import { compare, checkReference, EXIT } from './compare.mjs';
 import developmentScenario from './scenarios/development.mjs';
 import researchScenario from './scenarios/research.mjs';
+import quickBugfixScenario from './scenarios/quick-bugfix.mjs';
 
 // --------------------------------------------------------------------------- scenario registry
 // Keyed by id. `development` is the MVP-proven default; `research` is the second workflow shape, added
@@ -65,6 +66,7 @@ import researchScenario from './scenarios/research.mjs';
 const SCENARIOS = Object.freeze({
   [developmentScenario.id]: developmentScenario,
   [researchScenario.id]: researchScenario,
+  [quickBugfixScenario.id]: quickBugfixScenario,
 });
 const DEFAULT_SCENARIO_ID = developmentScenario.id;
 
@@ -119,7 +121,7 @@ function printUsage(stream = process.stdout) {
     'Usage: node run.mjs [--scenario=ID] [--check-reference] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
     '',
     'Flags:',
-    '  --scenario=ID       Workflow shape to drive / check: development (default) | research. Selects the',
+    '  --scenario=ID       Workflow shape to drive / check: development (default) | research | quick-bugfix. Selects the',
     '                      live drive AND which reference/<ID>.skeleton.json --check-reference reads.',
     '  --check-reference   Credit-free, offline: recompute the reference hash + check its version',
     '                      stamp (workflow-model, or maister package as fallback). No SDK session,',
