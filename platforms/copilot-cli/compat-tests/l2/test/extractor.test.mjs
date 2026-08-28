@@ -190,6 +190,36 @@ test('T5d state: Copilot 1.0.81 research shape — NO completed_phases key; phas
   assert.deepEqual(s.characteristics, {}, 'no task_characteristics in the research shape');
 });
 
+test('T5e state: Copilot 1.0.81 development shape — NO completed_phases; phases from a phases: {id,status} sequence', () => {
+  // Real-shape 1.0.81 development state (3rd serialization variant): no `completed_phases` array, and
+  // `phase_summaries` is keyed by NAMED phases (codebase_analysis, …) not `phase-N`, so the only
+  // machine-readable completion record is a `phases:` SEQUENCE of `{ id: N, name, status: completed }`.
+  // parseState must derive the phases from those items (status == completed), else the sanity floor
+  // trips to a false INCOMPLETE even though phases 1..14 ran.
+  const yaml = fs.readFileSync(path.join(FIX, 'orchestrator-state.copilot-1.0.81-development.sample.yml'), 'utf8');
+  const s = parseState(yaml);
+  assert.deepEqual(s.phases, [1, 2, 5, 6, 7, 8, 10, 11, 14], 'phases derived from the phases: {id,status:completed} sequence');
+  // Characteristics ARE present here (under task_context); task status is not at an indent the
+  // fallback reads (it comes from the event stream in the skeleton), so state-sourced status is null.
+  assert.deepEqual(s.characteristics, {
+    has_reproducible_defect: false,
+    modifies_existing_code: true,
+    creates_new_entities: false,
+    involves_data_operations: false,
+    ui_heavy: false,
+  });
+});
+
+test('T5f state: Copilot 1.0.81 dev — PARTIAL completed_phases + full phases: {number} sequence (union)', () => {
+  // The model was inconsistent in one run: `completed_phases: [1]` (only phase 1) AND a full `phases:`
+  // sequence keyed by `- number: N` (not `id:`), every item completed. parseState must UNION the signals
+  // (completed_phases ∪ phase_summaries ∪ phases[]) and accept id|number|phase as the item key, else the
+  // partial array wins and the run false-INCOMPLETEs. Recovers the full set.
+  const yaml = fs.readFileSync(path.join(FIX, 'orchestrator-state.copilot-1.0.81-development-partial.sample.yml'), 'utf8');
+  const s = parseState(yaml);
+  assert.deepEqual(s.phases, [1, 2, 5, 6, 7, 8, 10, 11, 14], 'union of partial completed_phases + phases: number-keyed sequence');
+});
+
 test('T6 state: 5 task_characteristics under task_context; task.status disambiguated from last_status', () => {
   const s = parseState(STATE_YAML);
 

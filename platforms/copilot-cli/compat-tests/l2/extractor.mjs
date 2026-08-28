@@ -77,22 +77,33 @@ function phasesFromPhaseSummaries(lines) {
   return nums;
 }
 
-function parseCompletedPhases(lines, warnings) {
-  const idx = lines.findIndex((l) => /^\s*completed_phases\s*:/.test(l));
-  if (idx === -1) {
-    // No `completed_phases` key at all. Fallback for LLM serialization variance (observed on Copilot
-    // 1.0.81's research workflow): the orchestrator records completed phases as a `phase_summaries:`
-    // MAP with `phase-N:` entry keys (each carrying a summary/artifacts/steps_completed) instead of a
-    // `completed_phases` array. Derive the phase integers from those keys so a format-only difference
-    // does not read as zero completed phases — which would trip the sanity floor into a false INCOMPLETE.
-    const fromSummaries = phasesFromPhaseSummaries(lines);
-    if (fromSummaries.length > 0) {
-      warnings.push('completed_phases derived from phase_summaries phase-N keys (no completed_phases key — LLM serialization variance)');
-      return fromSummaries;
-    }
-    warnings.push('completed_phases key not found');
-    return [];
+// Derive completed-phase integers from a `phases:` SEQUENCE of `{ <id|number|phase>: N, name,
+// status: completed }` items, bounded to that block. Copilot's development runs record completion here
+// (1.0.81 used both `- id: N` and `- number: N` across runs) — a phase counts only when its item's
+// status is `completed`. The item's phase integer may be keyed `id`, `number`, or `phase`.
+function phasesFromPhasesSequence(lines) {
+  const idx = lines.findIndex((l) => /^\s*phases\s*:\s*$/.test(l));
+  if (idx === -1) return [];
+  const baseIndent = indentOf(lines[idx]);
+  const nums = [];
+  let curId = null, curDone = false;
+  const flush = () => { if (curId !== null && curDone && !nums.includes(curId)) nums.push(curId); };
+  for (let i = idx + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() === '') continue;
+    if (indentOf(l) <= baseIndent) break; // dedent -> end of the phases: block
+    if (/^\s*-/.test(l)) { flush(); curId = null; curDone = false; } // start of a new list item
+    const idm = l.match(/\b(?:id|number|phase)\s*:\s*(\d+)/);
+    if (idm && curId === null) curId = parseInt(idm[1], 10);
+    if (/\bstatus\s*:\s*["']?completed\b/.test(l)) curDone = true;
   }
+  flush();
+  nums.sort((a, b) => a - b);
+  return nums;
+}
+
+// Parse the `completed_phases` array VALUE (phase-N or bare-int), bounded to the key's value region.
+function phasesFromCompletedPhasesKey(lines, idx, warnings) {
   const keyLine = lines[idx];
   const afterColon = keyLine.slice(keyLine.indexOf(':') + 1).trim();
   let region = '';
@@ -128,10 +139,8 @@ function parseCompletedPhases(lines, warnings) {
     const n = parseInt(m[1], 10);
     if (!Number.isNaN(n) && !nums.includes(n)) nums.push(n);
   }
-  // Fallback for LLM serialization variance: a run may serialize completed_phases as BARE integers
-  // (`[1, 2, 5]`) instead of the maister `"phase-N"` convention. ONLY when the phase[-_]N form yielded
-  // nothing, extract bare integers from the (bounded) value region, so a format-only difference does
-  // not read as zero completed phases — which would trip the sanity floor into a false INCOMPLETE.
+  // A run may serialize completed_phases as BARE integers (`[1, 2, 5]`) instead of the maister
+  // `"phase-N"` convention. ONLY when the phase[-_]N form yielded nothing, extract bare integers.
   if (nums.length === 0) {
     const reInt = /\d+/g;
     let mi;
@@ -143,6 +152,41 @@ function parseCompletedPhases(lines, warnings) {
   }
   nums.sort((a, b) => a - b);
   return nums;
+}
+
+// Completed phases = the UNION of every completion signal the orchestrator may have serialized. Copilot's
+// model is non-deterministic AND sometimes inconsistent across shapes — observed a PARTIAL
+// `completed_phases: [1]` alongside a full `phases:` sequence in the same run. Unioning recovers the true
+// set whichever shape(s) a run used; each source only ever marks genuinely-completed phases, so the union
+// never over-reports. Sources:
+//   (A) `completed_phases:` array (phase-N or bare-int),
+//   (B) `phase_summaries:` map keyed by `phase-N:`,
+//   (C) `phases:` sequence items with `status: completed` (item key id/number/phase).
+function parseCompletedPhases(lines, warnings) {
+  const set = new Set();
+  const sources = [];
+
+  const idx = lines.findIndex((l) => /^\s*completed_phases\s*:/.test(l));
+  if (idx !== -1) {
+    const arr = phasesFromCompletedPhasesKey(lines, idx, warnings);
+    arr.forEach((n) => set.add(n));
+    if (arr.length) sources.push('completed_phases');
+  }
+  let before = set.size;
+  phasesFromPhaseSummaries(lines).forEach((n) => set.add(n));
+  if (set.size > before) sources.push('phase_summaries');
+  before = set.size;
+  phasesFromPhasesSequence(lines).forEach((n) => set.add(n));
+  if (set.size > before) sources.push('phases[]');
+
+  if (set.size === 0) {
+    warnings.push('completed_phases key not found');
+    return [];
+  }
+  if (sources.length > 1 || idx === -1) {
+    warnings.push(`completed_phases derived from union of [${sources.join(', ')}] (LLM serialization variance)`);
+  }
+  return [...set].sort((a, b) => a - b);
 }
 
 // Read the 5 known booleans anchored under the `task_characteristics:` block (which itself lives

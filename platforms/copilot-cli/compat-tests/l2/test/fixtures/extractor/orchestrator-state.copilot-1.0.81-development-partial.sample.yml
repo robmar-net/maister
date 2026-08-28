@@ -1,0 +1,183 @@
+# Real-shape sample of a Copilot 1.0.81 orchestrator-state.yml (DEVELOPMENT, 2nd dev variant). Captured
+# 2026-08-28 (rundir l2-rundir-EwXVtm). Here the model was INCONSISTENT: it wrote a PARTIAL
+# `completed_phases: [1]` (only phase 1) AND `current_phase: 14` AND a FULL `phases:` sequence keyed by
+# `- number: N` (not `id:`), every item `status: completed`. Guards the union-of-signals parseState
+# (completed_phases ∪ phase_summaries ∪ phases[]) + the id|number|phase item key: neither the partial
+# array nor an id-only sequence parser recovers the true set alone.
+orchestrator:
+  workflow: development
+  status: completed
+  created: 2026-08-28T01:27:21Z
+  updated: 2026-08-28T01:27:21Z
+  options:
+    html_output: true
+    mockup_format: html
+    spec_audit_enabled: true
+    skip_test_suite: true
+    e2e_enabled: false
+    user_docs_enabled: false
+    code_review_enabled: true
+    pragmatic_review_enabled: true
+    reality_check_enabled: true
+    production_check_enabled: true
+  task_context:
+    description: "Add a small --greet <name> subcommand to the sample CLI that prints Hello, <name>!, including a test."
+    risk_level: low
+    clarifications_resolved: true
+    scope_expanded: false
+    architecture_decision: null
+    task_characteristics:
+      has_reproducible_defect: false
+      modifies_existing_code: true
+      creates_new_entities: false
+      involves_data_operations: false
+      ui_heavy: false
+    project_context:
+      project_doc_paths:
+        - .maister/docs/INDEX.md
+    phase_summaries:
+      codebase_analysis:
+        key_files:
+          - cli.sh
+          - run-tests.sh
+          - README.md
+          - .maister/docs/INDEX.md
+        primary_language: POSIX shell
+        summary: "Single POSIX shell CLI uses one function per command and case-based dispatch; self-contained shell tests and docs define extension conventions."
+        decisions: []
+        risks: []
+        artifacts: []
+      clarifications:
+        - "Keep permissive missing-name behavior: `sh cli.sh --greet` prints `Hello, !`."
+      gap_analysis:
+        integration_points:
+          - cli.sh
+          - run-tests.sh
+          - README.md
+        summary: "Low-risk additive CLI change; no unresolved decisions."
+        decisions: []
+        risks: []
+        artifacts:
+          - path: analysis/gap-analysis.md
+            label: Gap analysis
+            html: null
+        decisions: []
+        risks: []
+        artifacts: []
+      scope_clarifications:
+        scope_expanded: false
+        summary: null
+        decisions: []
+        risks: []
+        artifacts: []
+      specification:
+        summary: null
+        decisions: []
+        risks: []
+        artifacts: []
+      architecture_decision:
+        decision: null
+        summary: null
+        decisions: []
+        risks: []
+        artifacts: []
+  completed_phases:
+    - 1
+  current_phase: 14
+  phases:
+    - number: 1
+      name: codebase-analysis
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+    - number: 2
+      name: gap-analysis
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+    - number: 5
+      name: specification
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      artifacts:
+        - path: implementation/spec.md
+          label: Feature specification
+          html: implementation/spec.html
+      summary: "Specification defines additive --greet behavior, exact output, permissive missing-name handling, documentation updates, and regression coverage."
+      decisions:
+        - "Reuse existing POSIX shell command and test patterns."
+      risks: []
+    - number: 6
+      name: specification-audit
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+      summary: "Specification covers requested behavior and standards with no unresolved ambiguity."
+      artifacts:
+        - path: verification/spec-audit.md
+          label: Specification audit
+          html: null
+      decisions: []
+      risks: []
+    - number: 7
+      name: implementation-planning
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+      summary: "One seven-step task group covers command, exact-output tests, documentation, focused checks, and full test runner."
+      artifacts:
+        - path: implementation/implementation-plan.md
+          label: Implementation plan
+          html: implementation/implementation-plan.html
+      decisions: []
+      risks: []
+    - number: 8
+      name: implementation
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+      summary: "Implemented --greet, exact named and missing-name tests, and CLI/README documentation; test runner passes 5 checks."
+      artifacts:
+        - path: implementation/work-log.md
+          label: Implementation work log
+          html: null
+      decisions: []
+      risks: []
+    - number: 10
+      name: verification-options
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+      summary: "Enabled completeness, code, pragmatic, production, and reality verification; E2E and user docs remain disabled for non-UI CLI task."
+      decisions: []
+      risks: []
+    - number: 11
+      name: verification
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+      summary: "Verification passed with issues: no critical blockers; 5 tests passed; minor coverage and metadata warnings remain."
+      artifacts:
+        - path: verification/implementation-verification.md
+          label: Implementation verification
+          html: verification/implementation-verification.html
+      decisions: []
+      risks:
+        - "Command substitution does not prove exact newline count."
+        - "Existing help command lacks a matching check."
+    - number: 12
+      name: e2e-testing
+      status: skipped
+      completed: 2026-08-28T01:27:21Z
+      summary: "Skipped because task has no UI or browser surface."
+    - number: 13
+      name: user-documentation
+      status: skipped
+      completed: 2026-08-28T01:27:21Z
+      summary: "Skipped by verification options; README already updated."
+    - number: 14
+      name: finalization
+      status: completed
+      started: 2026-08-28T01:27:21Z
+      completed: 2026-08-28T01:27:21Z
+      summary: "Workflow finalized with implementation and verification artifacts."

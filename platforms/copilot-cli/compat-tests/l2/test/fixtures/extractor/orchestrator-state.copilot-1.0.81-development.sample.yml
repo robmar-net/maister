@@ -1,0 +1,117 @@
+# Real-shape sample of a Copilot 1.0.81 orchestrator-state.yml (DEVELOPMENT workflow). Captured from
+# the 2026-08-28 live L2 run (rundir l2-rundir-2UuqAM). A THIRD serialization variant: NO
+# `completed_phases` array, and `phase_summaries` is keyed by NAMED phases (codebase_analysis,
+# clarifications, …) NOT `phase-N` — so the only machine-readable completion record is a `phases:`
+# SEQUENCE of `{ id: N, name, status: completed }`. Guards the parseState fallback (derive phases from
+# that sequence) against regression; without it the sanity floor trips to a false INCOMPLETE.
+orchestrator:
+  workflow: development
+  version: "1"
+  options:
+    html_output: true
+    mockup_format: html
+    spec_audit_enabled: true
+    skip_test_suite: true
+    e2e_enabled: false
+    user_docs_enabled: false
+    code_review_enabled: true
+    pragmatic_review_enabled: true
+    reality_check_enabled: true
+    production_check_enabled: true
+  task:
+    description: "Add a small --greet <name> subcommand to the sample CLI that prints Hello, <name>!."
+    status: completed
+    created: "2026-08-28T01:05:27Z"
+    updated: "2026-08-28T01:05:27Z"
+    path: ".maister/tasks/development/2026-08-28-greet-subcommand"
+  task_context:
+    risk_level: low
+    clarifications_resolved: true
+    scope_expanded: false
+    architecture_decision: null
+    task_characteristics:
+      has_reproducible_defect: false
+      modifies_existing_code: true
+      creates_new_entities: false
+      involves_data_operations: false
+      ui_heavy: false
+    project_context:
+      project_doc_paths:
+        - ".maister/docs/INDEX.md"
+    phase_summaries:
+      codebase_analysis:
+        key_files:
+          - "cli.sh"
+          - "run-tests.sh"
+          - "README.md"
+          - ".maister/docs/INDEX.md"
+        primary_language: POSIX shell
+        summary: "Small dependency-free POSIX shell CLI; add one command function, dispatch branch, documentation entries, and a shell check."
+        decisions: []
+        risks: []
+        artifacts: []
+      clarifications:
+        - "Preserve loose behavior for missing name; no new argument validation."
+      task_characteristics:
+        has_reproducible_defect: false
+        modifies_existing_code: true
+        creates_new_entities: false
+        involves_data_operations: false
+        ui_heavy: false
+      gap_analysis:
+        integration_points: []
+        summary: "Current CLI lacks greet; add cmd_greet, dispatch/help/docs, and one test. Low risk with no scope expansion."
+        integration_points:
+          - "cli.sh"
+          - "run-tests.sh"
+          - "README.md"
+        decisions: []
+        risks: []
+        artifacts: []
+      scope_clarifications:
+        scope_expanded: false
+        summary: "Scope limited to named greeting behavior, documentation, and regression test; no validation or architecture changes."
+        decisions: []
+        risks: []
+        artifacts: []
+      specification:
+        summary: null
+        decisions: []
+        risks: []
+        artifacts: []
+      architecture_decision:
+        decision: null
+        summary: null
+        decisions: []
+        risks: []
+        artifacts: []
+    design_reference: null
+    clarifications: []
+  phases:
+    - id: 1
+      name: codebase-analysis
+      status: completed
+    - id: 2
+      name: gap-analysis
+      status: completed
+    - id: 5
+      name: specification
+      status: completed
+    - id: 6
+      name: specification-audit
+      status: completed
+    - id: 7
+      name: implementation-plan
+      status: completed
+    - id: 8
+      name: implementation
+      status: completed
+    - id: 10
+      name: verification-options
+      status: completed
+    - id: 11
+      name: verification
+      status: completed
+    - id: 14
+      name: finalization
+      status: completed
