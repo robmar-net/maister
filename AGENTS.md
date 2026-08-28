@@ -44,13 +44,13 @@ checkouts), so **never trust the remote name — key every decision on the repos
 Before any push/PR/merge, resolve the target's slug (e.g. `git remote -v`) and confirm it is
 `robmar-net/maister`. If it resolves to `SkillPanel/maister`, do not proceed.
 
-## Compatibility & parity testing
+## Compatibility & conformance testing
 
 We verify the generated `maister-copilot` variant against a live Copilot CLI at three layers
-(L0 wiring / L1 hook effects / L2 trace-equivalence parity). **How to run each, credit-free vs live,
+(L0 wiring / L1 hook effects / L2 workflow-model conformance). **How to run each, credit-free vs live,
 where results are recorded, cost source, and the hard-won gotchas** (Copilot's ≥3 state-serialization
 variants, sanity-floor INCOMPLETE ≠ regression, etc.) live in the runbook — read it before running or
-debugging any compat/parity check:
+debugging any compat/conformance check:
 
 → **[`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md)**
 

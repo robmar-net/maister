@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# L2 — Trace-equivalence testing harness: thin bash operator wrapper for run.mjs.
+# L2 — Workflow-model conformance testing harness: thin bash operator wrapper for run.mjs.
 #
-# Drives ONE Copilot workflow (development by default, or research via --scenario) through the
+# Drives ONE Copilot workflow (development by default; research or quick-bugfix via --scenario) through the
 # bundled @github/copilot-sdk (via l2/run.mjs), reduces the typed trace + task-dir tree +
 # orchestrator-state.yml to a normalized predicate Set, and set-compares it to the committed
 # maister-model-derived reference. Answers "did this Copilot release or generator change break the
@@ -20,6 +20,7 @@
 #   bash run.sh --scenario=research    # drive the research workflow instead of development (default)
 #   bash run.sh --check-reference      # CREDIT-FREE: staleness/tamper verdict for the committed reference
 #   bash run.sh --scenario=research --check-reference  # CREDIT-FREE verdict for the research reference
+#   bash run.sh --scenario=quick-bugfix --check-reference  # CREDIT-FREE verdict for the quick-bugfix reference
 #   bash run.sh --keep-rundir          # retain the throwaway sandbox rundir (debugging)
 #   bash run.sh -h | --help            # print this header and exit 0
 #
@@ -168,7 +169,7 @@ fi
 if [ -n "$SKIP_REASON" ]; then
   echo "=========================================================================="
   echo " L2 SKIP — $SKIP_REASON."
-  echo "           The trace-equivalence LIVE run needs an authenticated Copilot seat;"
+  echo "           The conformance LIVE run needs an authenticated Copilot seat;"
   echo "           skipping it is NOT a failure (exit 0)."
   echo "           Credit-free staleness check still works:  bash run.sh --check-reference"
   echo "=========================================================================="

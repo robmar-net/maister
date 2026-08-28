@@ -33,12 +33,6 @@
     "gate_fired(permission)",
     "gate_fired(exit_plan_mode)"
   ],
-  "allowlist": [
-    {
-      "predicate": "hook_effect(destructive_guard=ask)",
-      "classification": "LIMITATION",
-      "reason": "L1 destructive-guard deny->ask platform adaptation"
-    }
-  ],
-  "hash": "abed5d31d2ff2b9043ae1033c9cf2a73eb78f8c14f596e2835cd1734ea96e895"
+  "allowlist": [],
+  "hash": "12c51927084065a5c19dadd29c82a65438dfb029d7ceba0e484319dbed54c7f0"
 }

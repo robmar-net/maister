@@ -51,19 +51,34 @@
     "delegated(explore)",
     "delegated(codebase-analysis-reporter)",
     "delegated(user-docs-generator)",
-    "delegated(e2e-test-verifier)",
-    "invoked_skill(reviews-code)",
-    "invoked_skill(reviews-pragmatic)",
-    "invoked_skill(reviews-spec-audit)",
-    "invoked_skill(reviews-reality-check)",
-    "invoked_skill(reviews-production-readiness)"
+    "delegated(e2e-test-verifier)"
   ],
   "allowlist": [
     {
-      "predicate": "hook_effect(destructive_guard=ask)",
+      "predicate": "invoked_skill(reviews-code)",
       "classification": "LIMITATION",
-      "reason": "L1 destructive-guard deny->ask platform adaptation"
+      "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-code."
+    },
+    {
+      "predicate": "invoked_skill(reviews-pragmatic)",
+      "classification": "LIMITATION",
+      "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-pragmatic."
+    },
+    {
+      "predicate": "invoked_skill(reviews-spec-audit)",
+      "classification": "LIMITATION",
+      "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-spec-audit."
+    },
+    {
+      "predicate": "invoked_skill(reviews-reality-check)",
+      "classification": "LIMITATION",
+      "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-reality-check."
+    },
+    {
+      "predicate": "invoked_skill(reviews-production-readiness)",
+      "classification": "LIMITATION",
+      "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-production-readiness."
     }
   ],
-  "hash": "261ce1811909a55b2ba2499eb4b6848bf821c8289ef44bce2f36261d1c0e504c"
+  "hash": "a48a64e3981717e5d0f93c243876cbf4f2fcc14f54f1a05fbc40b2d2a0acbcf2"
 }

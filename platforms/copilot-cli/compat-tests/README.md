@@ -6,19 +6,24 @@ contracts, emitting a timestamped markdown report. It is the acceptance + regres
 mechanism for the generator remediation: **green** on a correct build, **red** on any
 runtime-contract regression.
 
-## Three levels: L0 (fire) · L1 (effect) · L2 (whole-workflow equivalence)
+## Three levels: L0 (fire) · L1 (effect) · L2 (workflow-model conformance)
 
 | Level | Script / target | Asserts | Report |
 |-------|-----------------|---------|--------|
 | **L0** | `run.sh` / `make test-copilot` | The 7 runtime **contracts** hold — plugin/skills/agents/task/skill/hooks/mcp load & resolve, and hooks **fire**. | `reports/compat-report-*.md` |
 | **L1** | `l1-hook-effects.sh` / `make test-hooks` | Each of the 3 maister hooks has its intended **effect** on Copilot — and honestly flags where the effect is a **no-op**. | `reports/l1-hook-effects-*.md` |
-| **L2** | [`l2/`](./l2/) / `make test-l2` | A whole **development workflow** driven live via `@github/copilot-sdk` yields a predicate skeleton that **conforms** to a committed maister-model reference (trace equivalence). Proven live on Copilot 1.0.74 (**AS-EXPECTED**); a second scenario (`research`) is implemented credit-free, selectable with `--scenario=research`. | `reports/l2-trace-equivalence-*.md` |
+| **L2** | [`l2/`](./l2/) / `make test-l2` | A whole **workflow** driven live via `@github/copilot-sdk` yields a predicate skeleton that **conforms** to a committed workflow-model reference. All three scenarios (`development`, `research`, `quick-bugfix`; selectable with `--scenario=<id>`) verified live **AS-EXPECTED** (latest: Copilot 1.0.81). | `reports/l2-trace-equivalence-*.md` |
 
-L0 proves the hooks *run*; L1 proves what they *do*; **L2** proves a whole *workflow behaves
-equivalently* (the layer L0/L1 don't cover). In L1 **and L2**, a **LIMITATION** verdict is the
-correct detection of a real platform divergence (not a harness bug); the run only goes red on an
-**unexpected regression**. Findings: [`L1-FINDINGS.md`](./L1-FINDINGS.md); L2 design + live result:
-[`L2-DESIGN.md`](./L2-DESIGN.md) + [`L2-SPIKE-FINDINGS.md`](./L2-SPIKE-FINDINGS.md).
+L0 proves the hooks *run*; L1 proves what they *do*; **L2** checks that a whole *workflow conforms
+to maister's documented workflow model* (the layer L0/L1 don't cover). In L1 **and L2**, a
+**LIMITATION** verdict is the correct detection of a real platform divergence (not a harness bug);
+the run only goes red on an **unexpected regression**. Findings: [`L1-FINDINGS.md`](./L1-FINDINGS.md);
+L2 design + live results: [`L2-DESIGN.md`](./L2-DESIGN.md) + [`L2-SPIKE-FINDINGS.md`](./L2-SPIKE-FINDINGS.md).
+Each L2 reference's entry-by-entry derivation:
+[`development`](./l2/reference/development.derivation.md) ·
+[`research`](./l2/reference/research.derivation.md) ·
+[`quick-bugfix`](./l2/reference/quick-bugfix.derivation.md); reference-edit governance:
+[`CALIBRATION-LOG.md`](./l2/reference/CALIBRATION-LOG.md).
 
 It formalizes the ad-hoc `~/Projects/maister-tests/` prototype (see
 `COMPAT-TEST-REPORT.md`, reproduction commands T1–T13) into repo-committed scripts +
