@@ -1,5 +1,6 @@
-// mutations.test.mjs — Stage 1 negative control, Task Group 1: credit-free scripted checks for the
-// mutation builder l2/mutations/mutate.sh (spec R3.1-R3.4).
+// mutations.test.mjs — Stage 1 negative control, Task Groups 1+2: credit-free scripted checks for
+// the mutation builder l2/mutations/mutate.sh (spec R3.1-R3.4) and for run.sh's --mutation arm +
+// the ADR-001 COMPAT_PROMPT_FILE prompt seam (spec R3.5-R3.8).
 //
 // mutate.sh manufactures a KNOWN-BROKEN copy of the plugin (M1 gate-removed / M2 delegation-renamed /
 // M3 artifact-suppressed) so a later gate can prove the L2 conformance harness actually DETECTS
@@ -18,9 +19,26 @@
 //   D. Fail-closed — bad usage exits 2 with nothing created; a source whose M1 anchor is missing
 //      exits 1 AND leaves no l2-mutant-* residue (a half-mutated copy that survives would poison a
 //      later run.sh staging with an undefined mutation).
+//   E. run.sh arg surface — `--mutation=bogus` is a parse-time, credit-free exit 2 (no verdict, no
+//      SKIP banner); `--mutation=M1` with no seat keeps the existing SKIP (exit 0) and stages NO
+//      mutant (staging is post-preflight); `-h` documents --mutation.
+//   F. Cleanup registration — cleanup() removes a set MUTANT_DIR and returns 0 when it is empty
+//      (guards the MANDATED if-form; the `[ -n … ] &&` one-liner would return 1); config-restore
+//      behavior is unaffected.
+//   G. Staging-failure path — a stubbed failing mutate.sh surfaces as
+//      "L2 INCOMPLETE: mutation staging failed" on stderr with exit 2, NEVER exit 1 (which would
+//      leak REGRESSED semantics).
+//   H. Prompt-override plumbing (ADR-001, no session) — m1-neutral-prompt.txt meets its content
+//      contract; run.mjs derives the drive prompt from COMPAT_PROMPT_FILE when set (source-level
+//      assertion at the sendAndWait call site, build-integration source-check idiom); run.sh hands
+//      COMPAT_PROMPT_FILE off ONLY for MUTATION=M1 (stub-harness behavioral assertion).
 //
 // Idioms copied from run-sh.test.mjs: guard-before-spawn, spawnSync, mkdtemp + finally cleanup,
 // no writes to reports/ or the repo.
+//
+// SAFETY (E-H): every run.sh spawn is either under NO_COPILOT_PATH (no copilot binary -> preflight
+// SKIPs before any live hand-off) or against a THROWAWAY harness copy of run.sh whose run.mjs is a
+// do-nothing stub — an accidental live session (credit spend) is impossible by construction.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -231,5 +249,227 @@ test('D (fail-closed): bad usage exits 2 with nothing created; missing anchor ex
     assert.deepEqual(created, [], 'a failed mutation must remove its partial copy (no l2-mutant-* residue)');
   } finally {
     fs.rmSync(doctored, { recursive: true, force: true });
+  }
+});
+
+// ============================================================================ Task Group 2 (R3.5-R3.8)
+const RUN_SH = path.join(L2_DIR, 'run.sh');
+const RUN_MJS = path.join(L2_DIR, 'run.mjs');
+const NEUTRAL_PROMPT = path.join(L2_DIR, 'mutations', 'm1-neutral-prompt.txt');
+
+// Spawn the REAL run.sh under NO_COPILOT_PATH (run-sh.test.mjs:36-41 idiom, PATH always forced):
+// with copilot invisible, the live path can never get past the seat preflight.
+function runSh(args) {
+  return spawnSync('bash', [RUN_SH, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: NO_COPILOT_PATH },
+  });
+}
+
+// Build a THROWAWAY run.sh harness dir: a verbatim copy of the real run.sh (so SCRIPT_DIR resolves
+// to the harness) with a caller-provided mutations/mutate.sh STUB, a do-nothing run.mjs STUB that
+// prints its env as one JSON line, minimal sandbox templates, a fake `copilot` binary and a fake
+// operator config — so the LIVE path (preflight -> de-shadow -> mutation staging -> env hand-off)
+// is exercised end-to-end with zero seat and zero credits (check-4's throwaway-helper idiom).
+function makeRunShHarness(mutateStub) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-harness-'));
+  fs.copyFileSync(RUN_SH, path.join(dir, 'run.sh'));
+  fs.mkdirSync(path.join(dir, 'mutations'));
+  fs.writeFileSync(path.join(dir, 'mutations', 'mutate.sh'), mutateStub);
+  fs.writeFileSync(
+    path.join(dir, 'run.mjs'),
+    "process.stdout.write('STUB-RUN-MJS ' + JSON.stringify({" +
+      ' promptFile: process.env.COMPAT_PROMPT_FILE ?? null,' +
+      ' pluginDir: process.env.COMPAT_PLUGIN_DIR ?? null,' +
+      " args: process.argv.slice(2) }) + '\\n');\n"
+  );
+  for (const t of ['sample-cli', 'sample-cli-bug']) {
+    fs.mkdirSync(path.join(dir, 'sandbox', t), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'sandbox', t, 'placeholder.txt'), 'harness sandbox\n');
+  }
+  fs.mkdirSync(path.join(dir, 'bin'));
+  fs.writeFileSync(path.join(dir, 'bin', 'copilot'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  // JSONC config with maister-copilot installed, so the de-shadow path genuinely runs.
+  fs.writeFileSync(
+    path.join(dir, 'config.json'),
+    '// fake operator config (harness)\n{\n  "installedPlugins": [\n' +
+      '    { "name": "maister-copilot", "path": "/opt/plugins/maister-copilot" }\n  ]\n}\n'
+  );
+  fs.mkdirSync(path.join(dir, 'plugin-src'));
+  return dir;
+}
+
+function runHarness(dir, args) {
+  const env = {
+    ...process.env,
+    PATH: [path.join(dir, 'bin'), NO_COPILOT_PATH].join(':'), // fake copilot + node + coreutils ONLY
+    COPILOT_CONFIG: path.join(dir, 'config.json'),
+    COMPAT_PLUGIN_DIR: path.join(dir, 'plugin-src'),
+    COMPAT_NO_SEAT: '0',
+    COMPAT_KEEP_RUNDIR: '0',
+  };
+  delete env.COMPAT_PROMPT_FILE; // must only ever come from run.sh itself
+  delete env.COMPAT_RUNDIR;
+  return spawnSync('bash', [path.join(dir, 'run.sh'), ...args], { encoding: 'utf8', env });
+}
+
+function stubPayload(stdout) {
+  const line = stdout.split('\n').find((l) => l.startsWith('STUB-RUN-MJS '));
+  assert.ok(line, `the stub run.mjs hand-off must have been reached; stdout:\n${stdout}`);
+  return JSON.parse(line.slice('STUB-RUN-MJS '.length));
+}
+
+// -------------------------------------------------------------------------- Test E (R3.5)
+test('E (run.sh arg surface): bogus id -> credit-free exit 2; M1 no-seat SKIP preserved, no mutant staged; -h documents --mutation', () => {
+  assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
+
+  // Unknown mutation id: parse-time reject — exit 2, stderr names the id, and NEITHER a verdict NOR
+  // a SKIP banner is rendered (the reject fires before --check-reference, preflight, any config write).
+  let res = runSh(['--scenario=quick-bugfix', '--mutation=bogus']);
+  assert.equal(res.status, 2, `--mutation=bogus must exit 2 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+  assert.match(res.stderr, /bogus/, 'stderr must name the bad mutation id');
+  assert.doesNotMatch(res.stdout, /REGRESSED|AS-EXPECTED|CURRENT/, 'a bad-id reject must not render a verdict');
+  assert.doesNotMatch(res.stdout, /SKIP/i, 'a bad-id reject must not render the SKIP banner');
+
+  // Valid id, no seat: the existing loud SKIP (exit 0) is preserved, and because staging is
+  // POST-preflight no l2-mutant-* dir may appear.
+  const before = mutantEntries();
+  res = runSh(['--scenario=quick-bugfix', '--mutation=M1']);
+  assert.equal(res.status, 0, `no-seat --mutation=M1 must SKIP with exit 0 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+  assert.match(res.stdout, /\bSKIP\b/, 'the no-seat SKIP banner must still be printed');
+  const created = mutantEntries().filter((n) => !before.includes(n));
+  assert.deepEqual(created, [], 'a no-seat SKIP must stage NO mutant (staging is post-preflight)');
+
+  // -h documents the new arm.
+  res = runSh(['-h']);
+  assert.equal(res.status, 0, `-h must exit 0 (got ${res.status})`);
+  assert.match(res.stdout, /--mutation/, '-h must document --mutation');
+});
+
+// -------------------------------------------------------------------------- Test F (R3.6)
+test('F (cleanup registration): cleanup() removes MUTANT_DIR; empty MUTANT_DIR returns 0; config-restore unaffected', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-cleanup-'));
+  try {
+    const fakeRundir = fs.mkdtempSync(path.join(tmp, 'rundir-'));
+    const fakeMutant = fs.mkdtempSync(path.join(tmp, 'mutant-'));
+    fs.writeFileSync(path.join(fakeMutant, 'SKILL.md'), 'mutant payload\n');
+    // Throwaway config: NEUTRALIZED stays 0, so cleanup()'s restore_config must leave it untouched.
+    const cfg = path.join(tmp, 'config.json');
+    const cfgBytes = '{ "untouched": true }\n';
+    fs.writeFileSync(cfg, cfgBytes);
+
+    // Source run.sh via the source-guard (check-4 pattern) and drive the REAL cleanup() twice:
+    // set -e makes any nonzero cleanup() return abort the helper — exactly the regression the
+    // MANDATED if-form prevents (the `[ -n … ] &&` one-liner returns 1 on an empty MUTANT_DIR).
+    const helper = path.join(tmp, 'cleanup-check.sh');
+    fs.writeFileSync(helper, [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      'source "$RUN_SH"                # source-guard returns; cleanup()/restore_config in scope',
+      'RUNDIR="$FAKE_RUNDIR"           # cleanup() removes $RUNDIR (set -u: must be defined)',
+      'COMPAT_KEEP_RUNDIR=0',
+      'MUTANT_DIR="$FAKE_MUTANT"',
+      'cleanup',
+      'if [ -d "$FAKE_MUTANT" ]; then echo "FAIL: mutant dir survived cleanup" >&2; exit 21; fi',
+      'MUTANT_DIR=""',
+      'cleanup                          # empty MUTANT_DIR MUST return 0 (set -e aborts otherwise)',
+      'echo "OK: mutant removed; cleanup rc=0 with MUTANT_DIR empty"',
+      '',
+    ].join('\n'));
+
+    const res = spawnSync('bash', [helper], {
+      encoding: 'utf8',
+      env: { ...process.env, RUN_SH, FAKE_RUNDIR: fakeRundir, FAKE_MUTANT: fakeMutant, COPILOT_CONFIG: cfg },
+    });
+
+    assert.equal(res.status, 0, `cleanup helper failed (status ${res.status})\nSTDOUT:\n${res.stdout}\nSTDERR:\n${res.stderr}`);
+    assert.match(res.stdout, /cleanup rc=0 with MUTANT_DIR empty/, 'both cleanup() calls must succeed');
+    assert.ok(!fs.existsSync(fakeMutant), 'the staged mutant dir must be removed by cleanup()');
+    assert.equal(fs.readFileSync(cfg, 'utf8'), cfgBytes, 'config-restore behavior must be unaffected (file untouched)');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// -------------------------------------------------------------------------- Test G (R3.7)
+test('G (staging-failure path): failing mutate.sh -> "L2 INCOMPLETE: mutation staging failed", exit 2, never 1', () => {
+  assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
+
+  const dir = makeRunShHarness('#!/bin/sh\necho "stub mutate.sh: simulated builder failure" >&2\nexit 1\n');
+  try {
+    const res = runHarness(dir, ['--scenario=quick-bugfix', '--mutation=M1']);
+    assert.notEqual(res.status, 1, `a failing builder must NEVER exit 1 (= REGRESSED semantics)\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 2, `a failing builder must surface as INCOMPLETE exit 2 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+    assert.match(res.stderr, /L2 INCOMPLETE: mutation staging failed/, 'the mandated INCOMPLETE line must be on stderr');
+    // Staging failed -> the credit-spending hand-off must never be reached.
+    assert.doesNotMatch(res.stdout, /driving one live/i, 'a failed staging must not hand off to a live run');
+    assert.doesNotMatch(res.stdout, /STUB-RUN-MJS/, 'a failed staging must not reach run.mjs');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// -------------------------------------------------------------------------- Test H (R3.8 / ADR-001)
+test('H (prompt-override plumbing): neutral-prompt contract; run.mjs COMPAT_PROMPT_FILE seam; run.sh wires it ONLY for M1', () => {
+  assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
+
+  // (a) m1-neutral-prompt.txt exists + content contract: restates the seeded bug, names the
+  // workflow, and carries ZERO plan/approval pressure (the whole point of ADR-001).
+  assert.ok(fs.existsSync(NEUTRAL_PROMPT), `neutral prompt file must exist: ${NEUTRAL_PROMPT}`);
+  const prompt = fs.readFileSync(NEUTRAL_PROMPT, 'utf8');
+  assert.match(prompt, /cli\.sh/, 'neutral prompt must mention cli.sh');
+  assert.match(prompt, /\bupper\b/, 'neutral prompt must mention the upper command');
+  assert.match(prompt, /HELLO/, 'neutral prompt must state the HELLO expectation');
+  assert.match(prompt, /quick-bugfix workflow/, 'neutral prompt must name the quick-bugfix workflow');
+  assert.doesNotMatch(prompt, /plan/i, 'neutral prompt must not match /plan/i (no plan pressure)');
+  assert.doesNotMatch(prompt, /approv/i, 'neutral prompt must not match /approv/i (no approval pressure)');
+  // "MUST NOT enumerate workflow steps": no numbered lists, no "Step N" phrasing.
+  assert.doesNotMatch(prompt, /^\s*\d+[.)]\s/m, 'neutral prompt must not enumerate steps (numbered list)');
+  assert.doesNotMatch(prompt, /step\s*\d/i, 'neutral prompt must not enumerate steps ("Step N")');
+
+  // (b) run.mjs derives the drive prompt from COMPAT_PROMPT_FILE when set — source-level assertion
+  // on the sendAndWait call site (build-integration source-check idiom; no session, no credits).
+  const src = fs.readFileSync(RUN_MJS, 'utf8');
+  const calls = src.match(/session\.sendAndWait\([^)]*\)/g) ?? [];
+  assert.equal(calls.length, 1, `run.mjs must have exactly ONE session.sendAndWait call site (got ${calls.length})`);
+  assert.doesNotMatch(calls[0], /sc\.prompt/, 'the drive call must not hardwire sc.prompt (must use the derived prompt)');
+  assert.match(src, /readFileSync\(process\.env\.COMPAT_PROMPT_FILE,\s*'utf8'\)/, 'run.mjs must read the prompt from COMPAT_PROMPT_FILE (utf8) when set');
+  assert.match(src, /=\s*sc\.prompt/, 'env unset must default to sc.prompt (byte-identical default path)');
+  assert.match(src, /COMPAT_PROMPT_FILE[^\n]*unreadable/, 'a set-but-unreadable file must be a hard error, never a silent fallback');
+
+  // (c) run.sh includes COMPAT_PROMPT_FILE in the env hand-off ONLY when MUTATION=M1 — behavioral
+  // assertion via the stub harness (sourced-helper idiom): the stub run.mjs reports its env.
+  const dir = makeRunShHarness(
+    '#!/bin/sh\nd="$(mktemp -d "${TMPDIR:-/tmp}/l2-mutant-${1}-XXXXXX")"\necho "$d"\n'
+  );
+  try {
+    // M1: staged + audit line + COMPAT_PROMPT_FILE handed off; mutant repoints the plugin dir.
+    let res = runHarness(dir, ['--scenario=quick-bugfix', '--mutation=M1']);
+    assert.equal(res.status, 0, `harness M1 run must exit 0 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+    assert.match(res.stdout, /NEGATIVE CONTROL: mutation M1 staged at /, 'the loud staging audit line must be on stdout');
+    let payload = stubPayload(res.stdout);
+    assert.ok(
+      payload.promptFile && payload.promptFile.endsWith('/mutations/m1-neutral-prompt.txt'),
+      `M1 hand-off must carry COMPAT_PROMPT_FILE -> mutations/m1-neutral-prompt.txt (got ${payload.promptFile})`
+    );
+    assert.match(path.basename(payload.pluginDir ?? ''), /^l2-mutant-M1-/, 'M1 hand-off must repoint the plugin dir at the staged mutant');
+    assert.ok(!fs.existsSync(payload.pluginDir), 'the staged mutant must be cleaned up on exit (mutants are never kept)');
+
+    // M2: staged, but NO COMPAT_PROMPT_FILE (the neutral prompt is M1-only).
+    res = runHarness(dir, ['--scenario=quick-bugfix', '--mutation=M2']);
+    assert.equal(res.status, 0, `harness M2 run must exit 0 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+    payload = stubPayload(res.stdout);
+    assert.equal(payload.promptFile, null, 'COMPAT_PROMPT_FILE must NOT be handed off for M2');
+    assert.match(path.basename(payload.pluginDir ?? ''), /^l2-mutant-M2-/, 'M2 hand-off must repoint the plugin dir at the staged mutant');
+
+    // Positive (no --mutation) run: no staging, no COMPAT_PROMPT_FILE, plugin dir untouched.
+    res = runHarness(dir, ['--scenario=quick-bugfix']);
+    assert.equal(res.status, 0, `harness positive run must exit 0 (got ${res.status})\n${res.stdout}\n${res.stderr}`);
+    assert.doesNotMatch(res.stdout, /NEGATIVE CONTROL/, 'a positive run must not print the staging audit line');
+    payload = stubPayload(res.stdout);
+    assert.equal(payload.promptFile, null, 'positive runs must NEVER set COMPAT_PROMPT_FILE');
+    assert.equal(payload.pluginDir, path.join(dir, 'plugin-src'), 'a positive run must keep the original plugin dir');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

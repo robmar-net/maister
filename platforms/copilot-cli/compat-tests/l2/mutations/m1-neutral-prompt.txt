@@ -1,0 +1,1 @@
+Use the maister quick-bugfix workflow to fix a bug in this project. The bug: in `cli.sh`, the `upper` command is supposed to print its argument in UPPER case, but it prints it in lower case instead — `sh cli.sh upper hello` prints `hello` when it should print `HELLO`. This is a small, scoped bug fix — do not escalate to the full development workflow.
