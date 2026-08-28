@@ -1,0 +1,23 @@
+{
+  "scenario": "quick-bugfix",
+  "maister_version": "2.2.3",
+  "schema_version": 1,
+  "workflow_model_version": 1,
+  "required": [
+    "invoked_skill(quick-bugfix)",
+    "gate_fired(ask)",
+    "reached_terminal(completion)"
+  ],
+  "optional": [
+    "gate_fired(permission)",
+    "gate_fired(exit_plan_mode)"
+  ],
+  "allowlist": [
+    {
+      "predicate": "hook_effect(destructive_guard=ask)",
+      "classification": "LIMITATION",
+      "reason": "L1 destructive-guard deny->ask platform adaptation"
+    }
+  ],
+  "hash": "f925c9a423561611fa1d3ad346b45623ef1caa086e0fb24b8d28b0a7f7488319"
+}

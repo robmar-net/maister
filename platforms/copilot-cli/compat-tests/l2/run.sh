@@ -147,7 +147,8 @@ fi
 # --check-reference already exec'd above (it needs no sandbox), so this guards only the live path.
 case "$SCENARIO" in
   development|research) SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli" ;;
-  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research)" >&2; exit 2 ;;
+  quick-bugfix)        SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli-bug" ;;  # seeded, test-reproducible defect
+  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research|quick-bugfix)" >&2; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------- seat preflight (mirrors L1 :262-267 no-seat idiom)

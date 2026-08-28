@@ -407,6 +407,15 @@ export const TREE_PROFILES = Object.freeze({
     collapseDirs: [],
     fallbackDirs: ['outputs', 'analysis', 'planning'],
   },
+  'quick-bugfix': {
+    // The quick-bugfix skill writes NO `.maister/tasks/` tree and NO orchestrator state — its trace is
+    // events-only. An empty profile that matches no task dir yields zero created_artifact records, so
+    // the skeleton is events-only and the sanity floor (zero phases WHILE artifacts exist) never trips.
+    taskType: 'quick-bugfix',
+    exactArtifacts: [],
+    collapseDirs: [],
+    fallbackDirs: [],
+  },
 });
 
 const DEFAULT_TREE_PROFILE = TREE_PROFILES.development;
