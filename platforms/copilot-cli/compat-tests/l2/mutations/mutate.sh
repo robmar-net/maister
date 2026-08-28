@@ -12,8 +12,13 @@
 #                             knocking out the EnterPlanMode/ExitPlanMode approval gate while
 #                             leaving every other ask_user site guard intact (surgical, not greedy —
 #                             a greedy strip would break MORE than the gate and over-claim detection).
-#   M2  delegation-renamed  — point one development + one research delegation at nonexistent
-#                             -renamed subagents (knocks out delegated(gap-analyzer)/(research-planner)).
+#   M2  delegation-renamed  — point one development + one research delegation at -renamed subagents
+#                             AND rename the agents' registered frontmatter names to match, so the
+#                             delegated(gap-analyzer)/(research-planner) predicates genuinely go
+#                             missing. Renaming only the SKILL reference is self-healable: the real
+#                             agent stays registered under its frontmatter `name:` and the model can
+#                             still delegate to it (observed live 2026-08: delegated(research-planner)
+#                             stayed PRESENT under the reference-only rename).
 #   M3  artifact-suppressed — remove the spec.md / research-report.md production instructions at
 #                             four anchors ONLY (knocks out created_artifact(...); other mentions of
 #                             the artifacts survive by design — see spec R1 "surviving sites").
@@ -124,7 +129,8 @@ case "$MUT" in
     ;;
 
   M2)
-    # delegation-renamed: point two anchored delegations at nonexistent -renamed subagents.
+    # delegation-renamed: point two anchored delegations at -renamed subagents AND rename the
+    # agents' registered frontmatter names to match (reference-only renames self-heal — see header).
     FD="$DEST/skills/development/SKILL.md"
     FR="$DEST/skills/research/SKILL.md"
     [ -f "$FD" ] && [ -f "$FR" ] || fail "missing development/research SKILL.md"
@@ -145,6 +151,30 @@ case "$MUT" in
       || fail "development SKILL.md changed beyond the single anchored line"
     [ "$(diff "$SRC/skills/research/SKILL.md" "$FR" | grep -c '^[<>]' || true)" = "2" ] \
       || fail "research SKILL.md changed beyond the single anchored line"
+
+    # ALSO rename the agents' registered frontmatter names: the agent is registered by the `name:`
+    # line in its frontmatter, NOT by its SKILL-side reference, so the delegation must resolve to
+    # the -renamed agent or the delegated(<real-name>) predicate never actually goes missing.
+    GA="$DEST/agents/gap-analyzer.md"
+    RA="$DEST/agents/research-planner.md"
+    [ -f "$GA" ] && [ -f "$RA" ] || fail "missing agents/gap-analyzer.md or agents/research-planner.md"
+    NG='name: gap-analyzer'
+    NR='name: research-planner'
+    require_once "$GA" "$NG"
+    require_once "$RA" "$NR"
+    edit_line "$GA" "$(line_of "$GA" "$NG")" 'name: gap-analyzer' 'name: gap-analyzer-renamed'
+    edit_line "$RA" "$(line_of "$RA" "$NR")" 'name: research-planner' 'name: research-planner-renamed'
+
+    # Verification: renamed frontmatter line present, bare original gone, exactly one line changed
+    # per agent file (diff against the source), consistently with the SKILL-side checks above.
+    require_once "$GA" 'name: gap-analyzer-renamed'
+    require_once "$RA" 'name: research-planner-renamed'
+    [ "$(grep -cxF -e "$NG" "$GA" || true)" = "0" ] || fail "bare 'name: gap-analyzer' line still present"
+    [ "$(grep -cxF -e "$NR" "$RA" || true)" = "0" ] || fail "bare 'name: research-planner' line still present"
+    [ "$(diff "$SRC/agents/gap-analyzer.md" "$GA" | grep -c '^[<>]' || true)" = "2" ] \
+      || fail "agents/gap-analyzer.md changed beyond the single frontmatter name line"
+    [ "$(diff "$SRC/agents/research-planner.md" "$RA" | grep -c '^[<>]' || true)" = "2" ] \
+      || fail "agents/research-planner.md changed beyond the single frontmatter name line"
     ;;
 
   M3)

@@ -166,6 +166,22 @@ test('B (happy path): M1/M2/M3 against the real plugin — one-line path, mutati
         assert.ok(resCopy.includes(resMutated), 'M2: research anchored line must carry -renamed target');
         assert.ok(!resCopy.includes(resAnchor + '\n'), 'M2: research original anchored line must be gone from the copy');
         assert.ok(resSrc.includes(resAnchor) && !resSrc.includes('-renamed'), 'M2: research source must be intact');
+        // Agent-registration knockout: renaming only the SKILL reference self-heals (the agent
+        // stays registered under its frontmatter `name:`, observed live 2026-08), so M2 must ALSO
+        // rename the registered names in the COPY — and leave the source agent files untouched
+        // (Test C covers the source globally; this pins the agent-name lines explicitly).
+        const gaCopy = read(mutant, 'agents/gap-analyzer.md');
+        const gaSrc = read(SOURCE_PLUGIN, 'agents/gap-analyzer.md');
+        const rpCopy = read(mutant, 'agents/research-planner.md');
+        const rpSrc = read(SOURCE_PLUGIN, 'agents/research-planner.md');
+        assert.match(gaCopy, /^name: gap-analyzer-renamed$/m, 'M2: copy gap-analyzer frontmatter name must be -renamed');
+        assert.doesNotMatch(gaCopy, /^name: gap-analyzer$/m, 'M2: no bare gap-analyzer frontmatter name may remain in the copy');
+        assert.match(rpCopy, /^name: research-planner-renamed$/m, 'M2: copy research-planner frontmatter name must be -renamed');
+        assert.doesNotMatch(rpCopy, /^name: research-planner$/m, 'M2: no bare research-planner frontmatter name may remain in the copy');
+        assert.match(gaSrc, /^name: gap-analyzer$/m, 'M2: SOURCE gap-analyzer frontmatter name must be unchanged');
+        assert.ok(!gaSrc.includes('-renamed'), 'M2: SOURCE gap-analyzer.md must carry no -renamed');
+        assert.match(rpSrc, /^name: research-planner$/m, 'M2: SOURCE research-planner frontmatter name must be unchanged');
+        assert.ok(!rpSrc.includes('-renamed'), 'M2: SOURCE research-planner.md must carry no -renamed');
       } else {
         const devCopy = read(mutant, 'skills/development/SKILL.md');
         const devSrc = read(SOURCE_PLUGIN, 'skills/development/SKILL.md');
