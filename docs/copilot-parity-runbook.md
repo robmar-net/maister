@@ -42,20 +42,48 @@ A green L2 cell only proves the run didn't go red — the negative control prove
 It stages a deliberately broken TEMP COPY of the generated plugin (the real `plugins/maister-copilot`
 is never touched) and expects a REGRESSED verdict naming the knocked-out predicate.
 
-### One command (live; SPENDS AI CREDITS — ~1 quick-bugfix run)
+### One command (live; SPENDS AI CREDITS — ~1 research run, ~15 AIU)
+```bash
+COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=research --mutation=M2
+```
+**Expected: REGRESSED (exit 1)** with the classified diff naming exactly the intended knockout:
+`delegated(research-planner)` | missing | candidate-regression, plus `delegated(research-planner-renamed)`
+| extra. This is the **live-validated detection proof** (Stage-1, issue #48): M2 renames the agent
+FILE (`agents/research-planner.md`) along with its frontmatter `name:` and the SKILL delegation
+reference — the file rename is what changes the registered agent identity (see Findings below).
+
+The M1 command still runs, but M1 is a **documented NON-detecting target** on quick-bugfix — do not
+use it to prove detection power (see Findings, finding 1):
 ```bash
 COMPAT_L2_YES=1 bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=quick-bugfix --mutation=M1
 ```
 `--mutation=<id>` calls `l2/mutations/mutate.sh`, which copies the plugin into an id-named temp dir
-(`l2-mutant-M1-*` — the id shows up on the report's "Plugin under test" line as provenance), applies
+(`l2-mutant-<id>-*` — the id shows up on the report's "Plugin under test" line as provenance), applies
 one regex-anchored fail-closed edit, and repoints the plugin dir. The mutant is removed on exit;
 `COMPAT_KEEP_RUNDIR` does not apply to it.
 
-| Mutation | Target | Knocked-out predicate | Live-validated? |
+| Mutation | Target | Knocked-out predicate | Live status (Stage-1) |
 |---|---|---|---|
-| **M1** — gate-removed | `quick-bugfix` `SKILL.md` (plan-approval gate stripped) | `gate_fired(ask)` | **Yes** — the Stage-1 authorized run (this section's procedure) |
-| **M2** — delegation-renamed | `development` + `research` `SKILL.md` (delegation targets renamed to nonexistent agents) | `delegated(gap-analyzer)` / `delegated(research-planner)` | Machinery-only; live run needs its own spend gate |
-| **M3** — artifact-suppressed | `development` + `research` `SKILL.md` (artifact instructions removed at anchored sites) | `created_artifact(spec.md)` / `created_artifact(research-report.md)` | Machinery-only; live run needs its own spend gate |
+| **M1** — gate-removed | `quick-bugfix` `SKILL.md` (plan-approval gate stripped) | `gate_fired(ask)` | **Live-run AS-EXPECTED — NOT a valid detector** on quick-bugfix: `gate_fired(ask)` is emitted by multiple `ask_user` sites (finding 1); stripping only the plan gate leaves siblings that mask it. Documented non-detecting target. |
+| **M2** — delegation-renamed | `research`: agent FILE `agents/research-planner.md` + frontmatter `name:` + SKILL delegation reference all renamed `-renamed` (`development`: same pattern for `gap-analyzer`) | `delegated(research-planner)` / `delegated(gap-analyzer)` | **Live-validated REGRESSED** (research): missing `delegated(research-planner)` + extra `delegated(research-planner-renamed)` — exactly the intended knockout. **This is the detection proof.** |
+| **M3** — artifact-suppressed | `development` + `research` `SKILL.md` (artifact instructions removed at anchored sites) | `created_artifact(spec.md)` / `created_artifact(research-report.md)` | Machinery-only; no live run (future spend gate) |
+
+### Findings (live) — Stage-1 platform mechanics
+
+Three discoveries from the 4-run Stage-1 exploration (full journey: the task's
+`verification/negative-control-finding.md`), each binding on future mutation design:
+
+1. **`gate_fired(ask)` is non-specific** — the extractor maps it from ANY `user_input.requested`
+   event, and quick-bugfix has multiple independent `ask_user` sites besides the plan-approval gate.
+   Stripping only the gate leaves siblings that still fire an ask → not a usable detection target
+   on quick-bugfix (would need predicate sub-typing first).
+2. **Renaming a SKILL delegation reference self-heals** — with the agent still registered, the model
+   cannot resolve the renamed reference and routes to the real agent anyway; `delegated(<agent>)`
+   still fires.
+3. **Copilot registers plugin agents by FILENAME, not frontmatter `name:`** — renaming the
+   frontmatter alone leaves the agent callable under its file stem. A `delegated()` knockout must
+   rename the agent FILE (`agents/<agent>.md`). This is why M2 renames the file — and what finally
+   produced the clean predicate-precise REGRESSED.
 
 ### Why M1 runs under a NEUTRAL prompt
 
@@ -70,12 +98,14 @@ default path is byte-identical.
 
 ### Acceptance (fail-closed)
 
-**PASS requires ALL of**:
+**PASS requires ALL of** (for the validated M2/research control):
 - exit code 1 and stdout verdict `REGRESSED`;
-- the report's classified-diff contains the row `gate_fired(ask)` | missing | candidate-regression;
-- the report's "Plugin under test" line shows an `l2-mutant-M1-*` path (mutation provenance in the artifact).
+- the report's classified-diff contains the row `delegated(research-planner)` | missing | candidate-regression (an extra `delegated(research-planner-renamed)` row is expected alongside);
+- the report's "Plugin under test" line shows an `l2-mutant-M2-*` path (mutation provenance in the artifact).
 
-**Non-pass outcomes — the ADR-001 fallback ladder governs, verbatim**:
+**Non-pass outcomes — the ADR-001 fallback ladder governs, verbatim** (original M1 plan, preserved
+as run history — Stage-1 played out exactly per rung 2: M1 came back AS-EXPECTED, the finding was
+documented, and M2 on research became the validated control):
 
 > 1. **Run 1 (authorized):** M1 + neutral prompt → expect REGRESSED/`gate_fired(ask)`.
 > 2. If **AS-EXPECTED** (model plans anyway out of trained habit, no prompt pressure): that is a
@@ -92,8 +122,9 @@ Copilot CLI version alongside the positive run.
 
 ### Cost
 
-Stage-1 authorized run (quick-bugfix + M1): `TBD — filled after the Stage-1 authorized run`
-(AIU / weighted requests). Measure future negative-control runs with the query in
+The validated M2/research (agent-file rename) run cost **14.79 AIU / 60 weighted requests**. The
+full Stage-1 negative-control exploration cost **~39.97 AIU / 180 requests across 4 runs**
+(M1 1.44, M2 v1 13.91, M2 v2 9.83, M2 v3 14.79). Measure future negative-control runs with the query in
 [Cost — where to read it](#cost--where-to-read-it) — but record the ISO start AND end timestamps and
 bound the query at BOTH ends (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`); the base
 query bounds only the start and would sweep in later sessions.
