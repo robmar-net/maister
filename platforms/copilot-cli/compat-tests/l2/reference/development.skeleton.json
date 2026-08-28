@@ -2,7 +2,7 @@
   "scenario": "development",
   "maister_version": "2.2.2",
   "schema_version": 1,
-  "workflow_model_version": 1,
+  "workflow_model_version": 2,
   "required": [
     "phase_completed(1)",
     "phase_completed(2)",
@@ -27,6 +27,7 @@
     "task_characteristic(ui_heavy)=false",
     "task_characteristic(involves_data_operations)=false",
     "gate_fired(ask)",
+    "outcome(tests-pass)=pass",
     "task_status(completed)",
     "reached_terminal(completion)"
   ],
@@ -80,5 +81,5 @@
       "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-production-readiness."
     }
   ],
-  "hash": "a48a64e3981717e5d0f93c243876cbf4f2fcc14f54f1a05fbc40b2d2a0acbcf2"
+  "hash": "1180da9a65f7c5e30f3d4acc143f7cbc9c3391b4c8b3980f34ea82c703ab24a6"
 }

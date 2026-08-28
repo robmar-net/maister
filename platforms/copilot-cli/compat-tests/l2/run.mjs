@@ -718,7 +718,17 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
     // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/<taskType>/*); the scenario's
     // taskType selects both the state subtree and the extractor's tree profile.
     const stateYaml = findStateYaml(rundir, sc.taskType);
-    const ex = extract({ events, taskDirRoot: rundir, stateYaml, taskType: sc.taskType });
+    // Functional oracle (issue #48): run the scenario's `outcome` spec in the LIVE rundir (session shut
+    // down, pre-`finally` rmSync). `sandboxTemplateDir` lets extractFromOutcome RESTAGE the trusted oracle
+    // script over the model-touched rundir copy (MEDIUM-5) before running it.
+    const ex = extract({
+      events,
+      taskDirRoot: rundir,
+      stateYaml,
+      taskType: sc.taskType,
+      outcome: sc.outcome,
+      sandboxTemplateDir: path.join(L2_DIR, 'sandbox', sc.sandboxTemplate),
+    });
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.

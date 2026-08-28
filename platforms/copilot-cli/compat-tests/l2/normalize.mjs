@@ -44,6 +44,7 @@ const GRAMMAR_HEADS = new Set([
   'invoked_skill',
   'gate_fired',
   'reached_terminal',
+  'outcome',
 ]);
 
 function stripPluginPrefix(name) {
@@ -107,6 +108,9 @@ function buildToken(resolved) {
       return `task_status(${name})`;
     case 'task_characteristic':
       return `task_characteristic(${name})=${value}`;
+    case 'outcome':
+      // Functional-oracle head (issue #48). Mirrors task_characteristic: free-form id, value pass|fail.
+      return `outcome(${name})=${value}`;
     case 'created_artifact':
       return `created_artifact(${collapseArtifactPath(name)})`;
     case 'reached_terminal':

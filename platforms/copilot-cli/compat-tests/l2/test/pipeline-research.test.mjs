@@ -55,6 +55,12 @@ test('pipeline (research): extract(taskType:research) -> normalize -> compare yi
     'research state should warn ONLY about the (legitimately) absent task_characteristics block',
   );
 
+  // FUNCTIONAL ORACLE (issue #48, Stage 2): inject the passing research outcome so the normalized
+  // skeleton carries `outcome(report-produced)=pass` — the required functional predicate the
+  // committed research reference now models. Real runs source this from the oracle; the fixture
+  // pipeline injects it directly.
+  ex.records.push({ kind: 'outcome', name: 'report-produced', value: 'pass', source: 'outcome', evidence: 'fixture' });
+
   // --- normalize (raw records -> sorted, de-duplicated Set<string>) ----------------------
   const observed = normalize(ex.records);
   const observedSorted = [...observed];

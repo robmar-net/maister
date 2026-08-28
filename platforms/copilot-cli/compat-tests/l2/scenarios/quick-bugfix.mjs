@@ -63,6 +63,11 @@ export const scenario = {
   // no subagent fan-out). sendAndWait THROWS on timeout (does not abort in-flight work), so this is
   // generous for the shape while far under development's budget. The seat-gated live run is supervised.
   timeoutMs: 15 * 60 * 1000, // 15 minutes
+  // Functional oracle (Stage 2). Command-type outcome: restage the trusted `run-tests.sh`
+  // from the committed sample-cli-bug template over the rundir copy (MEDIUM-5), then run
+  // `sh run-tests.sh` in the rundir root. Pass iff exit 0 — which requires the seeded
+  // `cmd_upper` `tr` defect to have been fixed (`upper sample` -> `SAMPLE`).
+  outcome: [{ id: 'bug-fixed', command: 'sh run-tests.sh', restage: ['run-tests.sh'] }],
   fallbackPrompt,
 };
 

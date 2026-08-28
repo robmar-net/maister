@@ -2,7 +2,7 @@
   "scenario": "research",
   "maister_version": "2.2.2",
   "schema_version": 1,
-  "workflow_model_version": 1,
+  "workflow_model_version": 2,
   "required": [
     "phase_completed(1)",
     "delegated(research-planner)",
@@ -11,6 +11,7 @@
     "created_artifact(analysis/synthesis.md)",
     "created_artifact(outputs/research-report.md)",
     "gate_fired(ask)",
+    "outcome(report-produced)=pass",
     "task_status(completed)",
     "reached_terminal(completion)"
   ],
@@ -34,5 +35,5 @@
     "gate_fired(exit_plan_mode)"
   ],
   "allowlist": [],
-  "hash": "12c51927084065a5c19dadd29c82a65438dfb029d7ceba0e484319dbed54c7f0"
+  "hash": "e823c815c895ee8c8a8fb16d5d8146c323dd03821ec557c8a8fb689d7c2ff497"
 }

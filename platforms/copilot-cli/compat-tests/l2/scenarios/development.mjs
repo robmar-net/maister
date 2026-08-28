@@ -93,6 +93,12 @@ export const scenario = {
   // in-flight work), so an under-sized value would false-INCOMPLETE a slow-but-
   // progressing run. The single seat-gated Group 10 run is operator-supervised.
   timeoutMs: 45 * 60 * 1000, // 45 minutes
+  // Functional oracle (Stage 2). Command-type outcome: after the drive, restage the
+  // trusted `run-tests.sh` from the committed sample-cli template over the model-touched
+  // rundir copy (MEDIUM-5, tamper-resistance), then run `sh run-tests.sh` in the rundir
+  // root. Pass iff exit 0 — which now requires the `--greet` deliverable (HIGH-3), so a
+  // pristine sandbox fails and only a completed dev workflow passes.
+  outcome: [{ id: 'tests-pass', command: 'sh run-tests.sh', restage: ['run-tests.sh'] }],
   // Pre-registered retry prompt (MEDIUM-3); also exported as `fallbackPrompt`.
   fallbackPrompt,
 };

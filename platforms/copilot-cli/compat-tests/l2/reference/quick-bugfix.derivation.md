@@ -9,20 +9,21 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `quick-bugfix` |
 | Source (read-only citation source) | `plugins/maister/skills/quick-bugfix/SKILL.md` |
 | maister_version | `2.2.3` |
-| workflow_model_version | `1` |
-| Sibling JSON hash | `9855340d04a2efb2bdef6541c736641aa16a9e35b6a1031184e2e95f2f24ff36` |
+| workflow_model_version | `2` |
+| Sibling JSON hash | `6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above (read-only). Rows follow on-disk array order.
-Partition sizes: 3 required + 2 optional + 0 allowlist = 5 rows. The skeleton is deliberately
+Partition sizes: 4 required + 2 optional + 0 allowlist = 6 rows. The skeleton is deliberately
 minimal because the model is: ":9 — 'No orchestrator state, no task directory, no subagents.'"
 
-## Required (3)
+## Required (4)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
 | `invoked_skill(quick-bugfix)` | required | :2, :9 | Skill name `maister:quick-bugfix`; the workflow runs entirely inside this one skill — "No orchestrator state, no task directory, no subagents" (:9), so no phase/delegation/artifact predicates exist to require |
 | `gate_fired(ask)` | required | :91, :122-124 | DIVERGENCE-TAGGED — see honesty note 1. The model's mandatory plan gate is EnterPlanMode (:91) with a blocking ExitPlanMode gate (:122-124); the required `ask` maps that gate to Copilot's plan-approval surface |
+| `outcome(bug-fixed)=pass` | required | :171-173 | FUNCTIONAL ORACLE (issue #48, Stage 2). Step 7 verify is a terminal deliverable check — the fix must actually resolve the defect ("Provide completion summary" only after the bug is confirmed fixed); a correct run therefore produces a passing `bug-fixed` functional outcome |
 | `reached_terminal(completion)` | required | :171-173 | Step 7: "Summary" — "Provide completion summary" is the workflow's terminal step |
 
 ## Optional (2)

@@ -9,15 +9,15 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `development` |
 | Source (read-only citation source) | `plugins/maister/skills/development/SKILL.md` |
 | maister_version | `2.2.2` |
-| workflow_model_version | `1` |
-| Sibling JSON hash | `a48a64e3981717e5d0f93c243876cbf4f2fcc14f54f1a05fbc40b2d2a0acbcf2` |
+| workflow_model_version | `2` |
+| Sibling JSON hash | `1180da9a65f7c5e30f3d4acc143f7cbc9c3391b4c8b3980f34ea82c703ab24a6` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
-`plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 25
-required + 21 optional + 5 allowlist = 51 rows.
+`plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 26
+required + 21 optional + 5 allowlist = 52 rows.
 
-## Required (25)
+## Required (26)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -44,6 +44,7 @@ required + 21 optional + 5 allowlist = 51 rows.
 | `task_characteristic(ui_heavy)=false` | required | :149, :221-222 | Scenario-fixed by the pinned task input; P4 skip-if (:221-222) applies |
 | `task_characteristic(involves_data_operations)=false` | required | :149 | One of the 5 gap-analyzer characteristics (:149, default :583); scenario-fixed by the pinned task input (no data operations) |
 | `gate_fired(ask)` | required | :176-180 | P2 exit gate always invokes AskUserQuestion — "There is no path through Phase 2 that bypasses `AskUserQuestion`" (:180) |
+| `outcome(tests-pass)=pass` | required | :441, :359 | FUNCTIONAL ORACLE (issue #48, Stage 2). P11 verification (:441) produces `verification/implementation-verification.md` — a correct run's implemented code (P8, :359) passes its test suite, so the functional `tests-pass` outcome is a passing deliverable check, not merely a modeled delegation |
 | `task_status(completed)` | required | :545 | P14 State: "Set `task.status: completed`" |
 | `reached_terminal(completion)` | required | :553 | P14: "→ End of workflow" |
 

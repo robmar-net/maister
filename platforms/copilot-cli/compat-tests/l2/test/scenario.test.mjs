@@ -5,8 +5,10 @@
 //      { id, sandboxTemplate, prompt, expectedShape: 'development', timeoutMs }
 //      with a generous timeout, a routing-deterministic prompt, and a registered
 //      fallback prompt (MEDIUM-3).
-//   2. the sandbox's self-contained shell runner executes green (exit 0), proving
-//      the live workflow will have a runnable test to exercise.
+//   2. the sandbox's self-contained shell runner is a REAL oracle: on the pristine
+//      sample-cli (which lacks the `--greet` deliverable) it exits NON-ZERO because
+//      the greet check fails, while the three pre-existing checks (hello/upper/version)
+//      still pass — proving the runner has genuine detection power (HIGH-3).
 //
 // Zero-dependency: `node:` builtins only. Run with:
 //   node --test l2/test/scenario.test.mjs
@@ -80,7 +82,7 @@ test('scenario module exports a well-formed development scenario (MEDIUM-3)', ()
   );
 });
 
-test('sandbox self-contained runner executes green (exit 0)', () => {
+test('pristine sandbox missing deliverable -> runner is a real oracle (exits non-zero)', () => {
   const sandboxDir = path.join(L2_ROOT, 'sandbox', scenario.sandboxTemplate);
 
   // Deterministic-init requirement: a minimal INDEX.md ships with the sandbox so
@@ -95,9 +97,38 @@ test('sandbox self-contained runner executes green (exit 0)', () => {
   const result = spawnSync('sh', ['run-tests.sh'], { cwd: sandboxDir, encoding: 'utf8' });
 
   assert.equal(result.error, undefined, `runner should spawn without error: ${result.error}`);
-  assert.equal(
+
+  // DETECTION POWER (HIGH-3): pristine sample-cli has no `--greet` subcommand, so the
+  // greet check FAILS and the runner exits NON-ZERO. `run-tests.sh` exit 0 is therefore
+  // a real functional oracle — pristine sandbox fails, dev-workflow-completed passes.
+  assert.notEqual(
     result.status,
     0,
-    `sandbox runner must exit 0.\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+    `pristine sandbox runner must exit NON-ZERO (missing --greet deliverable).\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+  );
+
+  // The three pre-existing checks still pass on the pristine sandbox — the ONLY
+  // failing check is the newly added greet deliverable test.
+  assert.match(
+    result.stdout,
+    /ok\s+- hello prints the fixed greeting/,
+    `hello check must still pass.\n--- stdout ---\n${result.stdout}`,
+  );
+  assert.match(
+    result.stdout,
+    /ok\s+- upper upper-cases its argument/,
+    `upper check must still pass.\n--- stdout ---\n${result.stdout}`,
+  );
+  assert.match(
+    result.stdout,
+    /ok\s+- version reports the CLI version/,
+    `version check must still pass.\n--- stdout ---\n${result.stdout}`,
+  );
+
+  // The greet deliverable check is the failing one (the detection-power proof).
+  assert.match(
+    result.stdout,
+    /FAIL - greet names the person/,
+    `greet deliverable check must be the failing check.\n--- stdout ---\n${result.stdout}`,
   );
 });

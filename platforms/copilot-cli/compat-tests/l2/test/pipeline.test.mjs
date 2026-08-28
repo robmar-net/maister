@@ -52,6 +52,12 @@ test('pipeline: extract -> normalize -> compare over committed fixtures yields t
     'expected records from all three sources (state u events u tree)',
   );
 
+  // FUNCTIONAL ORACLE (issue #48, Stage 2): inject the passing development outcome so the
+  // normalized skeleton carries `outcome(tests-pass)=pass` — the required functional predicate the
+  // committed reference now models. Real runs source this from the sandbox oracle; the fixture
+  // pipeline injects it directly.
+  ex.records.push({ kind: 'outcome', name: 'tests-pass', value: 'pass', source: 'outcome', evidence: 'fixture' });
+
   // --- normalize (raw records -> sorted, de-duplicated Set<string>) ----------------------
   const observed = normalize(ex.records);
   assert.ok(observed instanceof Set, 'normalize must return a Set');

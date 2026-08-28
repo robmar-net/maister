@@ -2,10 +2,11 @@
   "scenario": "quick-bugfix",
   "maister_version": "2.2.3",
   "schema_version": 1,
-  "workflow_model_version": 1,
+  "workflow_model_version": 2,
   "required": [
     "invoked_skill(quick-bugfix)",
     "gate_fired(ask)",
+    "outcome(bug-fixed)=pass",
     "reached_terminal(completion)"
   ],
   "optional": [
@@ -13,5 +14,5 @@
     "gate_fired(exit_plan_mode)"
   ],
   "allowlist": [],
-  "hash": "9855340d04a2efb2bdef6541c736641aa16a9e35b6a1031184e2e95f2f24ff36"
+  "hash": "6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215"
 }
