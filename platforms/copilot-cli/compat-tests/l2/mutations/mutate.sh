@@ -12,13 +12,16 @@
 #                             knocking out the EnterPlanMode/ExitPlanMode approval gate while
 #                             leaving every other ask_user site guard intact (surgical, not greedy —
 #                             a greedy strip would break MORE than the gate and over-claim detection).
-#   M2  delegation-renamed  — point one development + one research delegation at -renamed subagents
-#                             AND rename the agents' registered frontmatter names to match, so the
-#                             delegated(gap-analyzer)/(research-planner) predicates genuinely go
-#                             missing. Renaming only the SKILL reference is self-healable: the real
-#                             agent stays registered under its frontmatter `name:` and the model can
-#                             still delegate to it (observed live 2026-08: delegated(research-planner)
-#                             stayed PRESENT under the reference-only rename).
+#   M2  delegation-renamed  — rename one development + one research delegation END TO END: the
+#                             SKILL reference, the agent frontmatter `name:`, AND the agent FILE
+#                             itself all become -renamed, so the delegated(gap-analyzer)/
+#                             (research-planner) predicates genuinely go missing. Anything less
+#                             self-heals: Copilot registers plugin agents by their FILENAME stem,
+#                             not the frontmatter `name:` (observed live 2026-08: with SKILL ref +
+#                             frontmatter renamed but the file kept, subagent.started still carried
+#                             agentName=research-planner and delegated(research-planner) stayed
+#                             PRESENT). Renaming the FILE makes the delegation genuinely resolve to
+#                             <agent>-renamed and delegated(<agent>) a candidate-regression.
 #   M3  artifact-suppressed — remove the spec.md / research-report.md production instructions at
 #                             four anchors ONLY (knocks out created_artifact(...); other mentions of
 #                             the artifacts survive by design — see spec R1 "surviving sites").
@@ -130,7 +133,8 @@ case "$MUT" in
 
   M2)
     # delegation-renamed: point two anchored delegations at -renamed subagents AND rename the
-    # agents' registered frontmatter names to match (reference-only renames self-heal — see header).
+    # agents' frontmatter names AND the agent FILES to match (finding 3: Copilot registers agents
+    # by filename, so any partial rename self-heals — see header).
     FD="$DEST/skills/development/SKILL.md"
     FR="$DEST/skills/research/SKILL.md"
     [ -f "$FD" ] && [ -f "$FR" ] || fail "missing development/research SKILL.md"
@@ -152,9 +156,12 @@ case "$MUT" in
     [ "$(diff "$SRC/skills/research/SKILL.md" "$FR" | grep -c '^[<>]' || true)" = "2" ] \
       || fail "research SKILL.md changed beyond the single anchored line"
 
-    # ALSO rename the agents' registered frontmatter names: the agent is registered by the `name:`
-    # line in its frontmatter, NOT by its SKILL-side reference, so the delegation must resolve to
-    # the -renamed agent or the delegated(<real-name>) predicate never actually goes missing.
+    # ALSO rename the agents' frontmatter names (edited here, at the ORIGINAL paths — the file
+    # move below comes after, so these anchors stay consistent). The frontmatter rename alone is
+    # NOT sufficient (finding 3, live-verified 2026-08): Copilot registers plugin agents by their
+    # FILENAME stem, not the frontmatter `name:`, so with only ref + frontmatter renamed the agent
+    # stayed callable as research-planner. It is kept for full consistency of the end state:
+    # file + frontmatter + SKILL ref all -renamed.
     GA="$DEST/agents/gap-analyzer.md"
     RA="$DEST/agents/research-planner.md"
     [ -f "$GA" ] && [ -f "$RA" ] || fail "missing agents/gap-analyzer.md or agents/research-planner.md"
@@ -175,6 +182,26 @@ case "$MUT" in
       || fail "agents/gap-analyzer.md changed beyond the single frontmatter name line"
     [ "$(diff "$SRC/agents/research-planner.md" "$RA" | grep -c '^[<>]' || true)" = "2" ] \
       || fail "agents/research-planner.md changed beyond the single frontmatter name line"
+
+    # ALSO rename the agent FILES — the decisive knockout. Finding 3 (live-verified 2026-08):
+    # Copilot registers agents by filename; M2 renames the agent FILE (+ frontmatter + SKILL ref)
+    # so the delegation genuinely resolves to <agent>-renamed and delegated(<agent>) becomes a
+    # candidate-regression. Fail-closed: source path must exist, destination must not, and the
+    # move must land (old absent, new present, -renamed frontmatter carried along).
+    GA2="$DEST/agents/gap-analyzer-renamed.md"
+    RA2="$DEST/agents/research-planner-renamed.md"
+    [ -f "$GA" ] || fail "agents/gap-analyzer.md missing before file rename"
+    [ -f "$RA" ] || fail "agents/research-planner.md missing before file rename"
+    [ ! -e "$GA2" ] || fail "agents/gap-analyzer-renamed.md already exists in the copy"
+    [ ! -e "$RA2" ] || fail "agents/research-planner-renamed.md already exists in the copy"
+    mv "$GA" "$GA2" || fail "mv agents/gap-analyzer.md -> gap-analyzer-renamed.md failed"
+    mv "$RA" "$RA2" || fail "mv agents/research-planner.md -> research-planner-renamed.md failed"
+    { [ ! -e "$GA" ] && [ -f "$GA2" ]; } \
+      || fail "gap-analyzer file rename did not land (old path present or new path missing)"
+    { [ ! -e "$RA" ] && [ -f "$RA2" ]; } \
+      || fail "research-planner file rename did not land (old path present or new path missing)"
+    require_once "$GA2" 'name: gap-analyzer-renamed'
+    require_once "$RA2" 'name: research-planner-renamed'
     ;;
 
   M3)

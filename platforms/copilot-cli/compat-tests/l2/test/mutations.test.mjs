@@ -166,13 +166,19 @@ test('B (happy path): M1/M2/M3 against the real plugin — one-line path, mutati
         assert.ok(resCopy.includes(resMutated), 'M2: research anchored line must carry -renamed target');
         assert.ok(!resCopy.includes(resAnchor + '\n'), 'M2: research original anchored line must be gone from the copy');
         assert.ok(resSrc.includes(resAnchor) && !resSrc.includes('-renamed'), 'M2: research source must be intact');
-        // Agent-registration knockout: renaming only the SKILL reference self-heals (the agent
-        // stays registered under its frontmatter `name:`, observed live 2026-08), so M2 must ALSO
-        // rename the registered names in the COPY — and leave the source agent files untouched
-        // (Test C covers the source globally; this pins the agent-name lines explicitly).
-        const gaCopy = read(mutant, 'agents/gap-analyzer.md');
+        // Agent-registration knockout (finding 3, live-verified 2026-08): Copilot registers plugin
+        // agents by their FILENAME stem, not the frontmatter `name:` — renaming SKILL ref +
+        // frontmatter alone self-healed (subagent.started still carried agentName=research-planner).
+        // M2 must therefore rename the agent FILE in the COPY too (file + frontmatter + SKILL ref
+        // all -renamed) and leave the source agent files untouched (Test C covers the source
+        // globally; this pins the file paths and name lines explicitly).
+        assert.ok(!fs.existsSync(path.join(mutant, 'agents/gap-analyzer.md')), 'M2: copy must NOT have agents/gap-analyzer.md (file renamed)');
+        assert.ok(fs.existsSync(path.join(mutant, 'agents/gap-analyzer-renamed.md')), 'M2: copy must have agents/gap-analyzer-renamed.md');
+        assert.ok(!fs.existsSync(path.join(mutant, 'agents/research-planner.md')), 'M2: copy must NOT have agents/research-planner.md (file renamed)');
+        assert.ok(fs.existsSync(path.join(mutant, 'agents/research-planner-renamed.md')), 'M2: copy must have agents/research-planner-renamed.md');
+        const gaCopy = read(mutant, 'agents/gap-analyzer-renamed.md');
         const gaSrc = read(SOURCE_PLUGIN, 'agents/gap-analyzer.md');
-        const rpCopy = read(mutant, 'agents/research-planner.md');
+        const rpCopy = read(mutant, 'agents/research-planner-renamed.md');
         const rpSrc = read(SOURCE_PLUGIN, 'agents/research-planner.md');
         assert.match(gaCopy, /^name: gap-analyzer-renamed$/m, 'M2: copy gap-analyzer frontmatter name must be -renamed');
         assert.doesNotMatch(gaCopy, /^name: gap-analyzer$/m, 'M2: no bare gap-analyzer frontmatter name may remain in the copy');
@@ -182,6 +188,8 @@ test('B (happy path): M1/M2/M3 against the real plugin — one-line path, mutati
         assert.ok(!gaSrc.includes('-renamed'), 'M2: SOURCE gap-analyzer.md must carry no -renamed');
         assert.match(rpSrc, /^name: research-planner$/m, 'M2: SOURCE research-planner frontmatter name must be unchanged');
         assert.ok(!rpSrc.includes('-renamed'), 'M2: SOURCE research-planner.md must carry no -renamed');
+        assert.ok(!fs.existsSync(path.join(SOURCE_PLUGIN, 'agents/gap-analyzer-renamed.md')), 'M2: SOURCE must have no agents/gap-analyzer-renamed.md');
+        assert.ok(!fs.existsSync(path.join(SOURCE_PLUGIN, 'agents/research-planner-renamed.md')), 'M2: SOURCE must have no agents/research-planner-renamed.md');
       } else {
         const devCopy = read(mutant, 'skills/development/SKILL.md');
         const devSrc = read(SOURCE_PLUGIN, 'skills/development/SKILL.md');
