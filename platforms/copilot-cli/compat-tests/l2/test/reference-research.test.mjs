@@ -32,8 +32,8 @@ test('research golden: stored hash === computeHash(reference)', () => {
 
 test('research golden: scenario id + version stamps', () => {
   assert.equal(reference.scenario, 'research');
-  assert.equal(reference.schema_version, 3);
-  assert.equal(reference.workflow_model_version, 4, 'workflow model v4 (Stage 4 order spine: precedes + min_count + state_schema required rows, witness/count rules[], re-stamp)');
+  assert.equal(reference.schema_version, 4);
+  assert.equal(reference.workflow_model_version, 5, 'workflow model v5 (Stage 6 lockstep re-stamp: hook_effect grammar head add forces schema 3→4 + wm 4→5 across all references)');
 });
 
 test('research structural invariants: Phase-1 foundation required; root skill + conditional phases optional', () => {

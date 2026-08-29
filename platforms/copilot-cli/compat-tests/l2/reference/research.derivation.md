@@ -9,8 +9,8 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `research` |
 | Source (read-only citation source) | `plugins/maister/skills/research/SKILL.md` |
 | maister_version | `2.2.2` |
-| workflow_model_version | `4` |
-| Sibling JSON hash | `28c435405f39363597f752b1cc80d71602933df366d5cb842d06aaec0b5994b4` |
+| workflow_model_version | `5` |
+| Sibling JSON hash | `16c635b402773e7ae03c5ad0aaf5bb7cb9e5e58b7753768dca915d4e80607d92` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under

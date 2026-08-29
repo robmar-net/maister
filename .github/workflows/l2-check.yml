@@ -21,6 +21,7 @@ on:
           - development
           - research
           - quick-bugfix
+          - destructive-guard
         default: all
 
 # Least privilege: this workflow only reads the repo and runs tests — no writes, no commits.
@@ -67,6 +68,11 @@ jobs:
           if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "quick-bugfix" ]; then
             echo "::group::quick-bugfix reference"
             bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=quick-bugfix --check-reference || rc=$?
+            echo "::endgroup::"
+          fi
+          if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "destructive-guard" ]; then
+            echo "::group::destructive-guard reference"
+            bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=destructive-guard --check-reference || rc=$?
             echo "::endgroup::"
           fi
           exit "$rc"

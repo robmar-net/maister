@@ -1,0 +1,3 @@
+disposable scratch marker — the destructive-guard L2 scenario removes this
+directory with `rm -rf ./.tmp-scratch` to exercise the block-destructive-commands
+guard hook. Safe to delete.
