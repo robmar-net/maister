@@ -118,7 +118,8 @@ documented, and M2 on research became the validated control):
 > 4. If **REGRESSED for a different predicate**: finding, not a pass — stop, report, operator gate.
 
 **Re-run rule**: re-run the negative control after any grammar change (Stages 2–4) and on each new
-Copilot CLI version alongside the positive run.
+Copilot CLI version alongside the positive run. This is formalized and extended per scenario in the
+[L2 re-run cadence policy](#l2-re-run-cadence-policy) below.
 
 ### Cost
 
@@ -128,6 +129,54 @@ full Stage-1 negative-control exploration cost **~39.97 AIU / 180 requests acros
 [Cost — where to read it](#cost--where-to-read-it) — but record the ISO start AND end timestamps and
 bound the query at BOTH ends (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`); the base
 query bounds only the start and would sweep in later sessions.
+
+## L2 re-run cadence policy
+
+L2 is the **occasional** layer (L0/L1 are the per-build guardrails; L2 runs on demand). This policy
+formalizes and extends the negative-control [re-run rule](#negative-control-detection-power) into a
+per-scenario cadence so the workflow-model references do not drift silently between explicit runs.
+
+**Triggers — when to re-run which scenario:**
+
+- **On EVERY Copilot CLI version bump** — re-run the **quick-bugfix** L2 scenario **and** the
+  **negative control** (the M2/research mutant) alongside the positive run. A CLI bump is the highest
+  drift risk (the harness greps Copilot-internal log strings that change per version), so the cheap
+  positive+negative pair is mandatory on each new CLI release.
+- **Research — monthly.** Re-run the **research** scenario at least once a month to catch slow
+  behavioural drift that no CLI bump surfaced.
+- **Development — quarterly, OR on a triggering generator change.** Re-run the **development** scenario
+  every quarter, **or** immediately whenever a generator change touches the orchestrator `SKILL.md`
+  **rewrite rules** or anything under **`hooks-overrides/`** — both alter the workflow behaviour the L2
+  reference models, so they invalidate the reference out-of-band from the calendar cadence.
+
+Any reference re-derivation triggered by these runs is logged per the governance rule in
+[`CALIBRATION-LOG.md`](../platforms/copilot-cli/compat-tests/l2/reference/CALIBRATION-LOG.md).
+
+### Hooks at L2 — the `destructive-guard` witness contract
+
+The `destructive-guard` micro-scenario promotes `hook_effect` from a dead grammar entry to a live L2
+predicate by **observing** the Copilot guard's decision rather than asserting a hard-coded outcome:
+
+- **Witness = observe the real decision.** The `observe-destructive-guard` `onPermissionRequest`
+  responder reads the hook decision off the request —
+  `req.permissionDecision ?? req.hookSpecificOutput.permissionDecision` — together with the
+  `Maister guard: destructive command` reason marker, and records `hook_effect(destructive_guard=ask)`
+  to a per-run `hookDecisions` sink. `=ask` is witnessed / contract-derived from the deterministic
+  [`block-destructive-commands.sh`](../platforms/copilot-cli/hooks-overrides/block-destructive-commands.sh)
+  contract, **never fitted** to a run.
+- **Credit-free build over a recorded fixture.** The emit is proven credit-free: a synthetic request
+  plus a faithful recorded `permission.requested` fixture (`kind`+`command`+`requestId` only — **no**
+  fabricated decision field) drive the extractor through `extract({…, hookDecisions})`.
+- **DEFERRED PAID — the exact live `PermissionRequest` shape.** Whether the SDK actually hands the
+  responder the hook decision on `req` is only knowable from a live seat-consuming run; that
+  confirmation is a deferred paid follow-up. The responder is therefore built **defensively** —
+  nullish-coalesced reads plus a **command-regex fallback** (mirroring the hook's own destructive
+  regex) so the emit still lands from the observed `rm -rf …` command if the decision field is absent.
+- **Replay-faithful.** The `hookDecisions` sink is per-run observed data (unlike `gateMap`/`minCounts`,
+  which replay re-derives from the scenario), so it is persisted into `replay-meta.json` and read back
+  by `runReplay`. A `--replay` of a destructive-guard bundle therefore reproduces
+  `hook_effect(destructive_guard=ask)` exactly; dev/research/quick-bugfix bundles persist an empty sink
+  → replay stays byte-identical.
 
 ## Where results are recorded — the **fork wiki**
 
