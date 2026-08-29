@@ -1,8 +1,8 @@
 {
   "scenario": "research",
   "maister_version": "2.2.2",
-  "schema_version": 2,
-  "workflow_model_version": 3,
+  "schema_version": 3,
+  "workflow_model_version": 4,
   "required": [
     "phase_completed(1)",
     "delegated(research-planner)",
@@ -13,7 +13,10 @@
     "gate_fired(ask)",
     "outcome(report-produced)=pass",
     "task_status(completed)",
-    "reached_terminal(completion)"
+    "reached_terminal(completion)",
+    "precedes(research-planner,information-gatherer)",
+    "precedes(information-gatherer,research-synthesizer)",
+    "state_schema(conformant)"
   ],
   "optional": [
     "phase_completed(2)",
@@ -40,8 +43,16 @@
   "rules": [
     { "when": "phase_completed(1)", "require": "gate_fired_at(phase-1)" },
     { "when": "phase_completed(4)", "require": "gate_fired_at(phase-4)" },
-    { "when": "phase_completed(5)", "require": "gate_fired_at(phase-5)" }
+    { "when": "phase_completed(5)", "require": "gate_fired_at(phase-5)" },
+    { "when": "phase_completed(1)", "require": "min_count(delegated(information-gatherer))=2" },
+    { "when": "phase_completed(1)", "require": "delegated(research-planner)" }
   ],
-  "allowlist": [],
-  "hash": "40378fabe738e10ae426fb60a3b78272f03fdf87d401c33209ab129502fc116c"
+  "allowlist": [
+    {
+      "predicate": "state_schema(off-schema)",
+      "classification": "LIMITATION",
+      "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
+    }
+  ],
+  "hash": "28c435405f39363597f752b1cc80d71602933df366d5cb842d06aaec0b5994b4"
 }

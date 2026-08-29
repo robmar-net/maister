@@ -54,7 +54,7 @@ import { execFileSync } from 'node:child_process';
 import { resolveSdkPath } from './sdk-path.mjs';
 import { extract } from './extractor.mjs';
 import { normalize } from './normalize.mjs';
-import { compare, checkReference, EXIT } from './compare.mjs';
+import { compare, checkReference, EXIT, witnessTokensForPhase } from './compare.mjs';
 import developmentScenario from './scenarios/development.mjs';
 import researchScenario from './scenarios/research.mjs';
 import quickBugfixScenario from './scenarios/quick-bugfix.mjs';
@@ -90,7 +90,7 @@ function preconditionError(message) {
 
 // --------------------------------------------------------------------------- arg parsing (house style)
 export function parseArgs(argv) {
-  const opts = { checkReference: false, keepRundir: false, help: false, yes: false, runs: 1, runsError: null, scenario: DEFAULT_SCENARIO_ID, scenarioError: null, unknown: [] };
+  const opts = { checkReference: false, keepRundir: false, help: false, yes: false, runs: 1, runsError: null, scenario: DEFAULT_SCENARIO_ID, scenarioError: null, replay: null, unknown: [] };
   for (const a of argv) {
     if (a === '--check-reference') opts.checkReference = true;
     else if (a === '--keep-rundir') opts.keepRundir = true;
@@ -109,6 +109,9 @@ export function parseArgs(argv) {
       if (/^\d+$/.test(raw) && parseInt(raw, 10) >= 1) opts.runs = parseInt(raw, 10);
       else opts.runsError = raw;
     }
+    // Credit-free replay of a persisted reports/<ts>/ trace bundle (Stage 4). Reproduces a verdict
+    // from a snapshot without importing the SDK. Parsed BEFORE the catch-all so it is never "unknown".
+    else if (a.startsWith('--replay=')) opts.replay = a.slice('--replay='.length);
     else opts.unknown.push(a);
   }
   return opts;
@@ -429,7 +432,7 @@ export function buildReport(ctx) {
     scenarioId, mode, overall, counts, observed, reference, result,
     incompleteReason, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null,
-    usage = null, usageTotal = null, gateLog = [],
+    usage = null, usageTotal = null, gateLog = [], replaySource = null,
   } = ctx;
 
   const L = [];
@@ -440,11 +443,16 @@ export function buildReport(ctx) {
   L.push(`- **maister version (reference stamp):** \`${esc(maisterVersion)}\``);
   L.push(`- **Plugin under test:** \`${esc(pluginDir)}\` (name: \`${pluginName}\`)`);
   L.push(`- **Copilot SDK (resolved):** \`${esc(sdkPath || 'n/a (not resolved)')}\``);
-  L.push(`- **Mode:** ${mode}`);
+  // Stage-4 mode marker: a credit-free `--replay` run renders its source bundle; live stays plain.
+  if (mode === 'replayed') L.push(`- **Mode:** replayed (from ${esc(replaySource ?? 'unknown')})`);
+  else L.push(`- **Mode:** ${mode}`);
   L.push(`- **Isolation:** ${isolationNote}`);
   L.push(`- **Scenario:** ${scenarioId}`);
   L.push(`- **Final N:** ${finalN}`);
   L.push(`- **OS:** ${osStr}`);
+  // Stage-4: a LIVE N=1 drive persists a replayable bundle at reports/<ts>/ — surface the path so an
+  // operator can find the `--replay` source. Additive line only; no verdict impact.
+  if (mode === 'live' && finalN === 1) L.push(`- **Persisted trace:** reports/${ts}/`);
   L.push('');
   L.push(
     `**Result:** **${overall}** — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
@@ -717,7 +725,7 @@ export function sumUsage(usages) {
 //   { status:'ok', observed:Set, ex, rundir }   a verdict-eligible normalized skeleton
 // The session is disconnected, THEN this run's client stopped + force-stopped, THEN the fresh rundir
 // cleaned — all bounded/best-effort.
-async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
+async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null, persistMeta = null) {
   const { CopilotClient, RuntimeConnection, approveAll } = sdk;
   const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
   const recorded = [];
@@ -804,7 +812,39 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
       outcome: sc.outcome,
       sandboxTemplateDir: path.join(L2_DIR, 'sandbox', sc.sandboxTemplate),
       gateMap: sc.gateMap, // per-scenario gate->phase placement (gate_fired_at(phase-N)); default [] no-op
+      precedesChain: sc.precedesChain, // Stage-4 ordering spine (adjacent precedes edges); default [] no-op
+      minCounts: sc.minCounts, // Stage-4 fan-out counts (min_count expansions); default [] no-op
     });
+
+    // Persist a replayable trace bundle (Stage 4) — best-effort, NEVER breaks the live verdict.
+    // Placed BEFORE the ex.incomplete early return below so INCOMPLETE runs (the ones a maintainer
+    // most wants to diagnose/replay) also get a bundle. N=1-only: persistTs is non-null only when the
+    // caller (runLive) drove a single run, so the bundle is keyed by the same ts as the .md report and
+    // there is no per-run collision (N>1 persist deferred to Stage 5). Wrapped in try/catch; a persist
+    // failure logs to stderr and continues to the verdict.
+    if (persistTs != null) {
+      try {
+        const dest = path.join(REPORTS_DIR, persistTs);
+        fs.mkdirSync(dest, { recursive: true });
+        fs.writeFileSync(path.join(dest, 'events.json'), JSON.stringify(events));
+        fs.cpSync(rundir, path.join(dest, 'rundir'), { recursive: true });
+        fs.writeFileSync(
+          path.join(dest, 'replay-meta.json'),
+          JSON.stringify({
+            scenario: sc.id,
+            taskType: sc.taskType,
+            copilotVersion: persistMeta?.copilotVersion ?? null,
+            sdkPath: persistMeta?.sdkPath ?? null,
+            ts: persistTs,
+            originalMode: 'live',
+            maisterVersion: persistMeta?.maisterVersion ?? null,
+          }, null, 2),
+        );
+        process.stderr.write(`L2: persisted replay trace: ${dest}\n`);
+      } catch (persistErr) {
+        process.stderr.write(`L2: replay-trace persist failed (non-fatal): ${persistErr?.message ?? persistErr}\n`);
+      }
+    }
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
@@ -908,9 +948,13 @@ async function runLive(opts) {
     || path.resolve(path.dirname(sdkPath), '..', 'app.js');
 
   // Drive N traces, each on its own fresh client + fresh rundir (run index is 1-based for reporting).
+  // Stage-4 persist is N=1-only (keyed by the report `ts`); pass the ts + replay-meta fields ONLY when
+  // N===1 so N>1 runs never persist (deferred to Stage 5) and never collide on a single ts.
+  const persistTs = N === 1 ? ts : null;
+  const persistMeta = N === 1 ? { copilotVersion, sdkPath, maisterVersion } : null;
   const results = [];
   for (let i = 0; i < N; i++) {
-    results.push(await driveOnce(sdk, runtimePath, sc, opts, i + 1));
+    results.push(await driveOnce(sdk, runtimePath, sc, opts, i + 1, persistTs, persistMeta));
   }
 
   // Verdict + report are produced AFTER every run tore down its own client (no live handles held
@@ -922,17 +966,73 @@ async function runLive(opts) {
   return N === 1 ? finalizeSingleRun(results[0], ctx) : finalizeMultiRun(results, ctx);
 }
 
+// --------------------------------------------------------------------------- replay (credit-free)
+// Reproduce a verdict from a persisted reports/<ts>/ bundle WITHOUT importing the SDK (spends no
+// credit — dispatched in main() before any import(sdkPath), exactly like --check-reference).
+// Reconstructs the three extract() rundir inputs from the bundle and RE-RUNS the outcome oracle
+// against the persisted rundir copy (restaging from the committed sandbox template), then reuses
+// finalizeSingleRun (compare/report/exit-code) unchanged.
+function runReplay(opts) {
+  const dir = opts.replay;
+  if (!isDir(dir)) throw preconditionError(`--replay directory not found: ${dir}`);
+  const metaPath = path.join(dir, 'replay-meta.json');
+  const eventsPath = path.join(dir, 'events.json');
+  if (!isFile(metaPath)) throw preconditionError(`--replay bundle missing replay-meta.json: ${metaPath}`);
+  if (!isFile(eventsPath)) throw preconditionError(`--replay bundle missing events.json: ${eventsPath}`);
+
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  const sc = getScenario(meta.scenario); // resolves gateMap, precedesChain, minCounts, outcome, sandboxTemplate, taskType
+  const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+  const taskDirRoot = path.join(dir, 'rundir');
+  const stateYaml = findStateYaml(taskDirRoot, sc.taskType);
+
+  // IDENTICAL to driveOnce's extract() — same inputs, so the same normalized skeleton + verdict.
+  const ex = extract({
+    events,
+    taskDirRoot,
+    stateYaml,
+    taskType: sc.taskType,
+    outcome: sc.outcome,
+    sandboxTemplateDir: path.join(L2_DIR, 'sandbox', sc.sandboxTemplate),
+    gateMap: sc.gateMap,
+    precedesChain: sc.precedesChain,
+    minCounts: sc.minCounts,
+  });
+
+  // Build a driveOnce-shaped result so finalizeSingleRun consumes it unchanged.
+  const res = ex.incomplete
+    ? { status: 'incomplete', reason: ex.incompleteReason, ex, run: 1, usage: null, gateLog: [] }
+    : { status: 'ok', observed: normalize(ex.records), ex, rundir: taskDirRoot, run: 1, usage: null, gateLog: [] };
+
+  // Credit-free ctx (loadReference / readRepoMaisterVersion / osString only — NO SDK).
+  const reference = loadReference(sc.id).reference;
+  const dirName = path.basename(dir);
+  const ts = /^\d{8}T\d{6}Z$/.test(dirName) ? dirName : utcStamp();
+  const ctx = {
+    reference, N: 1, scenarioId: sc.id,
+    copilotVersion: meta.copilotVersion ?? 'replayed',
+    maisterVersion: meta.maisterVersion ?? readRepoMaisterVersion(),
+    osStr: osString(), ts,
+    isolationNote: `replayed from ${dir}`,
+    pluginDir: PLUGIN_DIR, pluginName: PLUGIN_NAME,
+    sdkPath: meta.sdkPath ?? 'replayed',
+    mode: 'replayed', replaySource: dir,
+  };
+  return finalizeSingleRun(res, ctx);
+}
+
 // N=1 finalizer — CURRENT behavior, preserved exactly: timeout / MEDIUM-2 sanity floor / widened-F3
 // floor / normal compare, each writing the same report + stdout line + exit code as before, now over
 // the single collected driveOnce result. finalN is always 1.
-function finalizeSingleRun(res, ctx) {
+export function finalizeSingleRun(res, ctx) {
   const {
     reference, scenarioId, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, sdkPath,
   } = ctx;
   const base = {
-    scenarioId, mode: 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, finalN: 1, sdkPath, usage: res.usage ?? null, gateLog: res.gateLog ?? [],
+    scenarioId, mode: ctx.mode ?? 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
+    pluginDir, pluginName, finalN: 1, sdkPath, replaySource: ctx.replaySource ?? null,
+    usage: res.usage ?? null, gateLog: res.gateLog ?? [],
   };
   const INCOMPLETE_COUNTS = { pass: 0, limitation: 0, skip: 0, fail: 0 };
 
@@ -961,17 +1061,40 @@ function finalizeSingleRun(res, ctx) {
   const { observed, ex } = res;
   const result = compare(observed, reference);
 
-  // WIDENED SANITY FLOOR (F3): refuse a REGRESSED that is SOLELY missing state-sourced predicates
-  // (phase_completed / task_characteristic / task_status) WHILE the state parser emitted warnings
-  // AND artifacts exist — that pattern is a partial state-parse miss, not a real regression, so it
-  // becomes INCOMPLETE (no verdict), never a false REGRESSED.
+  // WIDENED + WITNESS-AWARE SANITY FLOOR (F3, Stage 4): refuse a REGRESSED that is SOLELY missing
+  // state-sourced predicates (phase_completed / task_characteristic / task_status) WHILE the state
+  // parser emitted warnings AND artifacts exist — that pattern is a partial state-parse miss, not a
+  // real regression, so it becomes INCOMPLETE (no verdict), never a false REGRESSED.
+  //
+  // Stage-4 narrowing: a missing `phase_completed(N)` that carries a WITNESS relation in the reference
+  // rules (a `delegated(…)`/`created_artifact(…)`/`invoked_skill(…)` require) is downgrade-eligible
+  // ONLY when >=1 of those witnesses is actually present in `observed` (the phase demonstrably ran; the
+  // state parser just failed to record it). If ALL witnesses are also absent, the phase is genuinely
+  // un-witnessed and STAYS REGRESSED. A phase with no witness relation, and task_characteristic /
+  // task_status, remain state-only and eligible as before. Non-state-sourced misses and any `extra`
+  // are never eligible (Stage-1 M1 + Stage-2 failing-outcome negative controls stay REGRESSED).
   const STATE_SOURCED = /^(phase_completed|task_characteristic|task_status)\(/;
+  const rules = Array.isArray(reference?.rules) ? reference.rules : [];
   const candidateRegressions = result.diffs.filter((d) => d.classification === 'CANDIDATE_REGRESSION');
-  const allMissingStateSourced =
-    candidateRegressions.length > 0 &&
-    candidateRegressions.every((d) => d.side === 'missing' && STATE_SOURCED.test(d.predicate));
+  const isDowngradeEligible = (d) => {
+    if (d.side !== 'missing') return false;              // extras never downgrade (Stage-1 M1 stays REGRESSED)
+    if (!STATE_SOURCED.test(d.predicate)) return false; // non-state-sourced miss stays REGRESSED (M1; Stage-2 outcome)
+    const m = /^phase_completed\((\d+)\)$/.exec(d.predicate);
+    if (m) {
+      const witnesses = witnessTokensForPhase(rules, m[1]);
+      if (witnesses.length > 0) {
+        // WITNESSED phase: eligible (state-parse noise) ONLY if >=1 witness is present in observed.
+        // All witnesses absent => phase genuinely un-witnessed => NOT eligible => stays REGRESSED.
+        return witnesses.some((w) => observed.has(w));
+      }
+      return true; // phase with NO witness relation => state-only, eligible as before
+    }
+    return true;   // task_characteristic / task_status => state-only, eligible
+  };
+  const allDowngradeEligible =
+    candidateRegressions.length > 0 && candidateRegressions.every(isDowngradeEligible);
   const artifactsExist = [...observed].some((t) => t.startsWith('created_artifact('));
-  if (result.overall === 'REGRESSED' && allMissingStateSourced && ex.parseWarnings.length > 0 && artifactsExist) {
+  if (result.overall === 'REGRESSED' && allDowngradeEligible && ex.parseWarnings.length > 0 && artifactsExist) {
     const reason =
       'Verdict would be REGRESSED but every candidate regression is a MISSING state-sourced predicate ' +
       '(phase_completed / task_characteristic / task_status) while the state parser emitted warnings and ' +
@@ -1120,6 +1243,10 @@ export async function main(argv = process.argv.slice(2)) {
 
   // --check-reference RETURNS BEFORE ANY SDK IMPORT OR SESSION (credit-free; LOW-4 node side).
   if (opts.checkReference) return runCheckReference(opts.scenario);
+
+  // --replay RETURNS BEFORE ANY SDK IMPORT (credit-free, Stage 4) — reproduces a verdict from a
+  // persisted reports/<ts>/ bundle. MUST stay above runLive so no import(sdkPath) is reached.
+  if (opts.replay) return runReplay(opts);
 
   // Live conformance drive (the seat-consuming path; Group 10 exercises it).
   return runLive(opts);

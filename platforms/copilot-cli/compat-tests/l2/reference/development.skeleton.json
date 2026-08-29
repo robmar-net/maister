@@ -1,8 +1,8 @@
 {
   "scenario": "development",
   "maister_version": "2.2.2",
-  "schema_version": 2,
-  "workflow_model_version": 3,
+  "schema_version": 3,
+  "workflow_model_version": 4,
   "required": [
     "phase_completed(1)",
     "phase_completed(2)",
@@ -29,7 +29,13 @@
     "gate_fired(ask)",
     "outcome(tests-pass)=pass",
     "task_status(completed)",
-    "reached_terminal(completion)"
+    "reached_terminal(completion)",
+    "precedes(gap-analyzer,specification-creator)",
+    "precedes(specification-creator,implementation-planner)",
+    "precedes(implementation-planner,task-group-implementer)",
+    "precedes(task-group-implementer,implementation-verifier)",
+    "min_count(delegated(task-group-implementer))=1",
+    "state_schema(conformant)"
   ],
   "optional": [
     "phase_completed(6)",
@@ -78,7 +84,16 @@
     { "when": "phase_completed(10)", "require": "gate_fired_at(phase-10)" },
     { "when": "phase_completed(11)", "require": "gate_fired_at(phase-11)" },
     { "when": "phase_completed(12)", "require": "gate_fired_at(phase-12)" },
-    { "when": "phase_completed(13)", "require": "gate_fired_at(phase-13)" }
+    { "when": "phase_completed(13)", "require": "gate_fired_at(phase-13)" },
+    { "when": "phase_completed(2)", "require": "delegated(gap-analyzer)" },
+    { "when": "phase_completed(5)", "require": "delegated(specification-creator)" },
+    { "when": "phase_completed(5)", "require": "created_artifact(implementation/spec.md)" },
+    { "when": "phase_completed(7)", "require": "delegated(implementation-planner)" },
+    { "when": "phase_completed(7)", "require": "created_artifact(implementation/implementation-plan.md)" },
+    { "when": "phase_completed(8)", "require": "delegated(task-group-implementer)" },
+    { "when": "phase_completed(8)", "require": "created_artifact(implementation/work-log.md)" },
+    { "when": "phase_completed(11)", "require": "invoked_skill(implementation-verifier)" },
+    { "when": "phase_completed(11)", "require": "created_artifact(verification/*)" }
   ],
   "allowlist": [
     {
@@ -105,7 +120,12 @@
       "predicate": "invoked_skill(reviews-production-readiness)",
       "classification": "LIMITATION",
       "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-production-readiness."
+    },
+    {
+      "predicate": "state_schema(off-schema)",
+      "classification": "LIMITATION",
+      "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "ea0a59515602f4811b1d6271435559a23663fbd5502af64e5a2119c0e0e2d37e"
+  "hash": "3694ce8d43f3e05a7322e383a3bca56df701b9536824eaa3a048469276ae047b"
 }

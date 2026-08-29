@@ -26,7 +26,7 @@ export const EXIT = Object.freeze({
 // wolf (C2). Bump it only when the maister DEVELOPMENT workflow model itself changes — its phase
 // set, always-on agents/skills, or predicate grammar — i.e. whenever the reference must be
 // re-derived. References predating the stamp fall back to the legacy maister_version comparison.
-export const WORKFLOW_MODEL_VERSION = 3;
+export const WORKFLOW_MODEL_VERSION = 4;
 
 /**
  * Match a single predicate against a reference allowlist.
@@ -51,15 +51,62 @@ export function allowlistMatch(predicate, allowlist) {
 /**
  * A reported-only predicate is a normalized single-token report surface that is emitted for the
  * `## Gates` section but deliberately NOT modelled in any reference `required`/`optional` (and thus
- * never in `computeHash`). `gate_count(ask)=K` is the sole such head today: pinning one `K` in a
- * reference would make every other `K` an unmodeled extra → false REGRESSED, so `compare` excludes
- * the whole `gate_count(` head from the `extra` diff. See spec § reported-only.
+ * never in `computeHash`). Two heads are reported-only for the EXTRA partition ONLY:
+ *   - `gate_count(ask)=K`  — pinning one `K` in a reference would make every other `K` an unmodeled
+ *     extra → false REGRESSED, so `compare` excludes the whole `gate_count(` head from the `extra` diff.
+ *   - `min_count(delegated(x))=K'` — the extractor emits the full expansion `=1..c` (token-expansion,
+ *     Option b), but the reference models only the exact `=K` it requires. The lower/higher expansions
+ *     would otherwise be `set \ (required ∪ optional)` → false REGRESSED on the `extra` side. Excluding
+ *     the `min_count(` head from the extra diff keeps set-algebra pure with no `>=` special-case.
+ *
+ * This affects the EXTRA partition ONLY: `min_count(` (like `gate_count(`) is still fully modelled on
+ * the REQUIRED side — a required `min_count(delegated(x))=K` must be PRESENT by set membership (c≥K)
+ * or it REGRESSES as `missing`. Only the observed superset expansions are silenced here. The sole
+ * consumer of `isReportedOnly` is the `extra` filter (see `compare`, `extra = [...set].filter(...)`),
+ * so required-side matching is unaffected. See spec § 3.4 reported-only.
  *
  * @param {string} predicate
  * @returns {boolean}
  */
 export function isReportedOnly(predicate) {
-  return typeof predicate === 'string' && /^gate_count\(/.test(predicate);
+  return (
+    typeof predicate === 'string' &&
+    (/^gate_count\(/.test(predicate) || /^min_count\(/.test(predicate))
+  );
+}
+
+/**
+ * Witness-require matcher — the AUTHORITY for telling a Stage-4 witness rule apart from a Stage-3
+ * gate rule (and the research min_count rule) inside the SHARED `rules[]` array. Witness rules use a
+ * `require` predicate that starts with one of `delegated(` / `created_artifact(` / `invoked_skill(`;
+ * gate rules use `gate_fired_at(`; the research count rule uses `min_count(`. The `run.mjs` N=1 floor
+ * imports THIS regex (via `witnessTokensForPhase`) to decide, for a missing `phase_completed(N)`,
+ * whether the phase was demonstrably witnessed. Defined once here so there is one source of truth.
+ */
+export const WITNESS_REQUIRE_RE = /^(delegated|created_artifact|invoked_skill)\(/;
+
+/**
+ * Return the witness `require` tokens registered for `phase_completed(n)` in a reference's `rules[]`.
+ *
+ * A witness rule is `{ when: 'phase_completed(n)', require: '<witnessToken>' }` where `<witnessToken>`
+ * matches `WITNESS_REQUIRE_RE`. Gate rules (`gate_fired_at(`) and the research count rule (`min_count(`)
+ * share the same array and are filtered OUT here — only witness requires come back. The floor uses the
+ * result to keep a genuinely-unwitnessed missing phase REGRESSED while downgrading state-parse noise.
+ *
+ * @param {Array<{when?:string,require?:string}>} rules
+ * @param {number|string} n phase number
+ * @returns {string[]} the witness `require` predicates for `phase_completed(n)`
+ */
+export function witnessTokensForPhase(rules, n) {
+  return (Array.isArray(rules) ? rules : [])
+    .filter(
+      (r) =>
+        r &&
+        r.when === `phase_completed(${n})` &&
+        typeof r.require === 'string' &&
+        WITNESS_REQUIRE_RE.test(r.require),
+    )
+    .map((r) => r.require);
 }
 
 /**

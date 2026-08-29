@@ -32,8 +32,8 @@ test('research golden: stored hash === computeHash(reference)', () => {
 
 test('research golden: scenario id + version stamps', () => {
   assert.equal(reference.scenario, 'research');
-  assert.equal(reference.schema_version, 2);
-  assert.equal(reference.workflow_model_version, 3, 'workflow model v3 (Stage 3 gates: rules[] + gate_fired_at optional rows + rules-in-hash re-stamp)');
+  assert.equal(reference.schema_version, 3);
+  assert.equal(reference.workflow_model_version, 4, 'workflow model v4 (Stage 4 order spine: precedes + min_count + state_schema required rows, witness/count rules[], re-stamp)');
 });
 
 test('research structural invariants: Phase-1 foundation required; root skill + conditional phases optional', () => {

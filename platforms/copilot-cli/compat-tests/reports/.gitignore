@@ -3,3 +3,7 @@
 compat-report-*.md
 l1-hook-effects-*.md
 l2-trace-equivalence-*.md
+# L2 replay trace bundles (Stage 4) — git-ignored per-run raw traces (reports/<ts>/{events.json,rundir/,replay-meta.json}).
+# `*/` catches only per-run SUBDIRECTORIES; the tracked `.gitkeep` is a FILE, so it stays tracked (kept explicit below).
+*/
+!.gitkeep

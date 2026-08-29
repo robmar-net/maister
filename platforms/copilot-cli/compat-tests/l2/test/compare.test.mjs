@@ -12,7 +12,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { compare, computeHash, checkReference, WORKFLOW_MODEL_VERSION, EXIT } from '../compare.mjs';
+import {
+  compare,
+  computeHash,
+  checkReference,
+  WORKFLOW_MODEL_VERSION,
+  EXIT,
+  isReportedOnly,
+  WITNESS_REQUIRE_RE,
+  witnessTokensForPhase,
+} from '../compare.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIX = join(__dirname, 'fixtures', 'compare');
@@ -288,4 +297,118 @@ test('2.1f reported-only: an observed gate_count(ask)=K is never extra/CANDIDATE
       'a reported-only gate_count head never appears in the classified diff',
     );
   }
+});
+
+// ── Stage-4 order spine: version bump + min_count reported-only + witness authority (Group 4) ────
+//
+// Inline references (independent of the committed golden) exercise the wm 3→4 staleness stamp, the
+// min_count( head joining gate_count( as reported-only for the EXTRA partition ONLY (required-side
+// matching stays intact), and the witnessTokensForPhase authority that run.mjs's N=1 floor imports.
+
+test('4.4a WORKFLOW_MODEL_VERSION is 4 (Stage-4 workflow-model bump)', () => {
+  assert.equal(WORKFLOW_MODEL_VERSION, 4, 'the harness now models workflow-model v4');
+});
+
+test('4.4b min_count( is reported-only for EXTRA: observed =1,=2 vs required-only =1 never REGRESSES', () => {
+  // isReportedOnly covers the whole min_count( head (like gate_count().
+  assert.equal(
+    isReportedOnly('min_count(delegated(task-group-implementer))=1'),
+    true,
+    'min_count( is a reported-only head for the extra partition',
+  );
+
+  // The extractor emits the full token-expansion =1..c; the reference models ONLY the exact =1 it
+  // requires. The superset =2 must NOT classify as `extra` → no false REGRESSED.
+  const reference = {
+    scenario: 'mincount-fixture',
+    schema_version: 3,
+    workflow_model_version: WORKFLOW_MODEL_VERSION,
+    required: ['min_count(delegated(task-group-implementer))=1'],
+    optional: [],
+    allowlist: [],
+    rules: [],
+  };
+  const observed = new Set([
+    'min_count(delegated(task-group-implementer))=1',
+    'min_count(delegated(task-group-implementer))=2',
+  ]);
+
+  const result = compare(observed, reference);
+
+  assert.equal(result.overall, 'AS-EXPECTED', 'the =2 expansion must not be classified as extra');
+  assert.equal(result.exitCode, EXIT.AS_EXPECTED);
+  assert.equal(result.counts.fail, 0);
+  assert.ok(
+    !result.diffs.some((d) => d.predicate === 'min_count(delegated(task-group-implementer))=2'),
+    'the observed-only =2 expansion never appears in the classified diff',
+  );
+  // Required-side matching still holds: the required =1 is PRESENT → matched.
+  assert.ok(result.matched.includes('min_count(delegated(task-group-implementer))=1'));
+});
+
+test('4.4c min_count required-side matching intact: required =2 but observed max =1 → REGRESSED (missing)', () => {
+  // The isReportedOnly change touches ONLY the extra partition. A required min_count(...)=K that is
+  // absent by set membership (observed only reaches =1 when =2 is required) still REGRESSES.
+  const reference = {
+    scenario: 'mincount-fixture',
+    schema_version: 3,
+    workflow_model_version: WORKFLOW_MODEL_VERSION,
+    required: ['min_count(delegated(information-gatherer))=2'],
+    optional: [],
+    allowlist: [],
+    rules: [],
+  };
+  // Only one gatherer observed → the extractor emitted =1 only; the required =2 token is absent.
+  const observed = new Set(['min_count(delegated(information-gatherer))=1']);
+
+  const result = compare(observed, reference);
+
+  assert.equal(result.overall, 'REGRESSED', 'a required =2 with observed max =1 must REGRESS');
+  assert.equal(result.exitCode, EXIT.REGRESSED);
+  assert.equal(result.counts.fail, 1);
+
+  const diff = result.diffs.find(
+    (d) => d.predicate === 'min_count(delegated(information-gatherer))=2',
+  );
+  assert.ok(diff, 'the absent required =2 is reported as a diff');
+  assert.equal(diff.side, 'missing', 'it REGRESSES on the required (missing) side, not extra');
+  assert.equal(diff.classification, 'CANDIDATE_REGRESSION');
+});
+
+test('4.4d witnessTokensForPhase returns only witness requires for the phase; ignores gate + min_count rules', () => {
+  const rules = [
+    // Witness rules for phase 5 — the three witness prefixes.
+    { when: 'phase_completed(5)', require: 'delegated(specification-creator)' },
+    { when: 'phase_completed(5)', require: 'created_artifact(implementation/spec.md)' },
+    { when: 'phase_completed(11)', require: 'invoked_skill(implementation-verifier)' },
+    // Non-witness rows sharing the SAME array — MUST be ignored.
+    { when: 'phase_completed(5)', require: 'gate_fired_at(phase-5)' }, // Stage-3 gate rule
+    { when: 'phase_completed(1)', require: 'min_count(delegated(information-gatherer))=2' }, // research count
+    // A witness require for a DIFFERENT phase — MUST NOT leak into phase 5.
+    { when: 'phase_completed(7)', require: 'delegated(implementation-planner)' },
+  ];
+
+  const p5 = witnessTokensForPhase(rules, 5);
+  assert.deepEqual(
+    p5.sort(),
+    ['created_artifact(implementation/spec.md)', 'delegated(specification-creator)'],
+    'only the two phase-5 witness requires come back — gate_fired_at( is excluded',
+  );
+  assert.ok(
+    !p5.some((r) => /^gate_fired_at\(/.test(r)),
+    'a gate_fired_at( rule sharing the phase-5 when is not a witness',
+  );
+
+  // phase 1 has only a min_count( rule → no witnesses.
+  assert.deepEqual(witnessTokensForPhase(rules, 1), [], 'a min_count( rule is not a witness');
+
+  // The exported regex is the authority the floor keys on.
+  assert.equal(WITNESS_REQUIRE_RE.test('delegated(x)'), true);
+  assert.equal(WITNESS_REQUIRE_RE.test('created_artifact(x)'), true);
+  assert.equal(WITNESS_REQUIRE_RE.test('invoked_skill(x)'), true);
+  assert.equal(WITNESS_REQUIRE_RE.test('gate_fired_at(x)'), false);
+  assert.equal(WITNESS_REQUIRE_RE.test('min_count(delegated(x))=2'), false);
+
+  // Defensive: a non-array rules input yields [].
+  assert.deepEqual(witnessTokensForPhase(null, 5), []);
 });

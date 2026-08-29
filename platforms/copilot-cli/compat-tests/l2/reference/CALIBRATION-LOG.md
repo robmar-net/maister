@@ -42,6 +42,9 @@ notes. Provenance for the back-fill entries is the commit messages themselves
 | 13 | 2026-08-29 | development | `rules[]` phases 2–13 (12) + `gate_fired_at(phase-2..13)` optional (12) | absent → `rules[]` + `gate_fired_at` optional | GATES (issue #48, Stage 3): mandatory-gate exits `development/SKILL.md:174/:206/:237/:294/:313/:340/:370/:389/:432/:490/:510/:532`; rules-in-hash Option A + `schema_version` 1→2 + `workflow_model_version` 2→3 — see note 13 | `1180da9a…` → `ea0a5951…` | PR (Stage 3) |
 | 14 | 2026-08-29 | research | `rules[]` phases 1,4,5 (3) + `gate_fired_at(phase-1,4,5)` optional (3) | absent → `rules[]` + `gate_fired_at` optional | GATES (issue #48, Stage 3): mandatory-gate exits `research/SKILL.md:198/:302/:351`; rules-in-hash Option A + `schema_version` 1→2 + `workflow_model_version` 2→3 — see note 14 | `e823c815…` → `40378fab…` | PR (Stage 3) |
 | 15 | 2026-08-29 | quick-bugfix | none (`rules[] = []`) | schema/wm only | GATES (issue #48, Stage 3): Step-numbered plan gate (`quick-bugfix/SKILL.md:91`/:122-124), no phase-numbered exit gates ⇒ `rules[]` intentionally empty, no `gate_fired_at` invented; `schema_version` 1→2 + `workflow_model_version` 2→3 (zero rule tokens) — see note 15 | `6cff7eba…` → `0893abf4…` | PR (Stage 3) |
+| 16 | 2026-08-29 | development | `precedes ×4` + `min_count(delegated(task-group-implementer))=1` + `state_schema(conformant)` required; 9 witness `rules[]`; `state_schema(off-schema)` LIMITATION allowlist | absent → required/rules/allowlist | ORDER+COUNT+WITNESS+STATE-SCHEMA (issue #48, Stage 4): precedes cite `development/SKILL.md:147/:285/:332/implementation-plan-executor/SKILL.md:96/:446`; min_count `implementation-plan-executor/SKILL.md:87-99`; witness rows P2/P5/P7/P8/P11; `schema_version` 2→3 + `workflow_model_version` 3→4 — see note 16 | `ea0a5951…` → `3694ce8d…` | PR (Stage 4) |
+| 17 | 2026-08-29 | research | `precedes ×2` + `state_schema(conformant)` required; `min_count(delegated(information-gatherer))=2` conditional rule + P1 `delegated(research-planner)` witness rule; `state_schema(off-schema)` LIMITATION allowlist | absent → required/rules/allowlist | ORDER+COUNT+WITNESS+STATE-SCHEMA (issue #48, Stage 4): precedes cite `research/SKILL.md:153/:170/:184`; min_count `:164-170` (conditional, `source_category` honesty note); `schema_version` 2→3 + `workflow_model_version` 3→4 — see note 17 | `40378fab…` → `28c43540…` | PR (Stage 4) |
+| 18 | 2026-08-29 | quick-bugfix | none (NO predicate change — state_schema NOT APPLICABLE) | schema/wm only | STATE-SCHEMA NOT APPLICABLE (issue #48, Stage 4): no orchestrator state / no subagents (`quick-bugfix/SKILL.md:9`) ⇒ no precedes/min_count/state_schema predicate; lockstep `schema_version` 2→3 + `workflow_model_version` 3→4 re-stamp only — see note 18 | `0893abf4…` → `4c882e17…` | PR (Stage 4) |
 
 ## Entry notes
 
@@ -216,3 +219,78 @@ the re-stamp is driven solely by the `schema:1`→`schema:2` token change (backw
 `rules:[]` ≡ rules-field-absent). Full hashes:
 `6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215 →
 0893abf4a0611ba742fd7b31af7937a6735d6feda2a5aa2bb706da2947103603`.
+
+### 16 — dev: ORDER spine + COUNT floor + WITNESS relations + STATE-SCHEMA (Stage 4)
+
+ORDER + COUNT + EVENTS-OVER-SELF-REPORT + STATE-SCHEMA landing (issue #48, Stage 4). Three new
+grammar heads (`precedes`, `min_count`, `state_schema`) become observable, so the development
+reference gains 6 new `required` predicates + 9 `rules[]` witness relations + 1 `allowlist`
+LIMITATION:
+
+- **`required` (+6, 26→32):** `precedes(gap-analyzer,specification-creator)`,
+  `precedes(specification-creator,implementation-planner)`,
+  `precedes(implementation-planner,task-group-implementer)`,
+  `precedes(task-group-implementer,implementation-verifier)` — pairwise adjacent edges over the
+  analyse→spec→plan→implement→verify chain, cited `development/SKILL.md:147→:285→:332→
+  implementation-plan-executor/SKILL.md:96→:446`; `min_count(delegated(task-group-implementer))=1`
+  (one implementer per task group, `implementation-plan-executor/SKILL.md:87-99`);
+  `state_schema(conformant)` (canonical orchestrator-state serialization, keyed on the dedicated
+  `schemaDivergences` signal so legitimate absences do not mark off-schema).
+- **`rules[]` (+9, 12→21):** witness relations for P2/P5/P7/P8/P11 (`delegated(…)` /
+  `created_artifact(…)` / `invoked_skill(…)` prefixes), told apart from the 12 Stage-3
+  `gate_fired_at(` gate rules by the `require` prefix (keys the run.mjs floor). P2's witness is
+  `delegated(gap-analyzer)` ONLY. Every witness token is already an independently-required
+  predicate, so rules-expansion is a benign no-op; the rows exist to be hashed and read by the floor.
+- **`allowlist` (+1, 5→6):** `state_schema(off-schema)` LIMITATION (tolerant parser accepts
+  documented off-schema shapes).
+
+`schema_version` 2→3 (the grammar surface is a hash token) + `workflow_model_version` 3→4
+(`--check-reference` reports STALE against any v3 reference). Re-stamp under `computeHash`
+(version-independent): the 6 new required predicates + the 9 `rule:<when>=><require>` witness tokens
++ the `schema:2`→`schema:3` token drive the new hash. Matched-count effect (pipeline test): dev
+effective-required 33→39 (32 base + 7 promoted gates; the 9 witness rules promote already-required
+tokens → no new matched). Full hashes:
+`ea0a59515602f4811b1d6271435559a23663fbd5502af64e5a2119c0e0e2d37e →
+3694ce8d43f3e05a7322e383a3bca56df701b9536824eaa3a048469276ae047b`.
+
+### 17 — research: ORDER spine + STATE-SCHEMA + conditional COUNT rule + P1 witness (Stage 4)
+
+Stage-4 landing for research (issue #48). The reference gains 3 new `required` predicates + 2
+`rules[]` relations + 1 `allowlist` LIMITATION:
+
+- **`required` (+3, 10→13):** `precedes(research-planner,information-gatherer)`,
+  `precedes(information-gatherer,research-synthesizer)` (plan→gather→synthesize edges, cited
+  `research/SKILL.md:153→:170→:184`); `state_schema(conformant)` — research legitimately omits
+  `task_characteristics` (no gap-analyzer), which the extractor treats as an ABSENCE (a
+  `parseWarnings` entry, NOT a `schemaDivergences` entry), so a conformant research state is
+  correctly `conformant` (C1 regression guard).
+- **`rules[]` (+2, 3→5):** the P1 witness `{when:phase_completed(1), require:delegated(research-planner)}`
+  (:153); the conditional count rule `{when:phase_completed(1),
+  require:min_count(delegated(information-gatherer))=2}` (:164-170). **Honesty note:**
+  information-gatherer is dispatched by the `source_category` param (`:176`), not a literal
+  `subagent_type:`, and there is no clean observable for "≥2 sources warranted"; the rule is placed
+  CONDITIONALLY on `phase_completed(1)` and a legitimate single-source run that completes P1 WOULD
+  false-REGRESS ([OQ-1]). The committed research fixture carries ≥2 gatherers so the reference
+  validates AS-EXPECTED; documented fallback is to demote to `optional`. Not fitted to a run.
+- **`allowlist` (+1, 0→1):** `state_schema(off-schema)` LIMITATION.
+
+`schema_version` 2→3 + `workflow_model_version` 3→4, re-stamped via `computeHash`. Matched-count
+effect (pipeline-research test): research effective-required 13→17 (13 base + 3 promoted gates + 1
+promoted `min_count` rule — the `=2` token is not in `required[]` but IS present in observed, so the
+conditional promotion counts as +1 matched). Full hashes:
+`40378fabe738e10ae426fb60a3b78272f03fdf87d401c33209ab129502fc116c →
+28c435405f39363597f752b1cc80d71602933df366d5cb842d06aaec0b5994b4`.
+
+### 18 — quick-bugfix: STATE-SCHEMA NOT APPLICABLE, schema/wm re-stamp only (Stage 4)
+
+Stage-4 lockstep governance bump (issue #48). quick-bugfix carries NO Stage-4 predicate: the
+workflow has no orchestrator state, no task directory, and no subagents (`quick-bugfix/SKILL.md:9`).
+With no `subagent.started` events there is no `precedes` chain and no `min_count` fan-out; with no
+`stateYaml`, `findStateYaml` returns `null` and the extractor emits NO `state_schema` record, so
+`state_schema(conformant)` would be an unsatisfiable required token (permanent REGRESSED) and
+`state_schema(off-schema)` has no state surface to allowlist. The reference stays predicate-frozen
+(`required` 4, `optional` 2, `rules[] = []`, `allowlist = []`); the ONLY change is the lockstep
+`schema_version` 2→3 + `workflow_model_version` 3→4 re-stamp, driven solely by the
+`schema:2`→`schema:3` token change (zero rule/predicate tokens). Full hashes:
+`0893abf4a0611ba742fd7b31af7937a6735d6feda2a5aa2bb706da2947103603 →
+4c882e17a1055c9be6f93c8e567db28cd5fcb10a13ceecd23641840282603a63`.
