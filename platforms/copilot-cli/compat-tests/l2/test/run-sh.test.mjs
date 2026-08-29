@@ -90,6 +90,26 @@ test('check 3 (AC4): no copilot/seat on the LIVE path -> loud SKIP, exit 0 (not 
   assert.doesNotMatch(res.stdout, /REGRESSED|AS-EXPECTED|CURRENT/, 'a no-seat SKIP is not a verdict');
 });
 
+// -------------------------------------------------------------------------- Check 5 (live-path scenario allowlist ↔ run.mjs registry)
+// Regression guard: run.sh's live-path `case` (scenario -> sandbox) MUST stay in lockstep with the
+// run.mjs SCENARIOS registry. A scenario known to run.mjs (e.g. destructive-guard, #48 Stage 6) but
+// missing a case arm here fails "L2 INCOMPLETE: unknown scenario" (exit 2) on the live path — while
+// --check-reference (exec'd before the case) still works, masking the gap from the unit suite.
+// Credit-free: spawned under a copilot-absent PATH, so it reaches the no-seat SKIP, never a live run.
+test('check 5: every non-check-reference scenario is recognized on the LIVE path (no "unknown scenario")', () => {
+  assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
+  // Scenarios registered in run.mjs that a maintainer would drive live. Keep in sync with the registry.
+  for (const scenario of ['development', 'research', 'quick-bugfix', 'destructive-guard']) {
+    const res = runSh([`--scenario=${scenario}`], { PATH: NO_COPILOT_PATH });
+    // The live-path case must recognize the scenario and fall through to the no-seat SKIP (exit 0),
+    // NOT bail at the `*)` unknown-scenario arm (exit 2).
+    assert.doesNotMatch(res.stderr + res.stdout, /unknown scenario/i,
+      `run.sh does not recognize --scenario=${scenario} on the live path (case arm missing):\n${res.stderr}`);
+    assert.equal(res.status, 0, `--scenario=${scenario} must reach the no-seat SKIP (exit 0), got ${res.status}\n${res.stdout}\n${res.stderr}`);
+    assert.match(res.stdout, /\bSKIP\b/, `--scenario=${scenario} should print the no-seat SKIP line`);
+  }
+});
+
 // -------------------------------------------------------------------------- Check 4 (8.1 / AC9 partial)
 test('check 4 (AC9 partial): de-shadow then restore_config is byte-identical', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-cfg-'));

@@ -171,13 +171,16 @@ if [ "$CHECK_REFERENCE" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------- scenario -> sandbox (live path)
-# Resolve + validate the sandbox template for the selected scenario. Both current scenarios reuse
+# Resolve + validate the sandbox template for the selected scenario. development/research reuse
 # sample-cli (research investigates the same codebase read-only); add a case for a new sandbox.
+# This live-path allowlist MUST stay in lockstep with the run.mjs SCENARIOS registry — adding a
+# scenario there without a case arm here makes `run.sh --scenario=<new>` fail INCOMPLETE.
 # --check-reference already exec'd above (it needs no sandbox), so this guards only the live path.
 case "$SCENARIO" in
   development|research) SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli" ;;
   quick-bugfix)        SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli-bug" ;;  # seeded, test-reproducible defect
-  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research|quick-bugfix)" >&2; exit 2 ;;
+  destructive-guard)   SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli-destructive" ;;  # exercises the block-destructive-commands hook (#48 Stage 6)
+  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research|quick-bugfix|destructive-guard)" >&2; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------- seat preflight (mirrors L1 :262-267 no-seat idiom)
