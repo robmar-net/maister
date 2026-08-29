@@ -104,6 +104,8 @@ export const scenario = {
   // an under-sized value would false-INCOMPLETE a slow-but-progressing run. Smaller than development's
   // 45 min (no implement/verify chain). The seat-gated live run is operator-supervised.
   timeoutMs: 30 * 60 * 1000, // 30 minutes
+  // requested model = account/SDK default; operator pins per live run via COMPAT_L2_MODEL
+  model: null,
   // Functional oracle (Stage 2). Assertion-type outcome (no runnable CLI): the produced
   // research report must be a non-trivial deliverable — `outputs/research-report.md`
   // >= 200 bytes AND >= 5 non-blank lines (plus >=1 markdown heading and a present
