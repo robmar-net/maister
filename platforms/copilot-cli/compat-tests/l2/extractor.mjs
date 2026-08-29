@@ -52,6 +52,14 @@ const indentOf = (line) => {
   return i === -1 ? Infinity : i;
 };
 
+// Stage 4 (issue #48): the extractor preserves observed names verbatim in its emitted records
+// (normalization is normalize.mjs's job), BUT precedes/min_count must MATCH a scenario's bare
+// canonical agent name (e.g. `gap-analyzer`) against an observed prefixed event name
+// (`maister-copilot:gap-analyzer`). Stripping is applied ONLY to the internal firstIndex/counts
+// map KEYS used for that match — never to an emitted record's payload.
+const PLUGIN_PREFIX_RE = /^maister(?:-copilot)?:/;
+const stripPluginPrefix = (name) => String(name).replace(PLUGIN_PREFIX_RE, '');
+
 // Extract the completed-phase integers, bounded to the `completed_phases` value region only, so
 // unrelated `phase-N` occurrences (`started_phase: phase-1`, the `task_ids:` mapping) are never
 // captured. Tolerant of inline flow arrays and block `- "phase-N"` sequences.
@@ -104,7 +112,7 @@ function phasesFromPhasesSequence(lines) {
 }
 
 // Parse the `completed_phases` array VALUE (phase-N or bare-int), bounded to the key's value region.
-function phasesFromCompletedPhasesKey(lines, idx, warnings) {
+function phasesFromCompletedPhasesKey(lines, idx, warnings, divergences) {
   const keyLine = lines[idx];
   const afterColon = keyLine.slice(keyLine.indexOf(':') + 1).trim();
   let region = '';
@@ -149,7 +157,13 @@ function phasesFromCompletedPhasesKey(lines, idx, warnings) {
       const n = parseInt(mi[0], 10);
       if (!Number.isNaN(n) && n >= 1 && !nums.includes(n)) nums.push(n);
     }
-    if (nums.length > 0) warnings.push('completed_phases parsed as bare integers (no phase-N prefix)');
+    if (nums.length > 0) {
+      // OFF-SCHEMA SERIALIZATION (Stage 4 §2.4a divergence site 1): bare-int completed_phases is a
+      // documented tolerant-parse branch, NOT a legitimate absence -> record it as a schemaDivergence.
+      const msg = 'completed_phases parsed as bare integers (no phase-N prefix)';
+      warnings.push(msg);
+      divergences.push(msg);
+    }
   }
   nums.sort((a, b) => a - b);
   return nums;
@@ -163,13 +177,13 @@ function phasesFromCompletedPhasesKey(lines, idx, warnings) {
 //   (A) `completed_phases:` array (phase-N or bare-int),
 //   (B) `phase_summaries:` map keyed by `phase-N:`,
 //   (C) `phases:` sequence items with `status: completed` (item key id/number/phase).
-function parseCompletedPhases(lines, warnings) {
+function parseCompletedPhases(lines, warnings, divergences) {
   const set = new Set();
   const sources = [];
 
   const idx = lines.findIndex((l) => /^\s*completed_phases\s*:/.test(l));
   if (idx !== -1) {
-    const arr = phasesFromCompletedPhasesKey(lines, idx, warnings);
+    const arr = phasesFromCompletedPhasesKey(lines, idx, warnings, divergences);
     arr.forEach((n) => set.add(n));
     if (arr.length) sources.push('completed_phases');
   }
@@ -185,7 +199,12 @@ function parseCompletedPhases(lines, warnings) {
     return [];
   }
   if (sources.length > 1 || idx === -1) {
-    warnings.push(`completed_phases derived from union of [${sources.join(', ')}] (LLM serialization variance)`);
+    // OFF-SCHEMA SERIALIZATION (Stage 4 §2.4a divergence site 2): completed phases recovered from a
+    // union of non-canonical sources (phase_summaries / phases: sequence, or no completed_phases key
+    // at all) is a tolerant-parse branch, NOT a legitimate absence -> record it as a schemaDivergence.
+    const msg = `completed_phases derived from union of [${sources.join(', ')}] (LLM serialization variance)`;
+    warnings.push(msg);
+    divergences.push(msg);
   }
   return [...set].sort((a, b) => a - b);
 }
@@ -232,7 +251,7 @@ function cleanStatusValue(raw, warnings) {
 // `orchestrator:` with NO top-level `task:` block): the FIRST line-anchored `status:` at indent <= 2
 // (`orchestrator.status`). indent <= 2 excludes per-phase statuses (indent >= 4, or inline in a flow
 // map), and the `status`-not-`last_status` anchor excludes verification_context.
-function parseTaskStatus(lines, warnings) {
+function parseTaskStatus(lines, warnings, divergences) {
   // PRIMARY: the top-level `task:` block (maister schema).
   const idx = lines.findIndex((l) => /^task\s*:\s*$/.test(l));
   if (idx !== -1) {
@@ -253,7 +272,12 @@ function parseTaskStatus(lines, warnings) {
     if (mm) {
       const v = cleanStatusValue(mm[1], warnings);
       if (v != null) {
-        warnings.push('task status read from a top-level status: key (no task: block — LLM serialization variance)');
+        // OFF-SCHEMA SERIALIZATION (Stage 4 §2.4a divergence site 3): task status read from a
+        // top-level status: key with NO task: block is a tolerant-parse branch, NOT a legitimate
+        // absence -> record it as a schemaDivergence.
+        const msg = 'task status read from a top-level status: key (no task: block — LLM serialization variance)';
+        warnings.push(msg);
+        divergences.push(msg);
         return v;
       }
     }
@@ -263,16 +287,27 @@ function parseTaskStatus(lines, warnings) {
 }
 
 // Defensive targeted parser for the known orchestrator-state keys. No YAML library (zero-dep).
-// Returns { phases:int[], characteristics:{...}, status:string|null, parseWarnings:string[] }.
+// Returns { phases:int[], characteristics:{...}, status:string|null, parseWarnings:string[],
+//           schemaDivergences:string[] }.
+//
+// Stage 4 (issue #48) §2.4a: `parseWarnings` is a GRAB-BAG that mixes true off-schema-serialization
+// signals with LEGITIMATE absences (task_characteristics block not found, missing characteristic,
+// no task: block). `schemaDivergences` is the DEDICATED, absence-free signal: it is populated ONLY
+// by the three tolerant OFF-SCHEMA-SERIALIZATION branches (bare-int completed_phases, union-from-
+// non-canonical, top-level status: with no task: block). state_schema(conformant) keys on
+// schemaDivergences.length===0 — NOT parseWarnings — so research's legitimately-absent
+// task_characteristics never emits a false off-schema.
 export function parseState(yamlText) {
   const parseWarnings = [];
+  const schemaDivergences = [];
   const text = typeof yamlText === 'string' ? yamlText : '';
   const lines = text.split(/\r?\n/);
   return {
-    phases: parseCompletedPhases(lines, parseWarnings),
+    phases: parseCompletedPhases(lines, parseWarnings, schemaDivergences),
     characteristics: parseCharacteristics(lines, parseWarnings),
-    status: parseTaskStatus(lines, parseWarnings),
+    status: parseTaskStatus(lines, parseWarnings, schemaDivergences),
     parseWarnings,
+    schemaDivergences,
   };
 }
 
@@ -300,7 +335,7 @@ function stateToRecords(state) {
 // Reduce the typed SessionEvent[] to raw records. `invoked_skill` is pinned to `skill.invoked`
 // ONLY (HIGH-1); `session.skills_loaded` is never a source. Excluded/noise events (assistant
 // messages, tool executions, ordering/counts) yield no records.
-export function extractFromEvents(events, gateMap = []) {
+export function extractFromEvents(events, gateMap = [], precedesChain = [], minCounts = []) {
   const records = [];
   if (!Array.isArray(events)) return records;
 
@@ -309,7 +344,18 @@ export function extractFromEvents(events, gateMap = []) {
   let sawError = false;
   let askCount = 0; // count of user_input.requested — feeds the single gate_count(ask)=K emission.
 
+  // Stage 4 (issue #48): order + fan-out aggregates. Keyed by the plugin-prefix-stripped name so a
+  // scenario's bare chain matches an observed prefixed event. `firstIndex` records FIRST-sight event
+  // order (never sorted — order IS the signal) over BOTH subagent.started AND skill.invoked, because
+  // a precedes chain may reference a skill-invoked orchestrator (e.g. dev's implementation-verifier
+  // surfaces as skill.invoked, not subagent.started — the terminal dev edge depends on it). `counts`
+  // is subagent.started(delegated)-only, since min_count is over delegated(x).
+  const firstIndex = new Map();
+  const counts = new Map();
+
+  let i = -1;
   for (const e of events) {
+    i += 1;
     if (!e || typeof e.type !== 'string') continue;
     const data = e.data || {};
 
@@ -318,6 +364,9 @@ export function extractFromEvents(events, gateMap = []) {
         const name = data.agentName || data.agentDisplayName;
         if (name) {
           records.push({ kind: 'delegated', name, source: 'events', evidence: `subagent.started agentName=${name}` });
+          const bare = stripPluginPrefix(name);
+          if (!firstIndex.has(bare)) firstIndex.set(bare, i); // first sight only — do NOT overwrite
+          counts.set(bare, (counts.get(bare) || 0) + 1);       // every occurrence (delegated fan-out)
         }
         break;
       }
@@ -325,6 +374,8 @@ export function extractFromEvents(events, gateMap = []) {
         // HIGH-1: this is the ONLY source of invoked_skill.
         if (data.name) {
           records.push({ kind: 'invoked_skill', name: data.name, source: 'events', evidence: `skill.invoked name=${data.name}` });
+          const bare = stripPluginPrefix(data.name);
+          if (!firstIndex.has(bare)) firstIndex.set(bare, i); // order node for precedes (skill-invoked)
         }
         break;
       }
@@ -387,6 +438,41 @@ export function extractFromEvents(events, gateMap = []) {
       source: 'events',
       evidence: 'session.idle/session.shutdown with no session.error',
     });
+  }
+
+  // Stage 4 (issue #48) — precedes ORDER edges. One token per ADJACENT chain pair (a,b), emitted
+  // IFF both endpoints were observed AND a precedes b in first-sight order. A present-but-out-of-order
+  // pair, or a pair with either endpoint absent, is SILENT (truth table §2.2): the out-of-order case
+  // leaves the required edge missing => REGRESSED (order violated); an absent delegation already
+  // REGRESSES via its own missing delegated(x), so the edge is not double-counted. The emitted payload
+  // uses the chain's own (bare) names, so the token is bare regardless of the observed prefix.
+  for (let k = 0; k + 1 < precedesChain.length; k++) {
+    const a = precedesChain[k];
+    const b = precedesChain[k + 1];
+    if (firstIndex.has(a) && firstIndex.has(b) && firstIndex.get(a) < firstIndex.get(b)) {
+      records.push({
+        kind: 'precedes',
+        name: `${a},${b}`,
+        source: 'events',
+        evidence: `firstIndex(${a})<firstIndex(${b})`,
+      });
+    }
+  }
+
+  // Stage 4 (issue #48) — min_count token-expansion (Option b). For each requested name, emit
+  // min_count(delegated(name))=k for k=1..observedCount; the reference asserts the exact =K by SET
+  // MEMBERSHIP (present iff observed>=K), so compare needs no `>=` logic. c=0 emits nothing.
+  for (const name of minCounts) {
+    const c = counts.get(name) || 0;
+    for (let k = 1; k <= c; k++) {
+      records.push({
+        kind: 'min_count',
+        name: `delegated(${name})`,
+        value: k,
+        source: 'events',
+        evidence: `observed ${c} delegated(${name})`,
+      });
+    }
   }
 
   return records;
@@ -654,20 +740,34 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
 // `taskType` selects the tree profile (default 'development' -> byte-identical to the pre-scenario
 // harness; 'research' -> the research task layout). An unknown type falls back to the development
 // profile. Returns { records, incomplete, incompleteReason, parseWarnings }.
-export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [] } = {}) {
+export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [], precedesChain = [], minCounts = [] } = {}) {
   const state = stateYaml != null
     ? parseState(stateYaml)
-    : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'] };
+    : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'], schemaDivergences: [] };
 
   const profile = TREE_PROFILES[taskType] || DEFAULT_TREE_PROFILE;
   const stateRecords = stateToRecords(state);
-  const eventRecords = extractFromEvents(events, gateMap);
+  const eventRecords = extractFromEvents(events, gateMap, precedesChain, minCounts);
   const treeRecords = taskDirRoot ? extractFromTree(taskDirRoot, profile) : [];
   // Functional oracle (source d): runs the scenario deliverable in the rundir. A bad-shape spec throws
   // here (fail-fast); a runtime/assertion failure is a `value:'fail'` record, never an exception.
   const outcomeRecords = extractFromOutcome(outcome, taskDirRoot, sandboxTemplateDir);
 
   const records = [...stateRecords, ...eventRecords, ...treeRecords, ...outcomeRecords];
+
+  // Stage 4 (issue #48) §2.4b — state_schema conformance token. Emitted ONLY when state actually
+  // exists (stateYaml != null); quick-bugfix has no orchestrator state -> NO record (no predicate).
+  // conformant iff schemaDivergences is empty (dedicated off-schema-serialization signal), NOT
+  // parseWarnings (which also carries legitimate absences). It is state-sourced by NAME but is a
+  // conformance token, NOT a downgrade-eligible floor predicate.
+  if (stateYaml != null) {
+    records.push({
+      kind: 'state_schema',
+      name: state.schemaDivergences.length === 0 ? 'conformant' : 'off-schema',
+      source: 'state',
+      evidence: `schemaDivergences=${state.schemaDivergences.length}`,
+    });
+  }
 
   // SANITY FLOOR (MEDIUM-2, now outcome-aware — MEDIUM-4): zero completed phases while task-tree
   // artifacts exist is normally a parse failure / stalled run -> INCOMPLETE, never a silent REGRESSED.

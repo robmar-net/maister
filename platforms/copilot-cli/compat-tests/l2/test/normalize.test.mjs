@@ -107,6 +107,56 @@ test('1.1b normalize gate_count — =value head, mirrors task_characteristic/out
   assert.deepStrictEqual([...result], ['gate_count(ask)=7']);
 });
 
+test('1.1c normalize precedes — OPAQUE comma payload, no split, no normalizePhase', () => {
+  // Stage 4 (issue #48). ORDER edge: the comma lives INSIDE the single payload; normalize must
+  // pass `name` through literally — no 2-arg head, no split, no phase-tag stripping.
+  const result = norm([
+    { kind: 'precedes', name: 'gap-analyzer,specification-creator', source: 'events', evidence: 'x' },
+  ]);
+  assert.deepStrictEqual([...result], ['precedes(gap-analyzer,specification-creator)']);
+});
+
+test('1.1d normalize min_count — =value head, mirrors gate_count/outcome; nested delegated payload', () => {
+  // Stage 4 (issue #48). Token-expansion head: `name="delegated(x)"`, integer value → `=K`.
+  const result = norm([
+    { kind: 'min_count', name: 'delegated(information-gatherer)', value: 2, source: 'events', evidence: 'x' },
+  ]);
+  assert.deepStrictEqual([...result], ['min_count(delegated(information-gatherer))=2']);
+});
+
+test('1.1e normalize state_schema — 1-arg literal head, conformant|off-schema', () => {
+  // Stage 4 (issue #48). Mirrors task_status: literal name payload.
+  const conformant = norm([
+    { kind: 'state_schema', name: 'conformant', source: 'state', evidence: 'schemaDivergences=0' },
+  ]);
+  assert.deepStrictEqual([...conformant], ['state_schema(conformant)']);
+
+  const offSchema = norm([
+    { kind: 'state_schema', name: 'off-schema', source: 'state', evidence: 'schemaDivergences=3' },
+  ]);
+  assert.deepStrictEqual([...offSchema], ['state_schema(off-schema)']);
+});
+
+test('1.1f dead-entry-trap — a kind not in GRAMMAR_HEADS is rejected at the guard -> null', () => {
+  // The `!GRAMMAR_HEADS.has(kind)` guard (normalize.mjs) rejects any head absent from the Set:
+  // it is emitted-then-dropped-null and never surfaces as a token. This is the same guard that
+  // would silently drop a buildToken case whose head was NOT added to GRAMMAR_HEADS.
+  const result = norm([
+    { kind: 'not_a_grammar_head', name: 'whatever', source: 'events', evidence: 'x' },
+  ]);
+  assert.strictEqual(result.size, 0, 'unknown kind must produce NO token (guard rejects it)');
+  // Sanity: the three real Stage-4 heads ARE in the Set and DO build (no dead/rejected head).
+  const stage4 = norm([
+    { kind: 'precedes', name: 'a,b', source: 'events', evidence: 'x' },
+    { kind: 'min_count', name: 'delegated(x)', value: 1, source: 'events', evidence: 'x' },
+    { kind: 'state_schema', name: 'conformant', source: 'state', evidence: 'x' },
+  ]);
+  assert.deepStrictEqual(
+    [...stage4].sort(),
+    ['min_count(delegated(x))=1', 'precedes(a,b)', 'state_schema(conformant)'],
+  );
+});
+
 test('3.1d sorted/de-duplicated Set over the committed fixture', () => {
   // --- normalize over the committed fixture: sorted, de-duplicated Set<string> ---
   const result = normalize(fixture);

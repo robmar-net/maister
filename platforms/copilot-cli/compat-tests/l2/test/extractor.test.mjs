@@ -346,3 +346,181 @@ test('T7 sanity floor: empty completed_phases while task-tree artifacts exist ->
   // And the merged record array carries state + events + tree sources.
   assert.deepEqual(new Set(ok.records.map((r) => r.source)), new Set(['state', 'events', 'tree']));
 });
+
+// =========================================================================
+// STAGE 4 (issue #48) — precedes / min_count / state_schema (Task Group 2)
+// =========================================================================
+
+const RESEARCH_EVENTS = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'fixtures', 'research', 'events.sample.json'), 'utf8'),
+);
+
+// dev order spine (bare canonical names; the extractor strips the observed maister-copilot: prefix
+// when keying its firstIndex/counts maps, and implementation-verifier surfaces as a skill.invoked).
+const DEV_CHAIN = [
+  'gap-analyzer',
+  'specification-creator',
+  'implementation-planner',
+  'task-group-implementer',
+  'implementation-verifier',
+];
+
+const minCountTokens = (records) =>
+  new Set(records.filter((r) => r.kind === 'min_count').map((r) => `${r.name}=${r.value}`));
+const stateSchemaOf = (records) => records.filter((r) => r.kind === 'state_schema');
+
+// ---- T-PRECEDES ----------------------------------------------------------
+
+test('T-PRECEDES: all 4 adjacent in-order edges emit over the dev fixture (prefix-stripped match)', () => {
+  const records = extractFromEvents(EVENTS, [], DEV_CHAIN);
+  const edges = setOf(records, 'precedes');
+  assert.deepEqual(
+    [...edges].sort(),
+    [
+      'gap-analyzer,specification-creator',
+      'specification-creator,implementation-planner',
+      'implementation-planner,task-group-implementer',
+      'task-group-implementer,implementation-verifier', // 4th endpoint is a skill.invoked (e018)
+    ].sort(),
+  );
+
+  // Token payload is the OPAQUE bare "a,b" (chain names, not the observed maister-copilot: prefix);
+  // source + evidence carry the first-index ordering rationale.
+  const rec = records.find((r) => r.kind === 'precedes' && r.name === 'gap-analyzer,specification-creator');
+  assert.equal(rec.source, 'events');
+  assert.match(rec.evidence, /firstIndex\(gap-analyzer\)<firstIndex\(specification-creator\)/);
+});
+
+test('T-PRECEDES truth table: (a) out-of-order -> no emit; (b) one absent -> no emit; (c) present+ordered -> emit', () => {
+  const A = { type: 'subagent.started', id: 'a', data: { agentName: 'maister-copilot:alpha' } };
+  const B = { type: 'subagent.started', id: 'b', data: { agentName: 'maister-copilot:beta' } };
+
+  // (c) both present + a before b -> emitted.
+  const ok = setOf(extractFromEvents([A, B], [], ['alpha', 'beta']), 'precedes');
+  assert.deepEqual([...ok], ['alpha,beta']);
+
+  // (a) present-but-out-of-order (b before a) -> NOT emitted (order violated -> required edge missing).
+  const outOfOrder = setOf(extractFromEvents([B, A], [], ['alpha', 'beta']), 'precedes');
+  assert.equal(outOfOrder.size, 0, 'out-of-order pair must not emit precedes');
+
+  // (b) one endpoint absent -> NOT emitted (the missing delegation already REGRESSES on its own).
+  const oneAbsent = setOf(extractFromEvents([A], [], ['alpha', 'beta']), 'precedes');
+  assert.equal(oneAbsent.size, 0, 'edge with an absent endpoint must not emit');
+});
+
+test('T-PRECEDES: a skill.invoked endpoint (implementation-verifier) participates in the order spine', () => {
+  // Isolates the reason firstIndex tracks skill.invoked too: the terminal dev edge ends at a skill.
+  const events = [
+    { type: 'subagent.started', id: 's', data: { agentName: 'maister-copilot:task-group-implementer' } },
+    { type: 'skill.invoked', id: 'k', data: { name: 'implementation-verifier' } },
+  ];
+  const edges = setOf(extractFromEvents(events, [], ['task-group-implementer', 'implementation-verifier']), 'precedes');
+  assert.deepEqual([...edges], ['task-group-implementer,implementation-verifier']);
+});
+
+// ---- T-MINCOUNT ----------------------------------------------------------
+
+test('T-MINCOUNT: token-expansion =1..c; c=2 fixture -> {=1,=2}; c=1 -> {=1}; c=0 -> none', () => {
+  // c=2: the research fixture delegates information-gatherer TWICE (e5, e6).
+  const two = minCountTokens(extractFromEvents(RESEARCH_EVENTS, [], [], ['information-gatherer']));
+  assert.ok(two.has('delegated(information-gatherer)=1'), 'missing =1 expansion');
+  assert.ok(two.has('delegated(information-gatherer)=2'), 'missing =2 expansion');
+  assert.ok(!two.has('delegated(information-gatherer)=3'), 'must not over-emit beyond observed count');
+  assert.equal(two.size, 2);
+
+  // c=1: the dev fixture delegates task-group-implementer once.
+  const one = minCountTokens(extractFromEvents(EVENTS, [], [], ['task-group-implementer']));
+  assert.deepEqual([...one], ['delegated(task-group-implementer)=1']);
+
+  // c=0: an agent never delegated in the dev fixture -> no min_count at all.
+  const zero = minCountTokens(extractFromEvents(EVENTS, [], [], ['information-gatherer']));
+  assert.equal(zero.size, 0, '0-occurrence must emit no min_count');
+
+  // Record shape: value is an integer K, name is the delegated(x) payload, evidence cites the count.
+  const rec = extractFromEvents(RESEARCH_EVENTS, [], [], ['information-gatherer'])
+    .find((r) => r.kind === 'min_count' && r.value === 2);
+  assert.equal(rec.name, 'delegated(information-gatherer)');
+  assert.equal(rec.source, 'events');
+  assert.match(rec.evidence, /observed 2 delegated\(information-gatherer\)/);
+});
+
+// ---- T-STATESCHEMA -------------------------------------------------------
+
+test('T-STATESCHEMA: schemaDivergences drives conformant/off-schema; legitimate absence stays conformant (C1)', () => {
+  // parseState now returns a dedicated schemaDivergences array (absence-free off-schema signal).
+
+  // (1) CONFORMANT: canonical completed_phases ["phase-N"] + top-level task: block + characteristics.
+  const conformant = [
+    'task:',
+    '  status: completed',
+    'task_context:',
+    '  task_characteristics:',
+    '    has_reproducible_defect: false',
+    '    modifies_existing_code: true',
+    '    creates_new_entities: false',
+    '    involves_data_operations: false',
+    '    ui_heavy: false',
+    'completed_phases: ["phase-1", "phase-2", "phase-5"]',
+  ].join('\n');
+  const cs = parseState(conformant);
+  assert.ok(Array.isArray(cs.schemaDivergences), 'parseState must return a schemaDivergences array');
+  assert.deepEqual(cs.schemaDivergences, [], 'conformant state has zero divergences');
+  const cRec = stateSchemaOf(extract({ stateYaml: conformant }).records);
+  assert.equal(cRec.length, 1, 'exactly ONE state_schema record');
+  assert.equal(cRec[0].name, 'conformant');
+  assert.equal(cRec[0].source, 'state');
+  assert.equal(cRec[0].evidence, 'schemaDivergences=0');
+
+  // (2) LEGITIMATE ABSENCE (C1 regression guard): research-shaped, NO task_characteristics block ->
+  // parseWarnings NON-EMPTY but schemaDivergences EMPTY -> MUST still be conformant.
+  const absence = ['task:', '  status: completed', 'completed_phases: ["phase-1", "phase-2"]'].join('\n');
+  const as_ = parseState(absence);
+  assert.ok(as_.parseWarnings.length > 0, 'a legitimate absence still raises parseWarnings');
+  assert.deepEqual(as_.schemaDivergences, [], 'legitimate absence must NOT set schemaDivergences (C1)');
+  const aRec = stateSchemaOf(extract({ stateYaml: absence }).records);
+  assert.equal(aRec.length, 1);
+  assert.equal(aRec[0].name, 'conformant', 'parseWarnings must NOT drive off-schema (C1 regression guard)');
+
+  // (3a) OFF-SCHEMA — bare-int completed_phases (divergence site 1).
+  const bareInt = 'task:\n  status: completed\ncompleted_phases: [1, 2, 5]\n';
+  const bi = parseState(bareInt);
+  assert.ok(bi.schemaDivergences.some((d) => /bare integers/.test(d)), 'bare-int -> divergence');
+  assert.equal(stateSchemaOf(extract({ stateYaml: bareInt }).records)[0].name, 'off-schema');
+
+  // (3b) OFF-SCHEMA — top-level status: with NO task: block (divergence site 3).
+  const topStatus = 'orchestrator:\n  status: completed\ncompleted_phases: ["phase-1"]\n';
+  const ts = parseState(topStatus);
+  assert.ok(ts.schemaDivergences.some((d) => /top-level status/.test(d)), 'top-level status -> divergence');
+  assert.equal(stateSchemaOf(extract({ stateYaml: topStatus }).records)[0].name, 'off-schema');
+
+  // (3c) OFF-SCHEMA — union-derived (no completed_phases key; phases from phase_summaries) (site 2).
+  const union = [
+    'research_context:',
+    '  phase_summaries:',
+    '    phase-1:',
+    '      note: planned',
+    '    phase-2:',
+    '      note: gathered',
+    'task:',
+    '  status: completed',
+  ].join('\n');
+  const un = parseState(union);
+  assert.deepEqual(un.phases, [1, 2], 'phases recovered from phase_summaries');
+  assert.ok(un.schemaDivergences.some((d) => /union of/.test(d)), 'union-derived -> divergence');
+  assert.equal(stateSchemaOf(extract({ stateYaml: union }).records)[0].name, 'off-schema');
+
+  // (4) NO stateYaml (quick-bugfix): emit NO state_schema record at all.
+  const none = stateSchemaOf(extract({ stateYaml: null, events: [] }).records);
+  assert.equal(none.length, 0, 'no state -> no state_schema predicate');
+});
+
+test('T-STATESCHEMA: ONLY the three tolerant-serialization branches populate schemaDivergences', () => {
+  // Absence/empty branches push to parseWarnings ONLY, never to schemaDivergences.
+  const noState = parseState('');
+  assert.deepEqual(noState.schemaDivergences, [], 'empty text -> no divergences (only absence warnings)');
+
+  // completed_phases key absent + no task: block -> all-absence -> warnings only.
+  const allAbsent = parseState('orchestrator:\n  note: nothing machine-readable here\n');
+  assert.ok(allAbsent.parseWarnings.length > 0);
+  assert.deepEqual(allAbsent.schemaDivergences, [], 'pure absence never sets schemaDivergences');
+});

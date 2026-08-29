@@ -9,15 +9,15 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `development` |
 | Source (read-only citation source) | `plugins/maister/skills/development/SKILL.md` |
 | maister_version | `2.2.2` |
-| workflow_model_version | `3` |
-| Sibling JSON hash | `ea0a59515602f4811b1d6271435559a23663fbd5502af64e5a2119c0e0e2d37e` |
+| workflow_model_version | `4` |
+| Sibling JSON hash | `3694ce8d43f3e05a7322e383a3bca56df701b9536824eaa3a048469276ae047b` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
-`plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 26
-required + 33 optional + 12 rules + 5 allowlist = 76 rows.
+`plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 32
+required + 33 optional + 21 rules + 6 allowlist = 92 rows.
 
-## Required (26)
+## Required (32)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -47,6 +47,12 @@ required + 33 optional + 12 rules + 5 allowlist = 76 rows.
 | `outcome(tests-pass)=pass` | required | :441, :359 | FUNCTIONAL ORACLE (issue #48, Stage 2). P11 verification (:441) produces `verification/implementation-verification.md` — a correct run's implemented code (P8, :359) passes its test suite, so the functional `tests-pass` outcome is a passing deliverable check, not merely a modeled delegation |
 | `task_status(completed)` | required | :545 | P14 State: "Set `task.status: completed`" |
 | `reached_terminal(completion)` | required | :553 | P14: "→ End of workflow" |
+| `precedes(gap-analyzer,specification-creator)` | required | :147→:285 | ORDER (issue #48, Stage 4): the P2 gap-analyzer delegation (:147) fans out before the P5 specification-creator delegation (:285) — analyse precedes spec |
+| `precedes(specification-creator,implementation-planner)` | required | :285→:332 | P5 specification-creator (:285) precedes P7 implementation-planner (:332) — spec precedes plan |
+| `precedes(implementation-planner,task-group-implementer)` | required | :332→implementation-plan-executor/SKILL.md:96 | P7 implementation-planner (:332) precedes the P8 executor's per-group task-group-implementer fan-out (implementation-plan-executor/SKILL.md:96) — plan precedes implement |
+| `precedes(task-group-implementer,implementation-verifier)` | required | implementation-plan-executor/SKILL.md:96→:446 | The P8 task-group-implementer fan-out (implementation-plan-executor/SKILL.md:96) precedes the P11 implementation-verifier invocation (:446) — implement precedes verify |
+| `min_count(delegated(task-group-implementer))=1` | required | implementation-plan-executor/SKILL.md:87-99 | COUNT (issue #48, Stage 4): the plan executor delegates ONE task-group-implementer per task group (implementation-plan-executor/SKILL.md:87-99), so a correct dev run fans out ≥1 — token-expansion `=1..c`, reference asserts the floor `=1` |
+| `state_schema(conformant)` | required | :107-122, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4): the orchestrator-state serialization matches maister's documented schema (canonical `completed_phases` + top-level `task:` block); Phase-5 routing guards and post-compaction resume depend on well-formed state, so a conformant serialization is part of the workflow model. Keyed on the dedicated `schemaDivergences` signal (NOT `parseWarnings`), so legitimate absences (e.g. a `task_characteristic missing: X`) do not mark off-schema |
 
 ## Optional (33)
 
@@ -86,9 +92,18 @@ required + 33 optional + 12 rules + 5 allowlist = 76 rows.
 | `gate_fired_at(phase-12)` | optional | :510 | Fireable phase-12 exit gate (E2E complete) |
 | `gate_fired_at(phase-13)` | optional | :532 | Fireable phase-13 exit gate (Documentation complete) |
 
-## Rules (12)
+## Rules (21)
 
-Gate-placement rules (Stage 3). Each rule promotes its `require` predicate to *required* ONLY when
+The `rules[]` array carries TWO kinds of relation, told apart by the `require`-token PREFIX (this
+prefix keys the run.mjs floor via `WITNESS_REQUIRE_RE`, see L2-DESIGN): `gate_fired_at(` = a Stage-3
+**gate-placement** rule (12, below); `delegated(` / `created_artifact(` / `invoked_skill(` = a
+Stage-4 **witness** relation (9, below). A witness relation records that a completed phase must be
+corroborated by an event/tree witness rather than self-report alone; the floor reads it to decide
+REGRESSED-vs-INCOMPLETE for a missing `phase_completed(N)`.
+
+### Gate-placement rules (Stage 3, 12)
+
+Each rule promotes its `require` predicate to *required* ONLY when
 its `when` predicate (`phase_completed(N)`) is observed — a gate whose phase never completed cannot
 false-alarm. Derived EXACTLY from the mandatory-gate exit markers in the source SKILL.md (phases 2–13;
 phases 1 & 14 have no exit gate), never fitted to a run. Every `require` row is also modelled in
@@ -109,7 +124,27 @@ phases 1 & 14 have no exit gate), never fitted to a run. Every `require` row is 
 | `phase_completed(12)` | `gate_fired_at(phase-12)` | :510 ("E2E complete. Continue to Phase 13?", :512) |
 | `phase_completed(13)` | `gate_fired_at(phase-13)` | :532 ("Documentation complete. Continue to Phase 14?", :534) |
 
-## Allowlist (5)
+### Witness relations (Stage 4, 9)
+
+Each witness relation names the event/tree token that MUST corroborate a completed phase (P2/P5/P7/P8/P11).
+Every witness token below is ALSO an independently-required predicate (see `## Required`), so
+rules-expansion is a benign no-op (guarded by `!effectiveRequired.includes`); the rows exist to be
+hashed and read by the run.mjs floor. P2's witness is `delegated(gap-analyzer)` ONLY — the extractor's
+dev profile does NOT emit `created_artifact(analysis/gap-analysis.md)`, so it must not be a witness.
+
+| when | require | witnesses | citation |
+|---|---|---|---|
+| `phase_completed(2)` | `delegated(gap-analyzer)` | P2 | :147 (P2 "Task tool - `maister:gap-analyzer` subagent") |
+| `phase_completed(5)` | `delegated(specification-creator)` | P5 | :285 (P5 "Task tool - `maister:specification-creator` subagent") |
+| `phase_completed(5)` | `created_artifact(implementation/spec.md)` | P5 | :291 (P5 Output list includes `implementation/spec.md`) |
+| `phase_completed(7)` | `delegated(implementation-planner)` | P7 | :332 (P7 "Task tool - `maister:implementation-planner` subagent") |
+| `phase_completed(7)` | `created_artifact(implementation/implementation-plan.md)` | P7 | :333 (P7 Output: `implementation/implementation-plan.md`) |
+| `phase_completed(8)` | `delegated(task-group-implementer)` | P8 | :358, implementation-plan-executor/SKILL.md:96 (P8 executor sub-delegates one task-group-implementer per group) |
+| `phase_completed(8)` | `created_artifact(implementation/work-log.md)` | P8 | :359 (P8 Output: implemented code + `implementation/work-log.md`) |
+| `phase_completed(11)` | `invoked_skill(implementation-verifier)` | P11 | :446 (P11 Step 1: "Invoke Skill tool - `maister:implementation-verifier`") |
+| `phase_completed(11)` | `created_artifact(verification/*)` | P11 | :441 (P11 Output: `verification/implementation-verification.md`) |
+
+## Allowlist (6)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -118,6 +153,7 @@ phases 1 & 14 have no exit gate), never fitted to a run. Every `require` row is 
 | `invoked_skill(reviews-spec-audit)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
 | `invoked_skill(reviews-reality-check)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
 | `invoked_skill(reviews-production-readiness)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
+| `state_schema(off-schema)` | allowlist | :107-122 (parser tolerance) | LIMITATION (issue #48, Stage 4) — the tolerant state parser accepts documented off-schema orchestrator-state serializations (bare-int `completed_phases`, `phase[-_]` tolerance, `phase_summaries` as phase source, `phases:` sequence with `id|number|phase` key, top-level `status:` without a `task:` block, floating `task_characteristics`); a run whose state diverges is allowlisted, not REGRESSED |
 
 ## Honesty notes
 

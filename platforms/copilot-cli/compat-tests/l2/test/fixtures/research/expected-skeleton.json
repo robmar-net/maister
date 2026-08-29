@@ -20,6 +20,8 @@
     "gate_fired_at(phase-4)",
     "gate_fired_at(phase-5)",
     "invoked_skill(research)",
+    "min_count(delegated(information-gatherer))=1",
+    "min_count(delegated(information-gatherer))=2",
     "outcome(report-produced)=pass",
     "phase_completed(1)",
     "phase_completed(2)",
@@ -27,7 +29,10 @@
     "phase_completed(4)",
     "phase_completed(5)",
     "phase_completed(6)",
+    "precedes(information-gatherer,research-synthesizer)",
+    "precedes(research-planner,information-gatherer)",
     "reached_terminal(completion)",
+    "state_schema(conformant)",
     "task_status(completed)"
   ]
 }

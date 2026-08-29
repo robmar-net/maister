@@ -112,6 +112,11 @@ export const scenario = {
   // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
   gateMap,
   answerMap,
+  // Stage 4 (order spine): expected delegated(...) agents in the order the research orchestrator fans
+  // them out (plan -> gather -> synthesize). Names match the delegated(...) tokens the extractor emits
+  // verbatim. `minCounts` names the agent(s) that must appear >=1 time.
+  precedesChain: ['research-planner', 'information-gatherer', 'research-synthesizer'],
+  minCounts: ['information-gatherer'],
   // Pre-registered retry prompt; also exported as `fallbackPrompt`.
   fallbackPrompt,
 };

@@ -9,8 +9,8 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `quick-bugfix` |
 | Source (read-only citation source) | `plugins/maister/skills/quick-bugfix/SKILL.md` |
 | maister_version | `2.2.3` |
-| workflow_model_version | `3` |
-| Sibling JSON hash | `0893abf4a0611ba742fd7b31af7937a6735d6feda2a5aa2bb706da2947103603` |
+| workflow_model_version | `4` |
+| Sibling JSON hash | `4c882e17a1055c9be6f93c8e567db28cd5fcb10a13ceecd23641840282603a63` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above (read-only). Rows follow on-disk array order.
@@ -48,6 +48,16 @@ with the sibling references (rules-in-hash Option A contributes zero tokens here
 No allowlist entries.
 
 ## Honesty notes
+
+**Note 2 — quick-bugfix carries NO Stage-4 predicate (issue #48, Stage 4).** The order-spine /
+count / state-schema predicates do not apply here: the workflow has no orchestrator state, no task
+directory, and no subagents (`:9` — "No orchestrator state, no task directory, no subagents"). With
+no `subagent.started` events there is no `precedes` chain and no `min_count` fan-out to model; with
+no `stateYaml`, `findStateYaml` returns `null` and the extractor emits NO `state_schema` record at
+all, so `state_schema(conformant)` would be an unsatisfiable required token (permanent REGRESSED) and
+`state_schema(off-schema)` has no state surface to allowlist. The reference therefore stays
+predicate-frozen; the ONLY Stage-4 change is the lockstep governance bump (`schema_version` 2→3,
+`workflow_model_version` 3→4) with a `computeHash` re-stamp (CALIBRATION #18).
 
 **Note 1 — required `gate_fired(ask)` is divergence-tagged (do not read it as a model-mandated
 AskUserQuestion).** The SKILL.md's mandatory gate is a plan gate: "Use the `EnterPlanMode` tool to

@@ -88,6 +88,11 @@ export const scenario = {
   // Stage 3: no phase-numbered gates (gateMap empty) + deterministic gate answers (chooseAnswer).
   gateMap,
   answerMap,
+  // Stage 4 (order spine): EMPTY. quick-bugfix has "no subagents" (plugins/maister/skills/quick-bugfix/
+  // SKILL.md:9), so its skeleton carries no delegated(...) tokens — no order chain and no minimum counts
+  // to enforce.
+  precedesChain: [],
+  minCounts: [],
   fallbackPrompt,
 };
 

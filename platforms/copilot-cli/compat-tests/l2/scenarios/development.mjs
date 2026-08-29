@@ -139,6 +139,11 @@ export const scenario = {
   // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
   gateMap,
   answerMap,
+  // Stage 4 (order spine): expected delegated(...) agents in the order the development orchestrator
+  // fans them out (analyse -> spec -> plan -> implement -> verify). Names match the delegated(...) tokens
+  // the extractor emits verbatim. `minCounts` names the agent(s) that must appear >=1 time.
+  precedesChain: ['gap-analyzer', 'specification-creator', 'implementation-planner', 'task-group-implementer', 'implementation-verifier'],
+  minCounts: ['task-group-implementer'],
   // Pre-registered retry prompt (MEDIUM-3); also exported as `fallbackPrompt`.
   fallbackPrompt,
 };

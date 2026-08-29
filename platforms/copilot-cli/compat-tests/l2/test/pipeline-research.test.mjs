@@ -39,7 +39,7 @@ const golden = JSON.parse(
 
 test('pipeline (research): extract(taskType:research) -> normalize -> compare yields the expected skeleton + AS-EXPECTED', () => {
   // --- extract (events u tree u state -> raw records) ------------------------------------
-  const ex = extract({ events, taskDirRoot, stateYaml, taskType: 'research', gateMap: scenario.gateMap });
+  const ex = extract({ events, taskDirRoot, stateYaml, taskType: 'research', gateMap: scenario.gateMap, precedesChain: scenario.precedesChain, minCounts: scenario.minCounts });
 
   // A COMPLETE research run: phases present alongside artifacts, so the sanity floor must NOT trip.
   assert.equal(ex.incomplete, false, `unexpected INCOMPLETE: ${ex.incompleteReason}`);
@@ -88,9 +88,13 @@ test('pipeline (research): extract(taskType:research) -> normalize -> compare yi
   assert.equal(result.counts.fail, 0, 'no candidate regressions expected');
   assert.equal(result.diffs.length, 0, `expected 0 classified diffs, got ${JSON.stringify(result.diffs)}`);
   // `matched` filters over effectiveRequired, so rules-expansion promotes gate_fired_at(phase-N) to
-  // required for each completed∩ruled phase (research {1,4,5} = 3). Effective required = 10 + 3 = 13.
-  const EXPECTED_MATCHED = golden.required.length + 3; // 10 + 3 = 13
-  assert.equal(EXPECTED_MATCHED, 13, 'research effective-required count sanity (10 base + 3 promoted gates)');
+  // required for each completed∩ruled phase (research {1,4,5} = 3). The P1 witness rule promotes
+  // delegated(research-planner), ALREADY required (no new matched); the Stage-4 min_count rule
+  // {when:phase_completed(1), require:min_count(delegated(information-gatherer))=2} promotes a token
+  // NOT in required[] but PRESENT in observed (the fixture has 2 gatherers → =2 emitted), so it
+  // counts as +1 matched. Effective required = 13 base + 3 promoted gates + 1 min_count rule = 17.
+  const EXPECTED_MATCHED = golden.required.length + 3 + 1; // 13 + 3 gates + 1 min_count rule = 17
+  assert.equal(EXPECTED_MATCHED, 17, 'research effective-required count sanity (13 base + 3 promoted gates + 1 min_count rule)');
   assert.equal(
     result.matched.length,
     EXPECTED_MATCHED,

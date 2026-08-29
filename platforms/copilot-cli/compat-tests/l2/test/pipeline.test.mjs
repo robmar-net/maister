@@ -41,7 +41,7 @@ const golden = JSON.parse(
 
 test('pipeline: extract -> normalize -> compare over committed fixtures yields the expected skeleton + AS-EXPECTED (AC3)', () => {
   // --- extract (events u tree u state -> raw records) ------------------------------------
-  const ex = extract({ events, taskDirRoot, stateYaml, gateMap: scenario.gateMap });
+  const ex = extract({ events, taskDirRoot, stateYaml, gateMap: scenario.gateMap, precedesChain: scenario.precedesChain, minCounts: scenario.minCounts });
 
   // The fixtures represent a COMPLETE run: the MEDIUM-2 sanity floor must NOT trip
   // (phases present alongside artifacts), so the pipeline yields a real verdict.
@@ -83,9 +83,11 @@ test('pipeline: extract -> normalize -> compare over committed fixtures yields t
   assert.equal(result.diffs.length, 0, `expected 0 classified diffs, got ${result.diffs.length}`);
   // Every EFFECTIVE-required predicate matched (nothing missing). `matched` filters over
   // effectiveRequired, so the rules-expansion promotes gate_fired_at(phase-N) to required for each
-  // completed∩ruled phase (dev {2,5,6,7,8,10,11} = 7). Effective required = 26 base + 7 promoted = 33.
-  const EXPECTED_MATCHED = golden.required.length + 7; // 26 + 7 = 33
-  assert.equal(EXPECTED_MATCHED, 33, 'dev effective-required count sanity (26 base + 7 promoted gates)');
+  // completed∩ruled phase (dev {2,5,6,7,8,10,11} = 7). The 9 Stage-4 witness rules promote tokens
+  // ALREADY in required[] (guarded by !effectiveRequired.includes → no new matched). Effective
+  // required = 32 base + 7 promoted gates = 39.
+  const EXPECTED_MATCHED = golden.required.length + 7; // 32 + 7 = 39
+  assert.equal(EXPECTED_MATCHED, 39, 'dev effective-required count sanity (32 base + 7 promoted gates)');
   assert.equal(
     result.matched.length,
     EXPECTED_MATCHED,

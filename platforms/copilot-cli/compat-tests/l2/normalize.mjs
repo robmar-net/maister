@@ -35,6 +35,13 @@
 const PLUGIN_PREFIX_RE = /^maister(?:-copilot)?:/;
 
 // Grammar heads normalize is allowed to emit. Anything else is noise -> dropped.
+//
+// DEAD-ENTRY-TRAP INVARIANT: a head listed here but ABSENT from buildToken's switch is
+// emitted-then-dropped-null (the `default` returns null) — a DEAD head. A head handled in
+// buildToken but ABSENT from this Set is REJECTED at the `!GRAMMAR_HEADS.has(kind)` guard
+// (buildToken, below) and never built. Both structures MUST carry all three Stage-4 heads
+// (`precedes`, `min_count`, `state_schema`) or the token silently vanishes — no unit test can
+// observe a half-added head; only the snapshot diff does. Hence the atomic-landing requirement.
 const GRAMMAR_HEADS = new Set([
   'phase_completed',
   'task_characteristic',
@@ -47,6 +54,10 @@ const GRAMMAR_HEADS = new Set([
   'gate_count',
   'reached_terminal',
   'outcome',
+  // Stage 4 (issue #48) — additive grammar heads, synthesized from structured records (no regex).
+  'precedes',
+  'min_count',
+  'state_schema',
 ]);
 
 function stripPluginPrefix(name) {
@@ -120,6 +131,22 @@ function buildToken(resolved) {
     case 'outcome':
       // Functional-oracle head (issue #48). Mirrors task_characteristic: free-form id, value pass|fail.
       return `outcome(${name})=${value}`;
+    case 'precedes':
+      // Stage 4 (issue #48). ORDER edge. `name` is the OPAQUE comma payload "a,b" — the comma
+      // lives INSIDE the single payload (no 2-arg head). NO normalizePhase, NO split: the
+      // extractor already assembled the adjacent-pair string; normalize passes it through literal.
+      return `precedes(${name})`;
+    case 'min_count':
+      // Stage 4 (issue #48). FAN-OUT count, token-expansion (Option b). Mirrors the `=value`
+      // heads (gate_count:113 / outcome:122). `name="delegated(x)"`, `value=K'` — the extractor
+      // emits one token per K' in 1..observedCount; the reference asserts the exact `=K` by set
+      // membership. No `>=` logic anywhere.
+      return `min_count(${name})=${value}`;
+    case 'state_schema':
+      // Stage 4 (issue #48). STATE-SCHEMA conformance. Mirrors the 1-arg literal head
+      // task_status(:117). `name ∈ {conformant, off-schema}` (state-sourced by name, but NOT a
+      // downgrade-eligible floor predicate — it is a conformance token).
+      return `state_schema(${name})`;
     case 'created_artifact':
       return `created_artifact(${collapseArtifactPath(name)})`;
     case 'reached_terminal':
