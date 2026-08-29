@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { extract } from '../extractor.mjs';
 import { normalize } from '../normalize.mjs';
 import { compare, EXIT } from '../compare.mjs';
+import { scenario } from '../scenarios/research.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const L2_DIR = path.resolve(__dirname, '..');
@@ -38,7 +39,7 @@ const golden = JSON.parse(
 
 test('pipeline (research): extract(taskType:research) -> normalize -> compare yields the expected skeleton + AS-EXPECTED', () => {
   // --- extract (events u tree u state -> raw records) ------------------------------------
-  const ex = extract({ events, taskDirRoot, stateYaml, taskType: 'research' });
+  const ex = extract({ events, taskDirRoot, stateYaml, taskType: 'research', gateMap: scenario.gateMap });
 
   // A COMPLETE research run: phases present alongside artifacts, so the sanity floor must NOT trip.
   assert.equal(ex.incomplete, false, `unexpected INCOMPLETE: ${ex.incompleteReason}`);
@@ -86,10 +87,14 @@ test('pipeline (research): extract(taskType:research) -> normalize -> compare yi
   assert.equal(result.exitCode, EXIT.AS_EXPECTED, 'AS-EXPECTED must map to exit 0');
   assert.equal(result.counts.fail, 0, 'no candidate regressions expected');
   assert.equal(result.diffs.length, 0, `expected 0 classified diffs, got ${JSON.stringify(result.diffs)}`);
+  // `matched` filters over effectiveRequired, so rules-expansion promotes gate_fired_at(phase-N) to
+  // required for each completed∩ruled phase (research {1,4,5} = 3). Effective required = 10 + 3 = 13.
+  const EXPECTED_MATCHED = golden.required.length + 3; // 10 + 3 = 13
+  assert.equal(EXPECTED_MATCHED, 13, 'research effective-required count sanity (10 base + 3 promoted gates)');
   assert.equal(
     result.matched.length,
-    golden.required.length,
-    `expected all ${golden.required.length} required predicates matched, got ${result.matched.length}`,
+    EXPECTED_MATCHED,
+    `expected all ${EXPECTED_MATCHED} effective-required predicates matched, got ${result.matched.length}`,
   );
 
   // A deliberately broken skeleton (drop a required research delegation) MUST be caught as REGRESSED —

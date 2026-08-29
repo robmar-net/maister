@@ -101,7 +101,9 @@ test('T4 events: reached_terminal(completion) on idle/shutdown w/o error; EXCLUD
   // EXCLUDED noise: assistant.message (narration), tool.execution_* (arg values / results) produce
   // NO records. The only record kinds present come from the handled discriminators.
   const kinds = new Set(records.map((r) => r.kind));
-  assert.deepEqual([...kinds].sort(), ['delegated', 'gate_fired', 'invoked_skill', 'reached_terminal']);
+  // gate_count is now ALWAYS emitted once when >=1 user_input.requested is seen (the fixture has one),
+  // so it joins the kind set even with the default (empty) gateMap.
+  assert.deepEqual([...kinds].sort(), ['delegated', 'gate_count', 'gate_fired', 'invoked_skill', 'reached_terminal']);
   // No record's evidence references a tool-execution or assistant-message event.
   for (const r of records) assert.doesNotMatch(r.evidence, /tool\.execution|assistant\.message/);
 
@@ -111,6 +113,67 @@ test('T4 events: reached_terminal(completion) on idle/shutdown w/o error; EXCLUD
     { type: 'session.error', id: 'x2', data: { errorType: 'query', message: 'boom' } },
   ]);
   assert.equal(namesOf(errored, 'reached_terminal').length, 0, 'session.error must suppress reached_terminal');
+});
+
+// =========================================================================
+// GATES: gateMap placement + gate_count once (Stage 3, 3 tests)
+// =========================================================================
+
+// A slice of the development gateMap (first-match-wins, case-insensitive) — enough to exercise
+// phase placement without depending on scenarios/*.mjs (Group 3's file).
+const devGateMap = [
+  { re: /continue to phase [345]:/i, phase: 2 },
+  { re: /continue to specification audit/i, phase: 5 },
+  { re: /which standard verifications/i, phase: 10 },
+];
+
+test('G1 events: gateMap places gate_fired_at(phase-N) on first match AND still pushes gate_fired(ask)', () => {
+  const events = [
+    { type: 'user_input.requested', id: 'u1', data: { question: 'Continue to Phase 5: Technical Approach?' } },
+    { type: 'user_input.requested', id: 'u2', data: { question: 'Which standard verifications to run?' } },
+  ];
+  const records = extractFromEvents(events, devGateMap);
+
+  // Each mapped question yields its phase-placed gate (phase-2 for the "Continue to Phase 5:" text,
+  // phase-10 for the verifications text — first-match-wins over the gateMap order).
+  const firedAt = namesOf(records, 'gate_fired_at').sort();
+  assert.deepEqual(firedAt, ['phase-10', 'phase-2'].sort());
+
+  // gate_fired(ask) is ALWAYS pushed (unconditional — even on a gateMap match); it is a required
+  // predicate in every reference and must never be lost. One per user_input.requested.
+  assert.equal(records.filter((r) => r.kind === 'gate_fired' && r.name === 'ask').length, 2);
+
+  // The phase gate carries the question in its evidence.
+  const p2 = records.find((r) => r.kind === 'gate_fired_at' && r.name === 'phase-2');
+  assert.equal(p2.source, 'events');
+  assert.match(p2.evidence, /Continue to Phase 5/);
+});
+
+test('G2 events: gate_count(ask)=K emitted EXACTLY ONCE with K = count of user_input.requested', () => {
+  const events = [
+    { type: 'user_input.requested', id: 'u1', data: { question: 'Continue to Phase 5: x?' } },
+    { type: 'user_input.requested', id: 'u2', data: { question: 'Which standard verifications to run?' } },
+    { type: 'user_input.requested', id: 'u3', data: { question: 'some unmapped question' } },
+  ];
+  const records = extractFromEvents(events, devGateMap);
+
+  const counts = records.filter((r) => r.kind === 'gate_count');
+  assert.equal(counts.length, 1, 'gate_count emitted exactly once, never per-event');
+  assert.equal(counts[0].name, 'ask');
+  assert.equal(counts[0].value, 3, 'K = number of user_input.requested events seen');
+});
+
+test('G3 events: empty gateMap -> NO gate_fired_at, only gate_fired(ask) + gate_count', () => {
+  const events = [
+    { type: 'user_input.requested', id: 'u1', data: { question: 'Continue to Phase 5: x?' } },
+  ];
+  const records = extractFromEvents(events); // default gateMap = []
+
+  assert.equal(namesOf(records, 'gate_fired_at').length, 0, 'no phase gate without a gateMap');
+  assert.equal(records.filter((r) => r.kind === 'gate_fired' && r.name === 'ask').length, 1);
+  const counts = records.filter((r) => r.kind === 'gate_count');
+  assert.equal(counts.length, 1);
+  assert.equal(counts[0].value, 1);
 });
 
 // =========================================================================

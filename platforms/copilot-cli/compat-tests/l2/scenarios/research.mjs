@@ -66,6 +66,28 @@ const fallbackPrompt =
   'and produce a research report with findings and citations. Do NOT modify any code and do NOT use ' +
   'the development workflow — this is research only.';
 
+/**
+ * gateMap (Stage 3) — first-match-wins over `user_input.requested` `data.question`. Research has a
+ * MANDATORY-GATE exit on phases 1, 4, and 5 (verbatim phrases from
+ * plugins/maister/skills/research/SKILL.md, read-only); a match emits `gate_fired_at(phase-N)` on
+ * top of the always-kept `gate_fired(ask)`.
+ */
+const gateMap = [
+  { phase: 1, re: /research foundation complete|continue to brainstorming evaluation/i },
+  { phase: 4, re: /brainstorming complete|continue to high-level design/i },
+  { phase: 5, re: /design complete|continue to output generation/i },
+];
+
+/**
+ * answerMap (Stage 3) — deterministic gate choices for `chooseAnswer`. Every phase-exit gate
+ * proceeds with `yes`; a design constraints/preferences prompt takes the first option. Unmatched ->
+ * `choices[0] ?? 'yes'` responder-fallback.
+ */
+const answerMap = [
+  { re: /continue to/i, choice: 'yes' },
+  { re: /architectural constraints|preferences/i, choice: null }, // null -> choices[0]
+];
+
 export const scenario = {
   id: 'research',
   // Reuses the development sandbox: research only needs a small codebase + docs to investigate
@@ -87,6 +109,9 @@ export const scenario = {
   // >= 200 bytes AND >= 5 non-blank lines (plus >=1 markdown heading and a present
   // `analysis/synthesis.md`, enforced by the extractor) — so an empty/one-line stub fails.
   outcome: [{ id: 'report-produced', assert: 'research-deliverables', params: { minBytes: 200, minNonBlankLines: 5 } }],
+  // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
+  gateMap,
+  answerMap,
   // Pre-registered retry prompt; also exported as `fallbackPrompt`.
   fallbackPrompt,
 };

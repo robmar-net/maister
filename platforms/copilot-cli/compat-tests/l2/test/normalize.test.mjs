@@ -89,6 +89,24 @@ test('3.1c verification-path collapse — any verification/<report> collapses to
   assert.ok(!result.has('created_artifact(verification/verification-report.md)'));
 });
 
+test('1.1a normalize gate_fired_at — LITERAL phase tag, NO normalizePhase strip', () => {
+  // gate_fired_at mirrors gate_fired/phase_completed but its payload is the phase TAG itself
+  // (phase-N), not a bare number: normalizePhase must NOT run. `phase-8` stays `phase-8`.
+  const result = norm([
+    { kind: 'gate_fired_at', name: 'phase-8', source: 'events', evidence: 'x' },
+  ]);
+  assert.deepStrictEqual([...result], ['gate_fired_at(phase-8)']);
+  // Explicitly prove the bare-number form did NOT leak (would mean normalizePhase ran).
+  assert.ok(!result.has('gate_fired_at(8)'), 'phase tag was stripped — normalizePhase must not run here');
+});
+
+test('1.1b normalize gate_count — =value head, mirrors task_characteristic/outcome', () => {
+  const result = norm([
+    { kind: 'gate_count', name: 'ask', value: 7, source: 'events', evidence: 'x' },
+  ]);
+  assert.deepStrictEqual([...result], ['gate_count(ask)=7']);
+});
+
 test('3.1d sorted/de-duplicated Set over the committed fixture', () => {
   // --- normalize over the committed fixture: sorted, de-duplicated Set<string> ---
   const result = normalize(fixture);

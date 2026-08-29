@@ -39,6 +39,9 @@ notes. Provenance for the back-fill entries is the commit messages themselves
 | 10 | 2026-08-29 | development | `outcome(tests-pass)=pass` | absent → required | FUNCTIONAL ORACLE (issue #48, Stage 2): P11 verification (`development/SKILL.md:441`) + P8 implemented-code corroboration (:359); `workflow_model_version` 1→2 — see note 10 | `a48a64e3…` → `1180da9a…` | PR (Stage 2) |
 | 11 | 2026-08-29 | research | `outcome(report-produced)=pass` | absent → required | FUNCTIONAL ORACLE (issue #48, Stage 2): P1 Step 4 Artifacts (`research/SKILL.md:181`, phase Output :128) mandate `outputs/research-report.md`; `workflow_model_version` 1→2 — see note 11 | `12c51927…` → `e823c815…` | PR (Stage 2) |
 | 12 | 2026-08-29 | quick-bugfix | `outcome(bug-fixed)=pass` | absent → required | FUNCTIONAL ORACLE (issue #48, Stage 2): Step 7 verify terminal deliverable-fixed check (`quick-bugfix/SKILL.md:171-173`); `workflow_model_version` 1→2 — see note 12 | `9855340d…` → `6cff7eba…` | PR (Stage 2) |
+| 13 | 2026-08-29 | development | `rules[]` phases 2–13 (12) + `gate_fired_at(phase-2..13)` optional (12) | absent → `rules[]` + `gate_fired_at` optional | GATES (issue #48, Stage 3): mandatory-gate exits `development/SKILL.md:174/:206/:237/:294/:313/:340/:370/:389/:432/:490/:510/:532`; rules-in-hash Option A + `schema_version` 1→2 + `workflow_model_version` 2→3 — see note 13 | `1180da9a…` → `ea0a5951…` | PR (Stage 3) |
+| 14 | 2026-08-29 | research | `rules[]` phases 1,4,5 (3) + `gate_fired_at(phase-1,4,5)` optional (3) | absent → `rules[]` + `gate_fired_at` optional | GATES (issue #48, Stage 3): mandatory-gate exits `research/SKILL.md:198/:302/:351`; rules-in-hash Option A + `schema_version` 1→2 + `workflow_model_version` 2→3 — see note 14 | `e823c815…` → `40378fab…` | PR (Stage 3) |
+| 15 | 2026-08-29 | quick-bugfix | none (`rules[] = []`) | schema/wm only | GATES (issue #48, Stage 3): Step-numbered plan gate (`quick-bugfix/SKILL.md:91`/:122-124), no phase-numbered exit gates ⇒ `rules[]` intentionally empty, no `gate_fired_at` invented; `schema_version` 1→2 + `workflow_model_version` 2→3 (zero rule tokens) — see note 15 | `6cff7eba…` → `0893abf4…` | PR (Stage 3) |
 
 ## Entry notes
 
@@ -164,3 +167,52 @@ confirmed fixed), so `bug-fixed` is a passing functional deliverable check on th
 `workflow_model_version` bumped 1→2. Full hashes:
 `9855340d04a2efb2bdef6541c736641aa16a9e35b6a1031184e2e95f2f24ff36 →
 6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215`.
+
+### 13 — dev: `rules[]` phases 2–13 + fireable `gate_fired_at` optional rows (Stage 3 gates)
+
+GATES landing (issue #48, Stage 3): the two new grammar heads (`gate_fired_at(phase-N)`,
+`gate_count(ask)=K`) become observable and the development reference gains a `rules[]` governance
+partition that promotes `gate_fired_at(phase-N)` to *required* when `phase_completed(N)` is observed
+(a mandatory exit gate silently dropped on an executed path → REGRESSED). The 12 rules (phases 2–13
+— every phase with a MANDATORY-GATE exit; phases 1 & 14 have none) are derived EXACTLY from the
+SKILL.md gate-marker anchors, never fitted to a run:
+`development/SKILL.md:174` (P2), `:206` (P3 TDD red gate), `:237` (P4 UI mockups), `:294` (P5 spec
+audit), `:313` (P6 implementation planning), `:340` (P7 implementation), `:370` (P8 verification),
+`:389` (P9 TDD gate passed), `:432` (P10 verification decisions), `:490` (P11 → Phase 12), `:510`
+(P12 E2E complete), `:532` (P13 documentation complete). Each rule's `require` is also modelled in
+`optional` (12 `gate_fired_at(phase-N)` rows) so an observed-but-unpromoted gate is not an unmodeled
+extra — consistent with `gate_fired(permission)`/`gate_fired(exit_plan_mode)`. `gate_count(ask)=K`
+is deliberately NOT modelled anywhere (reported-only head, excluded from `compare`'s `extra` diff),
+so a variable K never false-REGRESSES. Hash re-stamp under `computeHash` Option A: one sorted
+`rule:<when>=><require>` token per rule (zero tokens when `rules` absent/empty) plus the 12 new
+`gate_fired_at` optional predicates plus the `schema:2` token; `schema_version` 1→2 (old refs
+re-stamp cleanly), `workflow_model_version` 2→3 (`--check-reference` reports STALE against any v2
+reference; `computeHash` is version-independent). Full hashes:
+`1180da9a65f7c5e30f3d4acc143f7cbc9c3391b4c8b3980f34ea82c703ab24a6 →
+ea0a59515602f4811b1d6271435559a23663fbd5502af64e5a2119c0e0e2d37e`.
+
+### 14 — research: `rules[]` phases 1,4,5 + fireable `gate_fired_at` optional rows (Stage 3 gates)
+
+GATES landing (issue #48, Stage 3). Research has a MANDATORY-GATE exit on phases 1, 4, and 5; the 3
+rules are derived EXACTLY from the SKILL.md gate-marker anchors: `research/SKILL.md:198` (P1
+"Research foundation complete … Continue to brainstorming evaluation?"), `:302` (P4 "Brainstorming
+complete. Continue to high-level design?"), `:351` (P5 "Design complete. Continue to output
+generation?"). Each `require` is also modelled `optional` (3 `gate_fired_at(phase-N)` rows). Same
+Option-A rules-in-hash + `schema_version` 1→2 + `workflow_model_version` 2→3 rationale as entry 13.
+Full hashes:
+`e823c815c895ee8c8a8fb16d5d8146c323dd03821ec557c8a8fb689d7c2ff497 →
+40378fabe738e10ae426fb60a3b78272f03fdf87d401c33209ab129502fc116c`.
+
+### 15 — quick-bugfix: `rules[] = []` intentionally empty, schema/wm bump only (Stage 3 gates)
+
+GATES landing (issue #48, Stage 3). quick-bugfix is a Step-numbered workflow (Steps 1–7) whose only
+mandatory gate is the EnterPlanMode/ExitPlanMode plan gate (`quick-bugfix/SKILL.md:91`, :122-124),
+not a set of phase-numbered exit gates — there are no `phase_completed(N)` predicates to key a
+gate-placement rule on. So `rules[] = []` and **no** `gate_fired_at(phase-N)` predicate is invented;
+the required un-phased `gate_fired(ask)` (divergence-tagged, derivation honesty note 1) remains the
+sole gate predicate. The reference still re-stamps in lockstep with its siblings: `schema_version`
+1→2 + `workflow_model_version` 2→3. Under Option A the empty `rules[]` contributes ZERO tokens, so
+the re-stamp is driven solely by the `schema:1`→`schema:2` token change (backward-neutrality:
+`rules:[]` ≡ rules-field-absent). Full hashes:
+`6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215 →
+0893abf4a0611ba742fd7b31af7937a6735d6feda2a5aa2bb706da2947103603`.

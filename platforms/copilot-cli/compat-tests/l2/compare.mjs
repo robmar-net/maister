@@ -26,7 +26,7 @@ export const EXIT = Object.freeze({
 // wolf (C2). Bump it only when the maister DEVELOPMENT workflow model itself changes — its phase
 // set, always-on agents/skills, or predicate grammar — i.e. whenever the reference must be
 // re-derived. References predating the stamp fall back to the legacy maister_version comparison.
-export const WORKFLOW_MODEL_VERSION = 2;
+export const WORKFLOW_MODEL_VERSION = 3;
 
 /**
  * Match a single predicate against a reference allowlist.
@@ -46,6 +46,20 @@ export function allowlistMatch(predicate, allowlist) {
     if (entry && entry.predicate === predicate) return entry;
   }
   return null;
+}
+
+/**
+ * A reported-only predicate is a normalized single-token report surface that is emitted for the
+ * `## Gates` section but deliberately NOT modelled in any reference `required`/`optional` (and thus
+ * never in `computeHash`). `gate_count(ask)=K` is the sole such head today: pinning one `K` in a
+ * reference would make every other `K` an unmodeled extra → false REGRESSED, so `compare` excludes
+ * the whole `gate_count(` head from the `extra` diff. See spec § reported-only.
+ *
+ * @param {string} predicate
+ * @returns {boolean}
+ */
+export function isReportedOnly(predicate) {
+  return typeof predicate === 'string' && /^gate_count\(/.test(predicate);
 }
 
 /**
@@ -77,16 +91,30 @@ export function compare(copilotSet, reference) {
   const required = Array.isArray(reference?.required) ? reference.required : [];
   const optional = Array.isArray(reference?.optional) ? reference.optional : [];
   const allowlist = Array.isArray(reference?.allowlist) ? reference.allowlist : [];
+  const rules = Array.isArray(reference?.rules) ? reference.rules : [];
 
-  const requiredSet = new Set(required);
+  // Rules-expansion: a rule promotes its `require` predicate to *required* ONLY when its `when`
+  // predicate is observed. A gate that legitimately never fires (its `when` phase never completed)
+  // must not false-alarm — so an absent `when` adds nothing. See spec § rules-expansion.
+  const effectiveRequired = [...required];
+  for (const rule of rules) {
+    if (set.has(rule?.when) && !effectiveRequired.includes(rule?.require)) {
+      effectiveRequired.push(rule.require);
+    }
+  }
+
+  const requiredSet = new Set(effectiveRequired);
   const optionalSet = new Set(optional);
 
-  // required \ set
-  const missing = required.filter((p) => !set.has(p));
-  // set \ (required u optional)
-  const extra = [...set].filter((p) => !requiredSet.has(p) && !optionalSet.has(p));
-  // required n set (PASS)
-  const matched = required.filter((p) => set.has(p));
+  // effectiveRequired \ set
+  const missing = effectiveRequired.filter((p) => !set.has(p));
+  // set \ (effectiveRequired u optional u reported-only) — a reported-only head (e.g. gate_count(ask)=K)
+  // is a normalized single-token report surface, never modelled, so it must never classify as extra.
+  const extra = [...set].filter(
+    (p) => !requiredSet.has(p) && !optionalSet.has(p) && !isReportedOnly(p),
+  );
+  // effectiveRequired n set (PASS)
+  const matched = effectiveRequired.filter((p) => set.has(p));
   // optional partition (informational only, never a diff)
   const optionalPresent = optional.filter((p) => set.has(p));
   const optionalAbsent = optional.filter((p) => !set.has(p));
@@ -150,6 +178,7 @@ export function computeHash(reference) {
   const required = Array.isArray(reference?.required) ? reference.required : [];
   const optional = Array.isArray(reference?.optional) ? reference.optional : [];
   const allowlist = Array.isArray(reference?.allowlist) ? reference.allowlist : [];
+  const rules = Array.isArray(reference?.rules) ? reference.rules : [];
 
   // required u optional, DE-DUPLICATED — a predicate modelled in both partitions must not
   // change the hash by appearing twice.
@@ -161,10 +190,18 @@ export function computeHash(reference) {
     .filter((a) => a && typeof a.predicate === 'string')
     .map((a) => `${a.predicate}|${a.classification}|${a.reason}`);
 
+  // rules-in-hash (Option A): one `rule:<when>=><require>` token per rule with string when+require,
+  // so a rules edit re-stamps the hash. CRITICAL: ZERO tokens when rules are absent/empty — this is
+  // what keeps every rules-free reference (and reference.sample.json) byte-for-byte identical to the
+  // pre-change algorithm (backward-neutrality). See spec § rules-in-hash Option A.
+  const ruleTokens = rules
+    .filter((r) => r && typeof r.when === 'string' && typeof r.require === 'string')
+    .map((r) => `rule:${r.when}=>${r.require}`);
+
   // A schema token so a schema_version bump also re-stamps the hash.
   const schemaToken = `schema:${reference?.schema_version}`;
 
-  const canonical = [...predicates, ...allowTokens, schemaToken].sort().join('\n');
+  const canonical = [...predicates, ...allowTokens, ...ruleTokens, schemaToken].sort().join('\n');
 
   return createHash('sha256').update(canonical).digest('hex');
 }

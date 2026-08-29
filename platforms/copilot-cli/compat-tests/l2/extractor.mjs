@@ -300,12 +300,14 @@ function stateToRecords(state) {
 // Reduce the typed SessionEvent[] to raw records. `invoked_skill` is pinned to `skill.invoked`
 // ONLY (HIGH-1); `session.skills_loaded` is never a source. Excluded/noise events (assistant
 // messages, tool executions, ordering/counts) yield no records.
-export function extractFromEvents(events) {
+export function extractFromEvents(events, gateMap = []) {
   const records = [];
   if (!Array.isArray(events)) return records;
 
+  const gates = Array.isArray(gateMap) ? gateMap : [];
   let sawIdleOrShutdown = false;
   let sawError = false;
+  let askCount = 0; // count of user_input.requested — feeds the single gate_count(ask)=K emission.
 
   for (const e of events) {
     if (!e || typeof e.type !== 'string') continue;
@@ -329,9 +331,28 @@ export function extractFromEvents(events) {
       case 'session.skills_loaded':
         // HIGH-1: deliberately IGNORED — lists resolved-but-not-invoked skills (~19), never invoked.
         break;
-      case 'user_input.requested':
+      case 'user_input.requested': {
+        // Per-scenario gateMap ([{re, phase}], first-match-wins) places the gate on its phase by
+        // matching the question text. On the FIRST matching re, emit the phase-placed gate.
+        const q = data.question;
+        if (typeof q === 'string') {
+          for (const g of gates) {
+            if (g && g.re instanceof RegExp && g.re.test(q)) {
+              records.push({
+                kind: 'gate_fired_at',
+                name: 'phase-' + g.phase,
+                source: 'events',
+                evidence: `user_input.requested question=${q}`,
+              });
+              break; // first match wins
+            }
+          }
+        }
+        // ALWAYS also push the required gate_fired(ask) — unconditional, even on a gateMap match.
         records.push({ kind: 'gate_fired', name: 'ask', source: 'events', evidence: 'user_input.requested' });
+        askCount += 1;
         break;
+      }
       case 'permission.requested':
         records.push({ kind: 'gate_fired', name: 'permission', source: 'events', evidence: 'permission.requested' });
         break;
@@ -349,6 +370,13 @@ export function extractFromEvents(events) {
         // Everything else (assistant.message, tool.execution_*, turn/ordering/count events) is noise.
         break;
     }
+  }
+
+  // Report-only gate census: emit gate_count(ask)=K exactly ONCE (never per-event, or K inflates),
+  // only when >=1 user_input.requested was seen. K = the number of those events. source:'events' keeps
+  // it consistent with every other event-derived record (and out of the tree/state source buckets).
+  if (askCount >= 1) {
+    records.push({ kind: 'gate_count', name: 'ask', value: askCount, source: 'events', evidence: `user_input.requested count=${askCount}` });
   }
 
   // Terminal success = the session reached idle/shutdown with no error. Emitted exactly once.
@@ -626,14 +654,14 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
 // `taskType` selects the tree profile (default 'development' -> byte-identical to the pre-scenario
 // harness; 'research' -> the research task layout). An unknown type falls back to the development
 // profile. Returns { records, incomplete, incompleteReason, parseWarnings }.
-export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null } = {}) {
+export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [] } = {}) {
   const state = stateYaml != null
     ? parseState(stateYaml)
     : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'] };
 
   const profile = TREE_PROFILES[taskType] || DEFAULT_TREE_PROFILE;
   const stateRecords = stateToRecords(state);
-  const eventRecords = extractFromEvents(events);
+  const eventRecords = extractFromEvents(events, gateMap);
   const treeRecords = taskDirRoot ? extractFromTree(taskDirRoot, profile) : [];
   // Functional oracle (source d): runs the scenario deliverable in the rundir. A bad-shape spec throws
   // here (fail-fast); a runtime/assertion failure is a `value:'fail'` record, never an exception.

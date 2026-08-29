@@ -43,6 +43,8 @@ const GRAMMAR_HEADS = new Set([
   'delegated',
   'invoked_skill',
   'gate_fired',
+  'gate_fired_at',
+  'gate_count',
   'reached_terminal',
   'outcome',
 ]);
@@ -102,6 +104,13 @@ function buildToken(resolved) {
       return `invoked_skill(${stripPluginPrefix(name)})`;
     case 'gate_fired':
       return `gate_fired(${name})`;
+    case 'gate_fired_at':
+      // Stage 3 (issue #48). Mirrors gate_fired/phase_completed, BUT the payload is the phase TAG
+      // itself (literal `phase-N`) — NO normalizePhase: the tag is the payload, not a bare number.
+      return `gate_fired_at(${name})`;
+    case 'gate_count':
+      // Stage 3 report-only head. Mirrors the `=value` heads (task_characteristic/outcome).
+      return `gate_count(${name})=${value}`;
     case 'phase_completed':
       return `phase_completed(${normalizePhase(name)})`;
     case 'task_status':

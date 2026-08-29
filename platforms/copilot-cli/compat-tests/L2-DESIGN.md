@@ -83,7 +83,13 @@ delegated(gap-analyzer)                     # a task/agent_type call appeared in
 delegated(specification-creator)
 invoked_skill(codebase-analyzer)
 created_artifact(implementation/spec.md)    # task-dir tree
-gate_fired_at(phase-5)                       # workflow paused for a user decision (ask_user)
+gate_fired_at(phase-5)                       # GATE PLACEMENT (§3.2): a mandatory ask gate fired on
+                                             # phase 5 — the extractor's per-scenario gateMap regex
+                                             # placed the user_input.requested question on its phase.
+                                             # IS a grammar head (GRAMMAR_HEADS, normalize.mjs:46).
+gate_count(ask) = 7                          # REPORT-ONLY census (§3.2): K ask gates fired this run.
+                                             # Grammar head (normalize.mjs:47) but never modelled /
+                                             # never diffed — a variable K is not a regression.
 outcome(tests-pass) = pass                   # FUNCTIONAL ORACLE (§3.1): the scenario's deliverable
                                              # actually runs and passes — asserted post-drive in the
                                              # rundir. IS a grammar head (GRAMMAR_HEADS, normalize.mjs:47),
@@ -108,6 +114,11 @@ Predicates are **far more stable across runs** than sequences, and they are exac
   scenario's produced deliverable is actually **run** and checked to work. Unlike the two traces
   above (which observe *that the workflow moved*), the oracle observes *that the work is correct*.
   See §3.1.
+- **Gate-placement trace** *(added issue #48, Stage 3)* — the `gate_fired_at(phase-N)` and
+  report-only `gate_count(ask)=K` predicates: they enrich the execution trace's raw `gate_fired(ask)`
+  by placing each fired mandatory gate on **the phase it belongs to** and counting the run's gates.
+  Coupled to the state trace by a conditional `rules[]` promotion so a phase that completed without
+  firing its mandatory exit gate is REGRESSED. See §3.2.
 
 **Granularity is the whole game.** Too fine (exact args, exact ordering) → even same-platform
 runs disagree → the skeleton is empty → no signal. Too coarse (just "did it finish") → real
@@ -177,6 +188,127 @@ Per scenario:
   All three references were re-stamped and each edit logged in
   [`l2/reference/CALIBRATION-LOG.md`](l2/reference/CALIBRATION-LOG.md) entries **#10 (development),
   #11 (research), #12 (quick-bugfix)**.
+
+### 3.2 Gate placement — `gate_fired_at(phase-N)`, `gate_count(ask)=K`, and the `rules[]` contract
+
+*(issue #48, Stage 3; `WORKFLOW_MODEL_VERSION` bumped 2→3. Demonstrated credit-free over an enriched
+recorded fixture — **NO live run**.)*
+
+The execution trace already records **that** an interactive gate fired (`gate_fired(ask)` — a
+**required** predicate in every reference). It does **not** record **where**: maister's orchestrators
+place a MANDATORY GATE at each phase exit, and a silently-dropped gate on the *executed* path is
+exactly the kind of conformance break L2 exists to catch. Stage 3 makes gate placement a first-class,
+verified decision with two new grammar heads, a conditional promotion rule, a deterministic
+gate-answerer, and a report section.
+
+#### The two heads
+
+Both are grammar heads — in **both** `GRAMMAR_HEADS` and `buildToken`
+([`normalize.mjs:38-50`](l2/normalize.mjs), [`:107-113`](l2/normalize.mjs)) — so a head present in one
+but not the other would silently drop the token (the dead-entry trap):
+
+- **`gate_fired_at(phase-N)`** — a mandatory `ask` gate fired on phase `N`. The payload is the
+  **literal phase tag** `phase-N` (NO `normalizePhase` strip — the tag *is* the payload, not a bare
+  number), mirroring `gate_fired`/`phase_completed`.
+- **`gate_count(ask)=K`** — `K` interactive `ask` gates fired this run. Mirrors the `=value` heads
+  (`task_characteristic`/`outcome`). It is **REPORT-ONLY** (see below).
+
+#### Placement — the extractor `gateMap`
+
+The extractor widens its `user_input.requested` handling
+([`extractor.mjs:334-355`](l2/extractor.mjs)) to run a **per-scenario `gateMap`** — an ordered
+`[{re, phase}]` list of case-insensitive regexes over the gate's `data.question`. On the **first**
+matching regex it emits `gate_fired_at(phase-<phase>)`; it **always** also pushes the unconditional
+`gate_fired(ask)` (that required predicate must never be lost — the phase gate is *additional*, not a
+replacement). After the event loop, **exactly once**, if ≥1 `user_input.requested` was seen it emits
+`gate_count(ask)=K` with `K` = the count of those events ([`extractor.mjs:375-380`](l2/extractor.mjs)).
+`gateMap` rides the same threading seam as Stage-2's `outcome` — `extractFromEvents(events, gateMap = [])`
+([`extractor.mjs:303`](l2/extractor.mjs)), defaulted `[]` so callers that pass no map are unaffected
+(no `gate_fired_at`, only `gate_fired(ask)` + `gate_count`).
+
+The regexes are **derived verbatim from each phase's distinctive MANDATORY-GATE prompt in the
+scenario's SKILL.md, never fitted to a run** (development `gateMap`: phases 2–13; research: phases
+1, 4, 5; quick-bugfix: `gateMap = []` — its plan-mode gate is Step-numbered, not phase-numbered, so no
+`gate_fired_at` is invented). This is the same discipline as reference derivation (§5): the workflow
+model is the source of truth.
+
+#### `gate_count(ask)=K` is REPORT-ONLY
+
+`K` is inherently variable across legitimate runs, so it must never be diffed. It is emitted, surfaced
+in the observed skeleton and the `## Gates` report section, but placed in **no** reference
+`required`/`optional` and therefore **never** in `computeHash`. `compare` excludes the whole
+`gate_count(` head from the `extra` diff via `isReportedOnly(p)`
+([`compare.mjs:61-63`](l2/compare.mjs), [`:113-115`](l2/compare.mjs)), so any `K` is structurally
+incapable of classifying as a CANDIDATE_REGRESSION. (Rejected alternative: model `K` as `optional` —
+exact-match `optional` pins one `K`, so every other `K` becomes an unmodeled extra → false REGRESSED.)
+
+#### The `rules[]` contract — a completed phase must fire its mandatory gate
+
+A fired-somewhere gate is not enough; conformance requires the gate to fire **on the phase that
+completed**. Each reference carries a conditional `rules[]` of shape
+`{ when: "phase_completed(N)", require: "gate_fired_at(phase-N)" }`, **derived from the SKILL.md gate
+markers, never fitted to a run**. `compare` expands these into synthetic required predicates
+([`compare.mjs:94-104`](l2/compare.mjs)): for each rule whose `when` is **observed**, its `require` is
+promoted into `effectiveRequired`. A rule whose `when` is **absent** adds nothing — a gate that
+legitimately never fires (its phase never ran) must not false-alarm. The consequence:
+
+> a phase that **completed** on the executed path but **did not** fire its mandatory exit gate leaves
+> its promoted `require` in `missing` → CANDIDATE_REGRESSION → `overall = REGRESSED`,
+> `exitCode = EXIT.REGRESSED`. A silently-dropped mandatory gate can no longer pass as conformant.
+
+**Completed ∩ ruled coupling invariant.** A `gate_fired_at(phase-N)` is promoted to *required*
+**only when both** hold: `phase_completed(N)` is observed **and** phase `N` has a rule (is *ruled*).
+So the two sets that matter are each scenario's `completed_phases ∩ ruled` — dev
+`{1,2,5,6,7,8,10,11,14} ∩ {2..13}` = **{2,5,6,7,8,10,11}**; research `{1..6} ∩ {1,4,5}` = **{1,4,5}**.
+Every such phase's gate event must carry the verbatim SKILL text its `gateMap` regex matches, or the
+promoted-required predicate goes missing (a self-inflicted REGRESSED). Symmetrically, every **fireable**
+`gate_fired_at(phase-N)` (every phase in that scenario's `rules[]`) is **also modelled `optional`** in
+the reference: this keeps a gate that fired on an *un-completed* / off-path phase from classifying as
+an unmodeled `extra` (the same treatment as `gate_fired(permission)` / `gate_fired(exit_plan_mode)`).
+The `optional` row absorbs the off-path case; the `rules[]` row enforces the on-path case.
+
+#### Governance — Option-A rules-in-hash + version bumps + CALIBRATION triad
+
+Adding `rules[]` to a reference is a workflow-model change, so it is governed like every other
+reference edit (§6):
+
+- **Rules-in-hash (Option A).** `computeHash` appends one sorted `rule:<when>=><require>` token per
+  rule ([`compare.mjs:181-194`](l2/compare.mjs)), so a `rules[]` edit re-stamps the hash. **Critically,
+  ZERO tokens when `rules` is absent/empty** — `rules:[]` hashes identically to a rules-field-absent
+  reference, protecting the pre-Stage-3 fixtures and quick-bugfix's empty-rules reference.
+- **`schema_version` 1→2** across all three references, so an old reference re-stamps cleanly.
+- **`WORKFLOW_MODEL_VERSION` 2→3** ([`compare.mjs:29`](l2/compare.mjs)); `check-reference` keys
+  staleness on it, so a v2 reference reads as stale and forces a re-derive.
+- **Pinned-hash triad.** New hashes recomputed under the staged algorithm and pinned per reference
+  (development `ea0a5951…`, research `40378fab…`, quick-bugfix `0893abf4…`); each edit is logged in
+  [`l2/reference/CALIBRATION-LOG.md`](l2/reference/CALIBRATION-LOG.md) entries **#13 (development),
+  #14 (research), #15 (quick-bugfix)**, with SKILL.md gate-marker citations, the Option-A / version-bump
+  rationale, and the full `hash old→new`, plus matching `*.derivation.md` `## Rules (N)` rows.
+
+#### Deterministic answering — `chooseAnswer` + `## Gates`
+
+Gates must be **answered** (never suppressed via `--no-ask-user`, which would remove the very placement
+we verify — §7), the same way every run, without a Copilot seat to prove routing. The inline responder
+is extracted to a module-level, exported, unit-testable `chooseAnswer(req, answerMap)`
+([`run.mjs:127-146`](l2/run.mjs)): it scans the scenario's `answerMap` (`[{re, choice, phase?}]`,
+first-match-wins) against `req.question`, resolving the mapped `choice` against `req.choices` (else
+freeform) → `{ matched:true, mappedPhase, fallback:false }`; an unmatched question falls to the
+deterministic floor `choices?.[0] ?? 'yes'` → `{ matched:false, fallback:true }` — a **visibly-flagged
+`responder_fallback`**, so a drifted or unmodeled gate prompt surfaces instead of being silently
+absorbed. Each answered gate is captured in a per-run `gateLog` sink
+([`run.mjs:724`](l2/run.mjs), [`:743-753`](l2/run.mjs)) that feeds a report **`## Gates`** section
+([`run.mjs:515-527`](l2/run.mjs)) — a `Question · Answer given · Mapped phase · Source` table in call
+order, fallback rows tagged `responder-fallback` — plus glossary bullets for both new heads
+([`run.mjs:581-582`](l2/run.mjs)).
+
+#### Acceptance — fixture-based, no live run
+
+Stage 3 is proven **credit-free over an enriched recorded fixture**: each scenario's
+`events.sample.json` carries exactly one `user_input.requested` per completed∩ruled phase (with the
+verbatim SKILL gate text on `data.question`), the `expected-skeleton.json` snapshots are regenerated to
+gain `gate_fired_at(phase-N)` + `gate_count(ask)=K` + the retained `gate_fired(ask)`, and both pipeline
+tests' `compare(...)` stays AS-EXPECTED. No Copilot seat is consumed. Cross-run `gateLog` aggregation
+(the noise-band analog for gates) is deliberately a Stage-4+ concern (§12).
 
 ## 4. Noise calibration
 

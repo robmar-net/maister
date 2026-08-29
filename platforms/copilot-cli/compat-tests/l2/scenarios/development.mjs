@@ -76,6 +76,43 @@ const fallbackPrompt =
   'quick-dev or quick-bugfix — use the development workflow orchestrator.';
 
 /**
+ * gateMap (Stage 3) — first-match-wins, evaluated per `user_input.requested` `data.question`.
+ * Each regex is anchored on that phase's most distinctive VERBATIM gate phrase from
+ * plugins/maister/skills/development/SKILL.md (read-only): phases 2-13 are the phases with a
+ * MANDATORY-GATE exit (phases 1 & 14 have none). On a match the extractor emits
+ * `gate_fired_at(phase-N)` (in addition to the always-kept `gate_fired(ask)`), placing the gate
+ * on its phase. ORDER: phase-6 (`implementation planning`) precedes phase-7 (`implementation?`)
+ * so the longer phrase is never shadowed by the shorter `implementation?` regex.
+ */
+const gateMap = [
+  { phase: 2, re: /continue to phase [345]:/i },
+  { phase: 3, re: /tdd red gate complete/i },
+  { phase: 4, re: /ui mockups complete/i },
+  { phase: 5, re: /continue to specification audit/i },
+  { phase: 6, re: /continue to implementation planning/i },
+  { phase: 7, re: /continue to implementation\?/i },
+  { phase: 8, re: /continue to verification/i },
+  { phase: 9, re: /tdd gate passed/i },
+  { phase: 10, re: /which standard verifications|enable e2e|generate user documentation/i },
+  { phase: 11, re: /continue to phase 12/i },
+  { phase: 12, re: /e2e complete/i },
+  { phase: 13, re: /documentation complete/i },
+];
+
+/**
+ * answerMap (Stage 3) — deterministic gate choices for `chooseAnswer` (first-match-wins over
+ * `data.question`). The phase-10 verification decisions pick the cheapest deterministic option
+ * (skip E2E, skip docs, first standard-verification selection); every phase-exit `Continue to …`
+ * gate proceeds with `yes` (or `choices[0]`). Unmatched -> `choices[0] ?? 'yes'` responder-fallback.
+ */
+const answerMap = [
+  { re: /enable e2e/i, choice: 'No, skip', phase: 10 },
+  { re: /generate user documentation/i, choice: 'No, skip', phase: 10 },
+  { re: /which standard verifications/i, choice: null, phase: 10 }, // null -> choices[0] (cheapest)
+  { re: /continue to/i, choice: 'yes' },
+];
+
+/**
  * The single MVP scenario. `scenarios/` is the extension point; do not add a
  * second scenario until the MVP conformance loop is proven (anti-over-engineering).
  */
@@ -99,6 +136,9 @@ export const scenario = {
   // root. Pass iff exit 0 — which now requires the `--greet` deliverable (HIGH-3), so a
   // pristine sandbox fails and only a completed dev workflow passes.
   outcome: [{ id: 'tests-pass', command: 'sh run-tests.sh', restage: ['run-tests.sh'] }],
+  // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
+  gateMap,
+  answerMap,
   // Pre-registered retry prompt (MEDIUM-3); also exported as `fallbackPrompt`.
   fallbackPrompt,
 };
