@@ -45,6 +45,10 @@ notes. Provenance for the back-fill entries is the commit messages themselves
 | 16 | 2026-08-29 | development | `precedes ×4` + `min_count(delegated(task-group-implementer))=1` + `state_schema(conformant)` required; 9 witness `rules[]`; `state_schema(off-schema)` LIMITATION allowlist | absent → required/rules/allowlist | ORDER+COUNT+WITNESS+STATE-SCHEMA (issue #48, Stage 4): precedes cite `development/SKILL.md:147/:285/:332/implementation-plan-executor/SKILL.md:96/:446`; min_count `implementation-plan-executor/SKILL.md:87-99`; witness rows P2/P5/P7/P8/P11; `schema_version` 2→3 + `workflow_model_version` 3→4 — see note 16 | `ea0a5951…` → `3694ce8d…` | PR (Stage 4) |
 | 17 | 2026-08-29 | research | `precedes ×2` + `state_schema(conformant)` required; `min_count(delegated(information-gatherer))=2` conditional rule + P1 `delegated(research-planner)` witness rule; `state_schema(off-schema)` LIMITATION allowlist | absent → required/rules/allowlist | ORDER+COUNT+WITNESS+STATE-SCHEMA (issue #48, Stage 4): precedes cite `research/SKILL.md:153/:170/:184`; min_count `:164-170` (conditional, `source_category` honesty note); `schema_version` 2→3 + `workflow_model_version` 3→4 — see note 17 | `40378fab…` → `28c43540…` | PR (Stage 4) |
 | 18 | 2026-08-29 | quick-bugfix | none (NO predicate change — state_schema NOT APPLICABLE) | schema/wm only | STATE-SCHEMA NOT APPLICABLE (issue #48, Stage 4): no orchestrator state / no subagents (`quick-bugfix/SKILL.md:9`) ⇒ no precedes/min_count/state_schema predicate; lockstep `schema_version` 2→3 + `workflow_model_version` 3→4 re-stamp only — see note 18 | `0893abf4…` → `4c882e17…` | PR (Stage 4) |
+| 19 | 2026-08-29 | development | none (NO predicate change) | schema 3→4, wm 4→5 | HOOKS-AT-L2 lockstep re-stamp (issue #48, Stage 6): the new `hook_effect` grammar head (`normalize.mjs` GRAMMAR_HEADS + buildToken, inside-parens `hook_effect(destructive_guard=ask)`) expands the grammar surface, forcing a `schema_version` bump across ALL references; the guard contract (`block-destructive-commands.sh:59-60`) is the head's provenance. Predicate-frozen; Stage-3/4 lockstep precedent (entries 15/18) — see note 19 | `3694ce8d…` → `9f431947…` | PR (Stage 6) |
+| 20 | 2026-08-29 | research | none (NO predicate change) | schema 3→4, wm 4→5 | HOOKS-AT-L2 lockstep re-stamp (issue #48, Stage 6): same `hook_effect` head add forces the lockstep `schema_version`/`workflow_model_version` bump; predicate-frozen — see note 20 | `28c43540…` → `16c635b4…` | PR (Stage 6) |
+| 21 | 2026-08-29 | quick-bugfix | none (NO predicate change) | schema 3→4, wm 4→5 | HOOKS-AT-L2 lockstep re-stamp (issue #48, Stage 6): same `hook_effect` head add forces the lockstep bump; predicate-frozen — see note 21 | `4c882e17…` → `817a43ee…` | PR (Stage 6) |
+| 22 | 2026-08-29 | destructive-guard | full initial required/optional partition (required `hook_effect(destructive_guard=ask)` + `reached_terminal(completion)`; `gate_fired(permission)`/`gate_fired(ask)` optional) | ∅ → genesis | HOOKS-AT-L2 genesis (issue #48, Stage 6): reference for the new destructive-guard micro-scenario, derived from the guard hook contract `block-destructive-commands.sh:54/:59-60` (`hookSpecificOutput.permissionDecision:"ask"`) + `L1-FINDINGS.md` §1 (Copilot honors `ask`, fail-closed, L1a.ii). Required set is model-driven (NO `outcome` — guard-firing is the predicate), `=ask` contract-derived (live confirmation deferred paid) — see note 22 | ∅ → `b0b145b0…` | PR (Stage 6) |
 
 ## Entry notes
 
@@ -294,3 +298,69 @@ With no `subagent.started` events there is no `precedes` chain and no `min_count
 `schema:2`→`schema:3` token change (zero rule/predicate tokens). Full hashes:
 `0893abf4a0611ba742fd7b31af7937a6735d6feda2a5aa2bb706da2947103603 →
 4c882e17a1055c9be6f93c8e567db28cd5fcb10a13ceecd23641840282603a63`.
+
+### 19 — dev: HOOKS-AT-L2 lockstep re-stamp, schema/wm bump only (Stage 6)
+
+HOOKS-AT-L2 landing (issue #48, Stage 6). `hook_effect` is promoted from a dead grammar entry to a
+live L2 predicate: it becomes a real member of `GRAMMAR_HEADS` AND a `buildToken` case in
+`normalize.mjs` (inside-parens shape `hook_effect(destructive_guard=ask)`, byte-identical to the new
+`destructive-guard` reference `required[]` token). Adding a grammar head expands the hashed grammar
+surface, so ALL references re-stamp in lockstep (`schema_version` 3→4), and the workflow model gains
+a live predicate head (`workflow_model_version` 4→5 — `--check-reference` reports STALE against any
+v4 reference). The head's provenance is the zero-touch guard hook
+`block-destructive-commands.sh:59-60` (`hookSpecificOutput.permissionDecision:"ask"`). development
+carries NO predicate change (the empty-sink invariant: dev drives pass `hookDecisions=[]` → no
+`hook_effect` emitted → snapshot byte-identical); the reference stays predicate-frozen and only the
+`schema:3`→`schema:4` token drives the new hash (`computeHash` is version-independent; the
+`workflow_model_version` is not in the hash). Stage-3/4 lockstep re-stamp precedent: entries 15/18.
+Full hashes:
+`3694ce8d43f3e05a7322e383a3bca56df701b9536824eaa3a048469276ae047b →
+9f431947b38a08dd892dd0c0f233595200ff772ea5c794ceb2740b170b54b830`.
+
+### 20 — research: HOOKS-AT-L2 lockstep re-stamp, schema/wm bump only (Stage 6)
+
+HOOKS-AT-L2 landing (issue #48, Stage 6). Identical rationale to entry 19: the `hook_effect`
+grammar-head add forces the lockstep `schema_version` 3→4 + `workflow_model_version` 4→5 re-stamp.
+research carries NO predicate change (empty-sink invariant — `hookDecisions=[]` → no `hook_effect`
+→ pipeline-research snapshot byte-identical); the reference stays predicate-frozen and the
+`schema:3`→`schema:4` token alone drives the new hash. Full hashes:
+`28c435405f39363597f752b1cc80d71602933df366d5cb842d06aaec0b5994b4 →
+16c635b402773e7ae03c5ad0aaf5bb7cb9e5e58b7753768dca915d4e80607d92`.
+
+### 21 — quick-bugfix: HOOKS-AT-L2 lockstep re-stamp, schema/wm bump only (Stage 6)
+
+HOOKS-AT-L2 landing (issue #48, Stage 6). Identical rationale to entries 19/20: the `hook_effect`
+grammar-head add forces the lockstep `schema_version` 3→4 + `workflow_model_version` 4→5 re-stamp.
+quick-bugfix carries NO predicate change (empty-sink invariant — its drive passes `hookDecisions=[]`
+→ no `hook_effect` → snapshot byte-identical); predicate-frozen, `schema:3`→`schema:4` token drives
+the new hash. Full hashes:
+`4c882e17a1055c9be6f93c8e567db28cd5fcb10a13ceecd23641840282603a63 →
+817a43ee572b7ae910352d78d940b15dfd78d53dc1039513f859674a3ee401c5`.
+
+### 22 — destructive-guard: GENESIS — HOOKS-AT-L2 micro-scenario reference (Stage 6)
+
+HOOKS-AT-L2 genesis (issue #48, Stage 6). New reference committed with the `destructive-guard`
+micro-scenario (maister 2.2.3, schema 4, wm 5). SOURCE is NOT a `SKILL.md` — it is the Copilot
+destructive-command guard hook + the L1 live-survival finding:
+
+- **`hook_effect(destructive_guard=ask)`** (required) — the guard matches its destructive-command
+  regex (`block-destructive-commands.sh:54`) and emits `hookSpecificOutput.permissionDecision:"ask"`
+  with the `Maister guard: destructive command …` reason (`:59-60`); `L1-FINDINGS.md` §1 confirms
+  Copilot honors that `ask` and holds it fail-closed live (L1a.ii). A custom `onPermissionRequest`
+  responder observes the decision into the per-run `hookDecisions` sink; the extractor emits the
+  token from the sink entry (Option B). Token shape is INSIDE-parens, byte-identical to `buildToken`.
+- **`reached_terminal(completion)`** (required) — the micro-scenario drives its single
+  destructive-cleanup prompt to its terminal.
+- **`gate_fired(permission)`, `gate_fired(ask)`** (optional) — platform permission/confirmation
+  surfaces, not model-mandated. `gate_fired(exit_plan_mode)` NOT modeled (no plan mode);
+  `invoked_skill(...)` deliberately unmodeled (a bare cleanup prompt need not route through a named
+  skill; a live one is a benign extra).
+
+Honesty: the required set is MODEL-DRIVEN — there is NO `outcome(...)=pass` (this scenario has no
+functional deliverable oracle; `outcome:[]`), guard-firing IS the predicate. `=ask` is
+CONTRACT-DERIVED from the deterministic hook contract, never fitted to a run; direct live
+confirmation of the exact `PermissionRequest` shape is a DEFERRED PAID follow-up (the responder's
+command-regex fallback covers the emit if the live `req` lacks the decision field). See
+[`destructive-guard.derivation.md`](destructive-guard.derivation.md) honesty notes (a)/(b)/(c). Full
+hash:
+`∅ → b0b145b0cf56801e6eeb7cdfa59de19136a688857f15637c72e902ce177dda50`.

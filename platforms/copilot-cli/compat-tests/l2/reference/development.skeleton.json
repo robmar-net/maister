@@ -1,8 +1,8 @@
 {
   "scenario": "development",
   "maister_version": "2.2.2",
-  "schema_version": 3,
-  "workflow_model_version": 4,
+  "schema_version": 4,
+  "workflow_model_version": 5,
   "required": [
     "phase_completed(1)",
     "phase_completed(2)",
@@ -73,27 +73,90 @@
     "gate_fired_at(phase-13)"
   ],
   "rules": [
-    { "when": "phase_completed(2)", "require": "gate_fired_at(phase-2)" },
-    { "when": "phase_completed(3)", "require": "gate_fired_at(phase-3)" },
-    { "when": "phase_completed(4)", "require": "gate_fired_at(phase-4)" },
-    { "when": "phase_completed(5)", "require": "gate_fired_at(phase-5)" },
-    { "when": "phase_completed(6)", "require": "gate_fired_at(phase-6)" },
-    { "when": "phase_completed(7)", "require": "gate_fired_at(phase-7)" },
-    { "when": "phase_completed(8)", "require": "gate_fired_at(phase-8)" },
-    { "when": "phase_completed(9)", "require": "gate_fired_at(phase-9)" },
-    { "when": "phase_completed(10)", "require": "gate_fired_at(phase-10)" },
-    { "when": "phase_completed(11)", "require": "gate_fired_at(phase-11)" },
-    { "when": "phase_completed(12)", "require": "gate_fired_at(phase-12)" },
-    { "when": "phase_completed(13)", "require": "gate_fired_at(phase-13)" },
-    { "when": "phase_completed(2)", "require": "delegated(gap-analyzer)" },
-    { "when": "phase_completed(5)", "require": "delegated(specification-creator)" },
-    { "when": "phase_completed(5)", "require": "created_artifact(implementation/spec.md)" },
-    { "when": "phase_completed(7)", "require": "delegated(implementation-planner)" },
-    { "when": "phase_completed(7)", "require": "created_artifact(implementation/implementation-plan.md)" },
-    { "when": "phase_completed(8)", "require": "delegated(task-group-implementer)" },
-    { "when": "phase_completed(8)", "require": "created_artifact(implementation/work-log.md)" },
-    { "when": "phase_completed(11)", "require": "invoked_skill(implementation-verifier)" },
-    { "when": "phase_completed(11)", "require": "created_artifact(verification/*)" }
+    {
+      "when": "phase_completed(2)",
+      "require": "gate_fired_at(phase-2)"
+    },
+    {
+      "when": "phase_completed(3)",
+      "require": "gate_fired_at(phase-3)"
+    },
+    {
+      "when": "phase_completed(4)",
+      "require": "gate_fired_at(phase-4)"
+    },
+    {
+      "when": "phase_completed(5)",
+      "require": "gate_fired_at(phase-5)"
+    },
+    {
+      "when": "phase_completed(6)",
+      "require": "gate_fired_at(phase-6)"
+    },
+    {
+      "when": "phase_completed(7)",
+      "require": "gate_fired_at(phase-7)"
+    },
+    {
+      "when": "phase_completed(8)",
+      "require": "gate_fired_at(phase-8)"
+    },
+    {
+      "when": "phase_completed(9)",
+      "require": "gate_fired_at(phase-9)"
+    },
+    {
+      "when": "phase_completed(10)",
+      "require": "gate_fired_at(phase-10)"
+    },
+    {
+      "when": "phase_completed(11)",
+      "require": "gate_fired_at(phase-11)"
+    },
+    {
+      "when": "phase_completed(12)",
+      "require": "gate_fired_at(phase-12)"
+    },
+    {
+      "when": "phase_completed(13)",
+      "require": "gate_fired_at(phase-13)"
+    },
+    {
+      "when": "phase_completed(2)",
+      "require": "delegated(gap-analyzer)"
+    },
+    {
+      "when": "phase_completed(5)",
+      "require": "delegated(specification-creator)"
+    },
+    {
+      "when": "phase_completed(5)",
+      "require": "created_artifact(implementation/spec.md)"
+    },
+    {
+      "when": "phase_completed(7)",
+      "require": "delegated(implementation-planner)"
+    },
+    {
+      "when": "phase_completed(7)",
+      "require": "created_artifact(implementation/implementation-plan.md)"
+    },
+    {
+      "when": "phase_completed(8)",
+      "require": "delegated(task-group-implementer)"
+    },
+    {
+      "when": "phase_completed(8)",
+      "require": "created_artifact(implementation/work-log.md)"
+    },
+    {
+      "when": "phase_completed(11)",
+      "require": "invoked_skill(implementation-verifier)"
+    },
+    {
+      "when": "phase_completed(11)",
+      "require": "created_artifact(verification/*)"
+    }
   ],
   "allowlist": [
     {
@@ -127,5 +190,5 @@
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "3694ce8d43f3e05a7322e383a3bca56df701b9536824eaa3a048469276ae047b"
+  "hash": "9f431947b38a08dd892dd0c0f233595200ff772ea5c794ceb2740b170b54b830"
 }

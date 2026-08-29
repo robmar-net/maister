@@ -157,6 +157,38 @@ test('1.1f dead-entry-trap — a kind not in GRAMMAR_HEADS is rejected at the gu
   );
 });
 
+test('1.1g normalize hook_effect — INSIDE-parens =value token (TRAP GUARD, exact string)', () => {
+  // Stage 6 (issue #48). hook_effect is the ONE value-carrying head that renders the value
+  // INSIDE the parens: `hook_effect(destructive_guard=ask)` — NOT the outside-parens shape
+  // (`hook_effect(destructive_guard)=ask`) that gate_count/outcome/min_count use. The reference
+  // `required[]` entry + compare.test 4.1c assert this EXACT string; a byte for byte match is the
+  // whole point of this guard.
+  const result = norm([
+    { kind: 'hook_effect', name: 'destructive_guard', value: 'ask', source: 'responder', evidence: 'x' },
+  ]);
+  assert.deepStrictEqual([...result], ['hook_effect(destructive_guard=ask)']);
+  // Prove the outside-parens (precedent-pattern-matched) form did NOT leak.
+  assert.ok(
+    !result.has('hook_effect(destructive_guard)=ask'),
+    'value must be INSIDE the parens — do not pattern-match the =value precedent',
+  );
+});
+
+test('1.1h hook_effect is a LIVE head in BOTH structures — no dead/rejected entry', () => {
+  // Dead-entry-trap: a head must be in GRAMMAR_HEADS (else rejected at the guard -> null) AND in
+  // buildToken (else emitted-then-dropped-null). hook_effect building a real token proves it lives
+  // in both. Paired with a kind that is in NEITHER, which must produce no token.
+  const live = norm([
+    { kind: 'hook_effect', name: 'destructive_guard', value: 'ask', source: 'responder', evidence: 'x' },
+  ]);
+  assert.strictEqual(live.size, 1, 'hook_effect must build (present in Set AND buildToken)');
+
+  const dead = norm([
+    { kind: 'hook_effect_typo', name: 'destructive_guard', value: 'ask', source: 'responder', evidence: 'x' },
+  ]);
+  assert.strictEqual(dead.size, 0, 'a kind absent from GRAMMAR_HEADS is rejected at the guard -> null');
+});
+
 test('3.1d sorted/de-duplicated Set over the committed fixture', () => {
   // --- normalize over the committed fixture: sorted, de-duplicated Set<string> ---
   const result = normalize(fixture);

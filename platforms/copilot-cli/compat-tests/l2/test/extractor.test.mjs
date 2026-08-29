@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { extract, parseState, extractFromEvents, extractFromTree } from '../extractor.mjs';
+import { normalize } from '../normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIX = path.join(__dirname, 'fixtures', 'extractor');
@@ -523,4 +524,72 @@ test('T-STATESCHEMA: ONLY the three tolerant-serialization branches populate sch
   const allAbsent = parseState('orchestrator:\n  note: nothing machine-readable here\n');
   assert.ok(allAbsent.parseWarnings.length > 0);
   assert.deepEqual(allAbsent.schemaDivergences, [], 'pure absence never sets schemaDivergences');
+});
+
+// =========================================================================
+// STAGE 6 (issue #48) — hook_effect emit from the threaded hookDecisions sink (Option B)
+// =========================================================================
+
+// The faithful recorded `permission.requested` fixture: an rm -rf destructive command with a
+// requestId, carrying NO fabricated permissionDecision field (the decision arrives via the sink).
+const DESTRUCTIVE_EVENTS = JSON.parse(
+  fs.readFileSync(path.join(FIX, 'permission-destructive.json'), 'utf8'),
+);
+
+test('T-HOOKEFFECT emit: a hookDecisions sink entry -> hook_effect record; via normalize -> inside-parens token', () => {
+  const records = extract({
+    events: DESTRUCTIVE_EVENTS,
+    hookDecisions: [{ requestId: 'req-dg-001', name: 'destructive_guard', value: 'ask' }],
+  }).records;
+
+  // The sink entry surfaces as a hook_effect record (source:'responder').
+  const hookRec = records.find((r) => r.kind === 'hook_effect');
+  assert.ok(hookRec, 'expected a hook_effect record from the sink entry');
+  assert.equal(hookRec.name, 'destructive_guard');
+  assert.equal(hookRec.value, 'ask');
+  assert.equal(hookRec.source, 'responder');
+  // requestId correlation to the recorded permission.requested is EVIDENCE enrichment (the command).
+  assert.match(hookRec.evidence, /req-dg-001/);
+  assert.match(hookRec.evidence, /rm -rf \.\/\.tmp-scratch/);
+
+  // End-to-end: normalize renders the UNIQUE inside-parens token shape.
+  const tokens = normalize(records);
+  assert.ok(tokens.has('hook_effect(destructive_guard=ask)'), 'inside-parens token must be present');
+
+  // Additive: the destructive command's permission.requested still fires gate_fired(permission).
+  const gates = setOf(records, 'gate_fired');
+  assert.ok(gates.has('permission'), 'gate_fired(permission) must remain (additive)');
+  assert.ok(tokens.has('gate_fired(permission)'), 'gate_fired(permission) token unchanged (additive)');
+});
+
+test('T-HOOKEFFECT empty-sink invariant: hookDecisions=[] -> NO hook_effect record (byte-identical guarantee)', () => {
+  // Identical events, empty sink -> the post-loop block emits nothing -> no hook_effect.
+  // This is the dev/research/quick-bugfix byte-identical snapshot guarantee.
+  const records = extract({ events: DESTRUCTIVE_EVENTS, hookDecisions: [] }).records;
+  assert.equal(records.filter((r) => r.kind === 'hook_effect').length, 0, 'empty sink must emit no hook_effect');
+  assert.ok(!normalize(records).has('hook_effect(destructive_guard=ask)'), 'no hook_effect token on empty sink');
+
+  // Default (omitted) hookDecisions is equivalent to an empty sink (inert default).
+  const noArg = extract({ events: DESTRUCTIVE_EVENTS }).records;
+  assert.equal(noArg.filter((r) => r.kind === 'hook_effect').length, 0, 'omitted sink defaults to no hook_effect');
+});
+
+test('T-HOOKEFFECT sink-authoritative: a sink entry with NO matching permission.requested still emits', () => {
+  // Per spec: the sink entry is authoritative for the emit; requestId correlation to a recorded
+  // permission.requested is evidence-only, NOT an emit gate. So an entry whose requestId matches no
+  // recorded event (here: no events at all) still emits the hook_effect record.
+  const recordsNoEvents = extract({
+    events: [],
+    hookDecisions: [{ requestId: 'req-nomatch', name: 'destructive_guard', value: 'ask' }],
+  }).records;
+  const hr = recordsNoEvents.find((r) => r.kind === 'hook_effect');
+  assert.ok(hr, 'sink entry emits even with no correlating event');
+  assert.equal(hr.value, 'ask');
+  assert.ok(normalize(recordsNoEvents).has('hook_effect(destructive_guard=ask)'));
+
+  // extractFromEvents-level: the emit does not depend on a matching event either.
+  const evRecs = extractFromEvents([], [], [], [], [
+    { requestId: 'req-nomatch', name: 'destructive_guard', value: 'ask' },
+  ]);
+  assert.equal(evRecs.filter((r) => r.kind === 'hook_effect').length, 1, 'unmatched sink entry still emits');
 });

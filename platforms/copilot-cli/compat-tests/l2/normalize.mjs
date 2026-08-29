@@ -28,9 +28,15 @@
 //   - The EXPECTED-difference allowlist is NOT normalize's concern: it lives as DATA in the
 //     committed reference JSON (`reference.allowlist`) and is applied at compare time by the
 //     SINGLE matcher `compare.allowlistMatch` (exact `predicate` match). normalize neither owns
-//     nor consults an allowlist. `hook_effect(...)` is intentionally NOT a normalize grammar
-//     head — it is a forward-looking difference pattern (classified against the reference
-//     allowlist at compare time), not a skeleton token.
+//     nor consults an allowlist. As of Stage 6 (issue #48) `hook_effect` IS a live normalize
+//     grammar head — promoted from the former forward-looking difference pattern to a real
+//     skeleton token by the destructive-guard micro-scenario, which observes the
+//     block-destructive-commands hook's `permissionDecision:"ask"` and emits
+//     `hook_effect(destructive_guard=ask)`. NOTE the UNIQUE token shape: unlike the other
+//     value-carrying heads (gate_count/outcome/min_count render the value OUTSIDE the parens),
+//     hook_effect renders it INSIDE — `hook_effect(destructive_guard=ask)`, byte-identical to the
+//     reference `required[]` entry. Per the DEAD-ENTRY-TRAP invariant below it lands in BOTH the
+//     GRAMMAR_HEADS Set AND the buildToken switch atomically or the token silently vanishes.
 
 const PLUGIN_PREFIX_RE = /^maister(?:-copilot)?:/;
 
@@ -58,6 +64,9 @@ const GRAMMAR_HEADS = new Set([
   'precedes',
   'min_count',
   'state_schema',
+  // Stage 6 (issue #48) — live L2 predicate. Value-carrying head with an INSIDE-parens shape
+  // (`hook_effect(destructive_guard=ask)`); see the buildToken case + the token-shape note below.
+  'hook_effect',
 ]);
 
 function stripPluginPrefix(name) {
@@ -142,6 +151,13 @@ function buildToken(resolved) {
       // emits one token per K' in 1..observedCount; the reference asserts the exact `=K` by set
       // membership. No `>=` logic anywhere.
       return `min_count(${name})=${value}`;
+    case 'hook_effect':
+      // Stage 6 (issue #48). Live L2 predicate for an observed hook decision (the destructive-guard
+      // micro-scenario). UNIQUE token shape: the value goes INSIDE the parens
+      // (`hook_effect(destructive_guard=ask)`), NOT outside like gate_count/outcome/min_count. This
+      // is the pre-existing historical shape (reference.sample.json allowlist token) and MUST stay
+      // byte-identical to the reference `required[]` entry. Do NOT rewrite as `${name})=${value`.
+      return `hook_effect(${name}=${value})`;
     case 'state_schema':
       // Stage 4 (issue #48). STATE-SCHEMA conformance. Mirrors the 1-arg literal head
       // task_status(:117). `name ∈ {conformant, off-schema}` (state-sourced by name, but NOT a

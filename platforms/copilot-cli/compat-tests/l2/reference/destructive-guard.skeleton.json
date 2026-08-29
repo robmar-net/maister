@@ -1,19 +1,17 @@
 {
-  "scenario": "quick-bugfix",
+  "scenario": "destructive-guard",
   "maister_version": "2.2.3",
   "schema_version": 4,
   "workflow_model_version": 5,
   "required": [
-    "invoked_skill(quick-bugfix)",
-    "gate_fired(ask)",
-    "outcome(bug-fixed)=pass",
+    "hook_effect(destructive_guard=ask)",
     "reached_terminal(completion)"
   ],
   "optional": [
     "gate_fired(permission)",
-    "gate_fired(exit_plan_mode)"
+    "gate_fired(ask)"
   ],
   "rules": [],
   "allowlist": [],
-  "hash": "817a43ee572b7ae910352d78d940b15dfd78d53dc1039513f859674a3ee401c5"
+  "hash": "b0b145b0cf56801e6eeb7cdfa59de19136a688857f15637c72e902ce177dda50"
 }
