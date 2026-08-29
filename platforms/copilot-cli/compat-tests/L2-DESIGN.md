@@ -119,6 +119,10 @@ Predicates are **far more stable across runs** than sequences, and they are exac
   by placing each fired mandatory gate on **the phase it belongs to** and counting the run's gates.
   Coupled to the state trace by a conditional `rules[]` promotion so a phase that completed without
   firing its mandatory exit gate is REGRESSED. See §3.2.
+- **Order / fan-out / schema trace** *(added issue #48, Stage 4)* — three heads that harden the
+  execution trace's shape: `precedes(a,b)` (an ADJACENT delegation-order edge), `min_count(delegated(x))=K`
+  (a fan-out floor), and `state_schema(conformant|off-schema)` (state-serialization conformance). Plus a
+  **credit-free replay** path that reproduces any recorded verdict from a persisted bundle. See §3.3.
 
 **Granularity is the whole game.** Too fine (exact args, exact ordering) → even same-platform
 runs disagree → the skeleton is empty → no signal. Too coarse (just "did it finish") → real
@@ -309,6 +313,130 @@ verbatim SKILL gate text on `data.question`), the `expected-skeleton.json` snaps
 gain `gate_fired_at(phase-N)` + `gate_count(ask)=K` + the retained `gate_fired(ask)`, and both pipeline
 tests' `compare(...)` stays AS-EXPECTED. No Copilot seat is consumed. Cross-run `gateLog` aggregation
 (the noise-band analog for gates) is deliberately a Stage-4+ concern (§12).
+
+### 3.3 Order spine, fan-out floor, schema conformance + credit-free replay
+
+*(issue #48, Stage 4; `WORKFLOW_MODEL_VERSION` bumped 3→4 ([`compare.mjs:29`](l2/compare.mjs)). Demonstrated
+credit-free over enriched recorded fixtures AND a round-trip replay bundle — **NO live run**.)*
+
+Stages 2–3 verified that a workflow *moved*, that its deliverable *works*, and that gates fired *on the
+right phase*. They do **not** constrain the **order** delegations happen in, the **fan-out** a phase
+fans to, or whether the orchestrator serialized its state on-schema. A run can delegate the right agents
+in the wrong sequence, spawn one gatherer where the model mandates a fan-out, or emit a top-level
+`status:` with no `task:` block — all conformance breaks the set-of-predicates skeleton was blind to.
+Stage 4 adds three grammar heads, a witness-aware floor narrowing, and a **replay/persist** contract that
+makes any verdict reproducible without a Copilot seat.
+
+#### The three new heads
+
+All three are grammar heads — in **both** `GRAMMAR_HEADS` and `buildToken`
+([`normalize.mjs:45-60`](l2/normalize.mjs), [`:134-149`](l2/normalize.mjs)); the dead-entry-trap invariant
+(§3.2) applies, so each is listed in both or its token silently vanishes.
+
+- **`precedes(a,b)`** — an ADJACENT delegation-**order** edge. The payload is a single **OPAQUE comma
+  string** `"a,b"` — the comma lives *inside* one payload (there is NO 2-arg head, NO `normalizePhase`,
+  NO split); the extractor already assembled the adjacent-pair string and normalize passes it through
+  literal ([`normalize.mjs:134-138`](l2/normalize.mjs)). The extractor emits one token per adjacent chain
+  pair **iff both endpoints were observed AND `a` precedes `b` in first-sight order**
+  ([`extractor.mjs:449-460`](l2/extractor.mjs)); a present-but-out-of-order pair is **silent**, leaving the
+  required edge missing → REGRESSED (order violated). The emitted payload uses the chain's own **bare**
+  names, so the token is prefix-independent.
+- **`min_count(delegated(x))=K`** — a fan-out **floor**, implemented by **token-expansion (Option b)**.
+  For each requested name the extractor emits one token per `k` in `1..observedCount`
+  ([`extractor.mjs:465-476`](l2/extractor.mjs)); the reference asserts the exact `=K` by **SET
+  MEMBERSHIP** — the token is present iff `observed ≥ K` — so `compare` needs **no `≥` logic anywhere**.
+  `count = 0` emits nothing. Token shape mirrors the `=value` heads
+  ([`normalize.mjs:139-144`](l2/normalize.mjs)).
+- **`state_schema(conformant|off-schema)`** — state-serialization **conformance**. A 1-arg literal head
+  ([`normalize.mjs:145-149`](l2/normalize.mjs)) emitted **only when state actually exists**
+  (`stateYaml != null`), so **quick-bugfix — which writes NO orchestrator state — emits no token at all**
+  ([`extractor.mjs:758-770`](l2/extractor.mjs)). It is state-sourced *by name* but is a **conformance
+  token, NOT a downgrade-eligible floor predicate** (see the floor gate below).
+
+#### `state_schema` LIMITATION + the dedicated `schemaDivergences[]` signal
+
+`state_schema(off-schema)` carries a real **LIMITATION**: it detects only **serialization** divergence
+(the orchestrator wrote a non-canonical shape — e.g. a top-level `status:` with no `task:` block), not
+semantic state drift. Its correctness hinges on a **dedicated, absence-free signal**: `parseState` returns
+a `schemaDivergences[]` array that is populated **ONLY** by true off-schema serialization
+([`extractor.mjs:293-310`](l2/extractor.mjs)), kept **separate from the `parseWarnings` grab-bag** (which
+also carries *legitimate absences* like research's missing `task_characteristics` block). `conformant` keys
+on `schemaDivergences.length === 0`, **NOT** `parseWarnings` — so research's legitimately-absent
+characteristics block never emits a false `off-schema`. The head is therefore **dev + research only**;
+**quick-bugfix is N/A** (no state).
+
+#### Witness-aware floor narrowing — the `require`-prefix disambiguation gate
+
+Stage 4 tightens the widened-F3 sanity floor (§3.1 / [`run.mjs:1064-1108`](l2/run.mjs)). The floor may
+downgrade a REGRESSED to INCOMPLETE only when *every* candidate regression is a MISSING state-sourced
+predicate (`phase_completed` / `task_characteristic` / `task_status`) **while the state parser warned AND
+artifacts exist**. The Stage-4 narrowing adds a **witness test** for a missing `phase_completed(N)`: a
+phase is downgrade-eligible **only if it is genuinely un-witnessed**. `witnessTokensForPhase`
+([`compare.mjs:100-115`](l2/compare.mjs)) reads the reference `rules[]` for phase `N`, and a
+**`require`-prefix disambiguation gate** decides which rules count as witnesses:
+
+- `WITNESS_REQUIRE_RE = /^(delegated|created_artifact|invoked_skill)\(/` ([`compare.mjs:86`](l2/compare.mjs))
+  — only these three prefixes are **witnesses**.
+- `gate_fired_at(` rules (the §3.2 gate-placement contract) and the `min_count(` fan-out rule **share the
+  same `rules[]` array** and are **filtered OUT** — they are enforcement rules, not run-happened witnesses.
+
+The gate is **tight**: if a witnessed phase's `phase_completed(N)` is missing, it downgrades **only when
+≥1 of its witnesses is actually present in `observed`** (the phase demonstrably ran; the state parser just
+failed to record it). If **all** witnesses are also absent, the phase is genuinely un-witnessed and
+**STAYS REGRESSED** ([`run.mjs:1079-1093`](l2/run.mjs)). This keeps the floor from masking a real dropped
+phase while still absorbing pure state-parse noise. It is **N=1-only** — the floor lives in
+`finalizeSingleRun`.
+
+#### The replay / persist contract — credit-free verdict reproduction
+
+A live N=1 drive now **persists a replayable trace bundle** and `--replay` **reproduces any recorded
+verdict without a Copilot seat**:
+
+- **Bundle layout.** `reports/<ts>/{events.json, rundir/, replay-meta.json}` — the merged typed event
+  stream, a full copy of the throwaway rundir (`.maister/tasks/<taskType>/<dir>/…`), and a metadata
+  sidecar (`{scenario, taskType, copilotVersion, sdkPath, ts, originalMode:'live', maisterVersion}`)
+  ([`run.mjs:825-846`](l2/run.mjs)).
+- **Credit-free dispatch BEFORE the SDK import.** `--replay` returns in `main()` **above** `runLive`,
+  before any `import(sdkPath)` — exactly like `--check-reference`
+  ([`run.mjs:1247-1249`](l2/run.mjs)). It spends **no seat and no AI credit**; a missing/ bogus `sdkPath`
+  is never loaded.
+- **Re-execute-outcome fidelity.** Replay does **not** replay a cached verdict — it reconstructs
+  `extract()`'s three rundir inputs from the bundle and **RE-RUNS the outcome oracle** against the
+  persisted rundir copy (restaging from the committed sandbox template), then reuses `finalizeSingleRun`
+  unchanged ([`run.mjs:975-1021`](l2/run.mjs)). Same inputs → same normalized skeleton → **byte-identical
+  verdict / exit code / report** a live run would land. The report `Mode:` line reads
+  `replayed (from <dir>)`.
+- **Persist-before-INCOMPLETE.** The persist step is placed **before** the `ex.incomplete` early return,
+  so the INCOMPLETE runs a maintainer most wants to diagnose **also** get a bundle
+  ([`run.mjs:819-824`](l2/run.mjs)). It is best-effort — wrapped in try/catch, a persist failure logs to
+  stderr and **never** breaks the live verdict.
+- **Precondition.** `runReplay` validates the bundle exists (`--replay directory not found` →
+  `EXIT.INCOMPLETE` / exit 2), never a false verdict ([`run.mjs:975-981`](l2/run.mjs)).
+
+#### The N=1-vs-N>1 floor / persist asymmetry
+
+Both the witness-aware floor and the persist step are **N=1-only**, by construction:
+
+- **Persist** is keyed by the report `ts`; `persistTs` is non-null **only when `N === 1`**
+  ([`run.mjs:951-957`](l2/run.mjs)), so an N>1 batch never persists (multiple runs would collide on a
+  single `ts`) and never emits a per-run bundle.
+- **The floor** lives in `finalizeSingleRun`; the N>1 path (`finalizeMultiRun`, §4 noise calibration)
+  has its own stable/noise partition and does not run the single-run floor.
+
+**N>1 for the Stage-4 heads is deferred to Stage 5** — cross-run aggregation of `precedes` / `min_count`
+noise bands, and per-run persist without `ts` collision, are named follow-ups (§12), not a gap in the
+N=1 contract landed here.
+
+#### Governance + acceptance
+
+`WORKFLOW_MODEL_VERSION` is bumped **3→4**, so every Stage-3 reference re-stamps stale and forces a
+re-derive; the new `rules[]` (witness + `min_count`) ride the same Option-A rules-in-hash seam (§3.2), and
+each reference edit is logged in [`l2/reference/CALIBRATION-LOG.md`](l2/reference/CALIBRATION-LOG.md) with
+its SKILL.md order/fan-out citation. Stage 4 is proven **credit-free**: the pipeline fixtures gain
+`precedes` / `min_count` / `state_schema` and stay AS-EXPECTED, the witness-floor unit tests pin the tight
+downgrade gate, and a **replay round-trip test** (`test/replay.test.mjs`) stages a bundle from the committed
+research fixtures and asserts `node run.mjs --replay=<dir>` reproduces the recorded verdict at exit 0 with
+`Mode: replayed` — while a nonexistent bundle exits 2. No Copilot seat is consumed.
 
 ## 4. Noise calibration
 
