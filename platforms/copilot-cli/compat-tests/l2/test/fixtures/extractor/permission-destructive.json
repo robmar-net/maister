@@ -11,24 +11,40 @@
     "id": "e002",
     "parentId": "e001",
     "timestamp": "2026-07-24T09:00:11.000Z",
-    "data": { "toolName": "Bash", "toolCallId": "tc-001", "arguments": { "command": "rm -rf ./.tmp-scratch", "description": "Clean up the disposable scratch directory" } }
+    "data": { "toolName": "bash", "toolCallId": "tc-001", "arguments": { "command": "rm -rf ./.tmp-scratch", "description": "Clean up the disposable scratch directory" } }
   },
   {
     "type": "permission.requested",
     "id": "e003",
     "parentId": "e002",
     "timestamp": "2026-07-24T09:00:12.000Z",
-    "data": { "permissionRequest": { "kind": "shell", "command": "rm -rf ./.tmp-scratch" }, "requestId": "req-dg-001" }
+    "data": {
+      "requestId": "req-dg-001",
+      "permissionRequest": {
+        "kind": "hook",
+        "toolName": "bash",
+        "toolArgs": { "command": "rm -rf ./.tmp-scratch", "description": "Clean up the disposable scratch directory" },
+        "hookMessage": "Maister guard: destructive command — confirm before running: rm -rf ./.tmp-scratch",
+        "workingDirectory": "/rundir/sample-cli-destructive"
+      },
+      "promptRequest": {
+        "kind": "hook",
+        "toolName": "bash",
+        "toolArgs": { "command": "rm -rf ./.tmp-scratch", "description": "Clean up the disposable scratch directory" },
+        "hookMessage": "Maister guard: destructive command — confirm before running: rm -rf ./.tmp-scratch",
+        "workingDirectory": "/rundir/sample-cli-destructive"
+      }
+    }
   },
   {
     "type": "tool.execution_completed",
     "id": "e004",
     "parentId": "e003",
     "timestamp": "2026-07-24T09:00:13.000Z",
-    "data": { "toolName": "Bash", "toolCallId": "tc-001", "result": "", "exitCode": 0 }
+    "data": { "toolName": "bash", "toolCallId": "tc-001", "result": "", "exitCode": 0 }
   },
   {
-    "type": "session.completed",
+    "type": "session.idle",
     "id": "e005",
     "parentId": "e004",
     "timestamp": "2026-07-24T09:00:14.000Z",

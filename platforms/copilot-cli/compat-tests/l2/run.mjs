@@ -164,35 +164,6 @@ function resolveChoice(choice, choices) {
   return { answer: hit ?? choices[0], wasFreeform: false };
 }
 
-// --------------------------------------------------------------------------- destructive-guard responder
-// Stage 6 (issue #48). Custom `onPermissionRequest` responder factory that OBSERVES the zero-touch
-// block-destructive-commands.sh guard's `ask` decision and records it to a per-run `hookDecisions`
-// sink (Option B), which run.mjs threads into extract({..., hookDecisions}) so the skeleton carries
-// `hook_effect(destructive_guard=ask)`. Pure + session-free + unit-testable (no seat).
-//
-// DEFENSIVE by construction (the exact live PermissionRequest shape is a deferred paid unknown):
-//   * decision/reason are nullish-coalesced across the top-level fields AND `hookSpecificOutput.*`
-//     (the hook emits the decision under `hookSpecificOutput` — block-destructive-commands.sh:56-60);
-//   * the destructive regex is an EXACT case-insensitive MIRROR of the hook (:54, never re-authored,
-//     the hook is zero-touch) used as a fallback when the reason marker is absent.
-// Records ONLY a genuine destructive-guard `ask`; ALWAYS returns the approve-shaped result approveAll
-// returns (the credit-free tests double approveAll as `() => ({})`, so an empty object is what the
-// harness + tests expect) — keeps the credit-free run moving; the real gate is honored live.
-export function observeDestructiveGuard(hookDecisions) {
-  // Verbatim mirror of block-destructive-commands.sh:54 (case-insensitive). Zero-touch — never re-authored.
-  const DESTRUCTIVE = /git\s+stash|git\s+reset\s+--hard|git\s+checkout\s+--\s+\.|git\s+checkout\s+\.\s*$|git\s+clean|git\s+push\s+(-f|--force)|rm\s+-rf/i;
-  return (req) => {
-    const decision = req?.permissionDecision ?? req?.hookSpecificOutput?.permissionDecision;
-    const reason = req?.permissionDecisionReason ?? req?.hookSpecificOutput?.permissionDecisionReason;
-    const command = req?.command ?? req?.permissionRequest?.command ?? '';
-    if (decision === 'ask' && (/Maister guard: destructive command/.test(reason ?? '') || DESTRUCTIVE.test(command))) {
-      hookDecisions.push({ requestId: req?.requestId, name: 'destructive_guard', value: 'ask', reason, command });
-    }
-    // Approve-shaped return (same shape approveAll yields) — always, regardless of the record decision.
-    return {};
-  };
-}
-
 function printUsage(stream = process.stdout) {
   stream.write([
     'L2 — Workflow-Model Conformance Testing Harness (run.mjs)',
@@ -812,7 +783,6 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
   const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
   const recorded = [];
   const gateLog = []; // per-run deterministic-responder log -> report `## Gates` section
-  const hookDecisions = []; // Stage 6: per-run observed destructive-guard decisions -> extract({..., hookDecisions})
   let client = null;
   let session = null;
   try {
@@ -848,12 +818,11 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
         });
         return { answer: res.answer, wasFreeform: res.wasFreeform };
       },
-      // Stage 6: the destructive-guard scenario installs the OBSERVING responder (records the guard's
-      // `ask` into the per-run hookDecisions sink); every other scenario keeps approveAll unchanged
-      // (dev/research/quick-bugfix behavior byte-identical → empty sink → no hook_effect).
-      onPermissionRequest: sc.permissionResponder === 'observe-destructive-guard'
-        ? observeDestructiveGuard(hookDecisions)
-        : approveAll,
+      // Permissions are approved uniformly across all scenarios. The destructive-guard's
+      // hook_effect(destructive_guard=ask) is emitted by the extractor DIRECTLY from the live
+      // permission.requested event (permissionRequest.kind==="hook" + the "Maister guard" hookMessage),
+      // so no custom observing responder is needed.
+      onPermissionRequest: approveAll,
       onExitPlanModeRequest: (req) => ({ approved: true, selectedAction: req.recommendedAction }),
     });
 
@@ -927,7 +896,6 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
       gateMap: sc.gateMap, // per-scenario gate->phase placement (gate_fired_at(phase-N)); default [] no-op
       precedesChain: sc.precedesChain, // Stage-4 ordering spine (adjacent precedes edges); default [] no-op
       minCounts: sc.minCounts, // Stage-4 fan-out counts (min_count expansions); default [] no-op
-      hookDecisions, // Stage 6: observed destructive-guard decisions -> hook_effect(destructive_guard=ask)
     });
 
     // Persist a replayable trace bundle (Stage 4) — best-effort, NEVER breaks the live verdict.
@@ -957,11 +925,9 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
             model: persistMeta?.model ?? null,
             modelActual: modelActual ?? 'unknown',
             cost: cost ?? null,
-            // Stage 6 (MEDIUM-2): the hookDecisions sink is per-run OBSERVED data (unlike gateMap/minCounts,
-            // which runReplay re-derives from the scenario), so it MUST be persisted or a --replay of a
-            // destructive-guard bundle would drop hook_effect (false REGRESSED). dev/research/quick-bugfix
-            // persist an empty sink → replay byte-identical.
-            hookDecisions,
+            // hook_effect(destructive_guard=ask) is NOT persisted as a sink — it replays directly from
+            // events.json (the persisted permission.requested carries kind:"hook" + the guard hookMessage),
+            // so the extractor re-derives it on replay with no separate observed-decision channel.
           }, null, 2),
         );
         process.stderr.write(`L2: persisted replay trace: ${dest}\n`);
@@ -1127,11 +1093,10 @@ function runReplay(opts) {
   const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
   const taskDirRoot = path.join(dir, 'rundir');
   const stateYaml = findStateYaml(taskDirRoot, sc.taskType);
-  // Stage 6: the per-run observed hook decisions are read back from the persisted bundle (they are NOT
-  // re-derivable from the scenario), so a destructive-guard bundle replays hook_effect faithfully.
-  const hookDecisions = Array.isArray(meta.hookDecisions) ? meta.hookDecisions : [];
 
   // IDENTICAL to driveOnce's extract() — same inputs, so the same normalized skeleton + verdict.
+  // hook_effect(destructive_guard=ask) replays directly from events.json (the persisted kind:"hook"
+  // permission.requested), so there is no separate observed-decision channel to thread here.
   const ex = extract({
     events,
     taskDirRoot,
@@ -1142,7 +1107,6 @@ function runReplay(opts) {
     gateMap: sc.gateMap,
     precedesChain: sc.precedesChain,
     minCounts: sc.minCounts,
-    hookDecisions,
   });
 
   // Build a driveOnce-shaped result so finalizeSingleRun consumes it unchanged.

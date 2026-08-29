@@ -527,69 +527,72 @@ test('T-STATESCHEMA: ONLY the three tolerant-serialization branches populate sch
 });
 
 // =========================================================================
-// STAGE 6 (issue #48) — hook_effect emit from the threaded hookDecisions sink (Option B)
+// issue #48 — hook_effect emit DIRECTLY from the live permission.requested EVENT
 // =========================================================================
 
-// The faithful recorded `permission.requested` fixture: an rm -rf destructive command with a
-// requestId, carrying NO fabricated permissionDecision field (the decision arrives via the sink).
+// The faithful recorded live trace: the guard-originated `permission.requested` carries
+// `permissionRequest.kind:"hook"`, the command at `permissionRequest.toolArgs.command`, and the
+// `"Maister guard: destructive command …"` `hookMessage` (the real live shape from the first live run,
+// reports/20260829T231857Z). No fabricated permissionDecision field — the kind:"hook" + guard message
+// IS the implicit `ask`.
 const DESTRUCTIVE_EVENTS = JSON.parse(
   fs.readFileSync(path.join(FIX, 'permission-destructive.json'), 'utf8'),
 );
 
-test('T-HOOKEFFECT emit: a hookDecisions sink entry -> hook_effect record; via normalize -> inside-parens token', () => {
-  const records = extract({
-    events: DESTRUCTIVE_EVENTS,
-    hookDecisions: [{ requestId: 'req-dg-001', name: 'destructive_guard', value: 'ask' }],
-  }).records;
+test('T-HOOKEFFECT emit: a kind:"hook" permission.requested -> hook_effect record; via normalize -> inside-parens token', () => {
+  const records = extract({ events: DESTRUCTIVE_EVENTS }).records;
 
-  // The sink entry surfaces as a hook_effect record (source:'responder').
+  // The event surfaces as a hook_effect record, DIRECTLY OBSERVED from the event stream (source:'events').
   const hookRec = records.find((r) => r.kind === 'hook_effect');
-  assert.ok(hookRec, 'expected a hook_effect record from the sink entry');
+  assert.ok(hookRec, 'expected a hook_effect record from the kind:"hook" permission.requested');
   assert.equal(hookRec.name, 'destructive_guard');
   assert.equal(hookRec.value, 'ask');
-  assert.equal(hookRec.source, 'responder');
-  // requestId correlation to the recorded permission.requested is EVIDENCE enrichment (the command).
-  assert.match(hookRec.evidence, /req-dg-001/);
-  assert.match(hookRec.evidence, /rm -rf \.\/\.tmp-scratch/);
+  assert.equal(hookRec.source, 'events');
+  // The hookMessage marker is the primary witness (evidence records which arm matched).
+  assert.match(hookRec.evidence, /kind=hook/);
+  assert.match(hookRec.evidence, /hookMessage matched/);
 
   // End-to-end: normalize renders the UNIQUE inside-parens token shape.
   const tokens = normalize(records);
   assert.ok(tokens.has('hook_effect(destructive_guard=ask)'), 'inside-parens token must be present');
 
-  // Additive: the destructive command's permission.requested still fires gate_fired(permission).
+  // Additive: the guard's permission.requested still fires gate_fired(permission).
   const gates = setOf(records, 'gate_fired');
   assert.ok(gates.has('permission'), 'gate_fired(permission) must remain (additive)');
   assert.ok(tokens.has('gate_fired(permission)'), 'gate_fired(permission) token unchanged (additive)');
 });
 
-test('T-HOOKEFFECT empty-sink invariant: hookDecisions=[] -> NO hook_effect record (byte-identical guarantee)', () => {
-  // Identical events, empty sink -> the post-loop block emits nothing -> no hook_effect.
-  // This is the dev/research/quick-bugfix byte-identical snapshot guarantee.
-  const records = extract({ events: DESTRUCTIVE_EVENTS, hookDecisions: [] }).records;
-  assert.equal(records.filter((r) => r.kind === 'hook_effect').length, 0, 'empty sink must emit no hook_effect');
-  assert.ok(!normalize(records).has('hook_effect(destructive_guard=ask)'), 'no hook_effect token on empty sink');
-
-  // Default (omitted) hookDecisions is equivalent to an empty sink (inert default).
-  const noArg = extract({ events: DESTRUCTIVE_EVENTS }).records;
-  assert.equal(noArg.filter((r) => r.kind === 'hook_effect').length, 0, 'omitted sink defaults to no hook_effect');
+test('T-HOOKEFFECT command-arm: kind:"hook" + destructive command but NO guard hookMessage still emits', () => {
+  // The command-regex arm (verbatim mirror of block-destructive-commands.sh:54) is a fallback when the
+  // hookMessage marker is absent: a kind:"hook" permission whose toolArgs.command matches still emits.
+  const events = [
+    { type: 'permission.requested', data: {
+      requestId: 'req-x', permissionRequest: { kind: 'hook', toolName: 'bash', toolArgs: { command: 'git reset --hard HEAD~1' } } } },
+  ];
+  const records = extract({ events }).records;
+  const hookRec = records.find((r) => r.kind === 'hook_effect');
+  assert.ok(hookRec, 'command-regex arm emits when the hookMessage marker is absent');
+  assert.equal(hookRec.value, 'ask');
+  assert.match(hookRec.evidence, /command matched/);
 });
 
-test('T-HOOKEFFECT sink-authoritative: a sink entry with NO matching permission.requested still emits', () => {
-  // Per spec: the sink entry is authoritative for the emit; requestId correlation to a recorded
-  // permission.requested is evidence-only, NOT an emit gate. So an entry whose requestId matches no
-  // recorded event (here: no events at all) still emits the hook_effect record.
-  const recordsNoEvents = extract({
-    events: [],
-    hookDecisions: [{ requestId: 'req-nomatch', name: 'destructive_guard', value: 'ask' }],
-  }).records;
-  const hr = recordsNoEvents.find((r) => r.kind === 'hook_effect');
-  assert.ok(hr, 'sink entry emits even with no correlating event');
-  assert.equal(hr.value, 'ask');
-  assert.ok(normalize(recordsNoEvents).has('hook_effect(destructive_guard=ask)'));
+test('T-HOOKEFFECT benign-permission invariant: an ordinary kind:"shell" permission -> NO hook_effect (byte-identical guarantee)', () => {
+  // dev/research fixtures fire ordinary permission.requested with kind:"shell" (NOT the guard hook).
+  // These do NOT match kind==='hook' -> NO hook_effect -> their pipeline snapshots stay byte-identical.
+  const shellEvents = [
+    { type: 'permission.requested', data: {
+      requestId: 'req-s', permissionRequest: { kind: 'shell', command: 'rm -rf ./.tmp-scratch' } } },
+  ];
+  const records = extract({ events: shellEvents }).records;
+  assert.equal(records.filter((r) => r.kind === 'hook_effect').length, 0, 'kind:"shell" must emit no hook_effect');
+  assert.ok(!normalize(records).has('hook_effect(destructive_guard=ask)'), 'no hook_effect token on a shell permission');
+  // gate_fired(permission) still fires additively (the permission surface is unchanged).
+  assert.ok(setOf(records, 'gate_fired').has('permission'), 'gate_fired(permission) still fires for kind:"shell"');
+});
 
-  // extractFromEvents-level: the emit does not depend on a matching event either.
-  const evRecs = extractFromEvents([], [], [], [], [
-    { requestId: 'req-nomatch', name: 'destructive_guard', value: 'ask' },
-  ]);
-  assert.equal(evRecs.filter((r) => r.kind === 'hook_effect').length, 1, 'unmatched sink entry still emits');
+test('T-HOOKEFFECT empty-events invariant: no events -> NO hook_effect', () => {
+  const records = extract({ events: [] }).records;
+  assert.equal(records.filter((r) => r.kind === 'hook_effect').length, 0, 'empty events emit no hook_effect');
+  // extractFromEvents-level: same guarantee with the default args.
+  assert.equal(extractFromEvents([]).filter((r) => r.kind === 'hook_effect').length, 0, 'no events -> no hook_effect');
 });

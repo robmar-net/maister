@@ -4,13 +4,13 @@
  * The FOURTH L2 scenario (after `development`, `research`, `quick-bugfix`). It promotes `hook_effect`
  * from a dead grammar entry to a LIVE, emitted L2 predicate. Unlike the other three scenarios — which
  * exercise a workflow shape — this one exercises the HARNESS GUARD: it induces a destructive shell
- * command (`rm -rf`) that the zero-touch `block-destructive-commands.sh` hook intercepts with a
- * `permissionDecision:"ask"` (see platforms/copilot-cli/hooks-overrides/block-destructive-commands.sh
- * :54 regex, :59-60 decision+reason). A custom `onPermissionRequest` responder
- * (`observe-destructive-guard`, selected via the `permissionResponder` field below) OBSERVES that `ask`
- * decision, records it to a per-run `hookDecisions` sink, and `run.mjs` threads that sink into
- * `extract({..., hookDecisions})` (Option B) so the normalized skeleton carries
- * `hook_effect(destructive_guard=ask)`.
+ * command (`rm -rf`) that the zero-touch `block-destructive-commands.sh` hook intercepts (see
+ * platforms/copilot-cli/hooks-overrides/block-destructive-commands.sh :54 regex, :59-60
+ * decision+reason). The guard's `ask` surfaces LIVE as a `permission.requested` event whose
+ * `data.permissionRequest` carries `kind:"hook"` (an ordinary shell permission is `kind:"shell"`) plus
+ * the `"Maister guard: destructive command …"` `hookMessage`. The extractor witnesses that event
+ * DIRECTLY (no custom responder / sink) and emits `hook_effect(destructive_guard=ask)`, so `=ask` is a
+ * directly-observed, replayable value (confirmed by the first live run, reports/20260829T231857Z).
  *
  * ── Shape ───────────────────────────────────────────────────────────────────
  * The required predicate set is model-driven, NOT a functional outcome: guard-firing is the skeleton
@@ -29,10 +29,11 @@
  * directory (`.tmp-scratch/`) that the prompt targets, so `rm -rf ./.tmp-scratch` is a real,
  * non-catastrophic operation confined to the rundir copy. NO `run-tests.sh` (outcome:[]).
  *
- * ── Responder selection ─────────────────────────────────────────────────────
- * `permissionResponder:'observe-destructive-guard'` is the selection key `run.mjs` reads to install
- * `observeDestructiveGuard(hookDecisions)` in place of `approveAll`. Scenarios WITHOUT this field keep
- * `approveAll` → dev/research/quick-bugfix behavior is byte-identical.
+ * ── Permission handling ─────────────────────────────────────────────────────
+ * No custom responder is needed: `run.mjs` uses `approveAll` for EVERY scenario. The guard fires a
+ * `permission.requested` with `kind:"hook"` + the `"Maister guard"` `hookMessage`, which the extractor
+ * witnesses directly from the event stream to emit `hook_effect(destructive_guard=ask)`. dev/research/
+ * quick-bugfix permissions are `kind:"shell"` → no hook_effect → byte-identical snapshots.
  *
  * Zero-dependency ESM: pure data (no imports).
  */
@@ -56,9 +57,8 @@ const gateMap = [];
 
 /**
  * answerMap (Stage 3) — deterministic gate choices for `chooseAnswer`. Any confirm/proceed/approve
- * surface takes the first option; the custom `observe-destructive-guard` responder handles the actual
- * permission decision out of band (observe, then approve-shaped return to keep the credit-free run
- * moving).
+ * surface takes the first option; the permission decision is handled by `approveAll`, and the guard's
+ * `ask` is witnessed by the extractor directly from the `permission.requested` event.
  */
 const answerMap = [
   { re: /confirm|proceed|approve/i, choice: null }, // null -> choices[0]
@@ -90,9 +90,9 @@ export const scenario = {
   // delegated(...) tokens, so no order chain and no minimum counts to enforce.
   precedesChain: [],
   minCounts: [],
-  // Stage 6: selects the custom onPermissionRequest responder that OBSERVES the guard's `ask` decision
-  // and records it to the per-run hookDecisions sink. Absent on other scenarios → approveAll.
-  permissionResponder: 'observe-destructive-guard',
+  // No custom permission responder: the guard's `ask` is witnessed by the extractor directly from the
+  // live `permission.requested` event (kind:"hook" + "Maister guard" hookMessage). run.mjs uses
+  // approveAll for every scenario.
   fallbackPrompt,
 };
 
