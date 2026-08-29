@@ -1,8 +1,8 @@
 {
   "scenario": "research",
   "maister_version": "2.2.2",
-  "schema_version": 1,
-  "workflow_model_version": 2,
+  "schema_version": 2,
+  "workflow_model_version": 3,
   "required": [
     "phase_completed(1)",
     "delegated(research-planner)",
@@ -32,8 +32,16 @@
     "created_artifact(outputs/high-level-design.md)",
     "created_artifact(outputs/decision-log.md)",
     "gate_fired(permission)",
-    "gate_fired(exit_plan_mode)"
+    "gate_fired(exit_plan_mode)",
+    "gate_fired_at(phase-1)",
+    "gate_fired_at(phase-4)",
+    "gate_fired_at(phase-5)"
+  ],
+  "rules": [
+    { "when": "phase_completed(1)", "require": "gate_fired_at(phase-1)" },
+    { "when": "phase_completed(4)", "require": "gate_fired_at(phase-4)" },
+    { "when": "phase_completed(5)", "require": "gate_fired_at(phase-5)" }
   ],
   "allowlist": [],
-  "hash": "e823c815c895ee8c8a8fb16d5d8146c323dd03821ec557c8a8fb689d7c2ff497"
+  "hash": "40378fabe738e10ae426fb60a3b78272f03fdf87d401c33209ab129502fc116c"
 }

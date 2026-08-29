@@ -70,7 +70,55 @@
     "parentId": "e006",
     "timestamp": "2026-07-24T09:00:06.000Z",
     "ephemeral": true,
-    "data": { "question": "Which verification options would you like?", "choices": ["Standard verification", "Deep verification"], "allowFreeform": false, "requestId": "req-001", "toolCallId": "tc-003" }
+    "data": { "question": "Which standard verifications to run?", "choices": ["Standard verification", "Deep verification"], "allowFreeform": false, "requestId": "req-001", "toolCallId": "tc-003" }
+  },
+  {
+    "type": "user_input.requested",
+    "id": "e101",
+    "parentId": "e006",
+    "timestamp": "2026-07-24T09:00:06.100Z",
+    "ephemeral": true,
+    "data": { "question": "Continue to Phase 5: Technical Approach, Requirements & Specification?", "choices": ["yes", "no"], "allowFreeform": false, "requestId": "req-g02", "toolCallId": "tc-g02" }
+  },
+  {
+    "type": "user_input.requested",
+    "id": "e102",
+    "parentId": "e101",
+    "timestamp": "2026-07-24T09:00:06.200Z",
+    "ephemeral": true,
+    "data": { "question": "Continue to specification audit?", "choices": ["yes", "no"], "allowFreeform": false, "requestId": "req-g05", "toolCallId": "tc-g05" }
+  },
+  {
+    "type": "user_input.requested",
+    "id": "e103",
+    "parentId": "e102",
+    "timestamp": "2026-07-24T09:00:06.300Z",
+    "ephemeral": true,
+    "data": { "question": "Continue to implementation planning?", "choices": ["yes", "no"], "allowFreeform": false, "requestId": "req-g06", "toolCallId": "tc-g06" }
+  },
+  {
+    "type": "user_input.requested",
+    "id": "e104",
+    "parentId": "e103",
+    "timestamp": "2026-07-24T09:00:06.400Z",
+    "ephemeral": true,
+    "data": { "question": "Continue to implementation?", "choices": ["yes", "no"], "allowFreeform": false, "requestId": "req-g07", "toolCallId": "tc-g07" }
+  },
+  {
+    "type": "user_input.requested",
+    "id": "e105",
+    "parentId": "e104",
+    "timestamp": "2026-07-24T09:00:06.500Z",
+    "ephemeral": true,
+    "data": { "question": "Continue to verification?", "choices": ["yes", "no"], "allowFreeform": false, "requestId": "req-g08", "toolCallId": "tc-g08" }
+  },
+  {
+    "type": "user_input.requested",
+    "id": "e106",
+    "parentId": "e105",
+    "timestamp": "2026-07-24T09:00:06.600Z",
+    "ephemeral": true,
+    "data": { "question": "Continue to Phase 12?", "choices": ["yes", "no"], "allowFreeform": false, "requestId": "req-g11", "toolCallId": "tc-g11" }
   },
   {
     "type": "subagent.started",

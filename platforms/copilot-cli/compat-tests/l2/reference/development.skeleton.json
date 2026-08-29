@@ -1,8 +1,8 @@
 {
   "scenario": "development",
   "maister_version": "2.2.2",
-  "schema_version": 1,
-  "workflow_model_version": 2,
+  "schema_version": 2,
+  "workflow_model_version": 3,
   "required": [
     "phase_completed(1)",
     "phase_completed(2)",
@@ -52,7 +52,33 @@
     "delegated(explore)",
     "delegated(codebase-analysis-reporter)",
     "delegated(user-docs-generator)",
-    "delegated(e2e-test-verifier)"
+    "delegated(e2e-test-verifier)",
+    "gate_fired_at(phase-2)",
+    "gate_fired_at(phase-3)",
+    "gate_fired_at(phase-4)",
+    "gate_fired_at(phase-5)",
+    "gate_fired_at(phase-6)",
+    "gate_fired_at(phase-7)",
+    "gate_fired_at(phase-8)",
+    "gate_fired_at(phase-9)",
+    "gate_fired_at(phase-10)",
+    "gate_fired_at(phase-11)",
+    "gate_fired_at(phase-12)",
+    "gate_fired_at(phase-13)"
+  ],
+  "rules": [
+    { "when": "phase_completed(2)", "require": "gate_fired_at(phase-2)" },
+    { "when": "phase_completed(3)", "require": "gate_fired_at(phase-3)" },
+    { "when": "phase_completed(4)", "require": "gate_fired_at(phase-4)" },
+    { "when": "phase_completed(5)", "require": "gate_fired_at(phase-5)" },
+    { "when": "phase_completed(6)", "require": "gate_fired_at(phase-6)" },
+    { "when": "phase_completed(7)", "require": "gate_fired_at(phase-7)" },
+    { "when": "phase_completed(8)", "require": "gate_fired_at(phase-8)" },
+    { "when": "phase_completed(9)", "require": "gate_fired_at(phase-9)" },
+    { "when": "phase_completed(10)", "require": "gate_fired_at(phase-10)" },
+    { "when": "phase_completed(11)", "require": "gate_fired_at(phase-11)" },
+    { "when": "phase_completed(12)", "require": "gate_fired_at(phase-12)" },
+    { "when": "phase_completed(13)", "require": "gate_fired_at(phase-13)" }
   ],
   "allowlist": [
     {
@@ -81,5 +107,5 @@
       "reason": "Platform divergence (implementation-verifier/SKILL.md:108-142): on Claude the implementation-verifier delegates reviews to Task subagents (code-reviewer, code-quality-pragmatist, production-readiness-checker, reality-assessor); on Copilot the same review work surfaces as a direct invocation of reviews-production-readiness."
     }
   ],
-  "hash": "1180da9a65f7c5e30f3d4acc143f7cbc9c3391b4c8b3980f34ea82c703ab24a6"
+  "hash": "ea0a59515602f4811b1d6271435559a23663fbd5502af64e5a2119c0e0e2d37e"
 }

@@ -9,13 +9,14 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `quick-bugfix` |
 | Source (read-only citation source) | `plugins/maister/skills/quick-bugfix/SKILL.md` |
 | maister_version | `2.2.3` |
-| workflow_model_version | `2` |
-| Sibling JSON hash | `6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215` |
+| workflow_model_version | `3` |
+| Sibling JSON hash | `0893abf4a0611ba742fd7b31af7937a6735d6feda2a5aa2bb706da2947103603` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above (read-only). Rows follow on-disk array order.
-Partition sizes: 4 required + 2 optional + 0 allowlist = 6 rows. The skeleton is deliberately
-minimal because the model is: ":9 — 'No orchestrator state, no task directory, no subagents.'"
+Partition sizes: 4 required + 2 optional + 0 rules + 0 allowlist = 6 rows. The skeleton is
+deliberately minimal because the model is: ":9 — 'No orchestrator state, no task directory, no
+subagents.'"
 
 ## Required (4)
 
@@ -32,6 +33,15 @@ minimal because the model is: ":9 — 'No orchestrator state, no task directory,
 |---|---|---|---|
 | `gate_fired(permission)` | optional | platform divergence (no SKILL.md anchor) | Copilot permission prompts are a harness surface, not model-mandated; may or may not fire depending on session permission mode |
 | `gate_fired(exit_plan_mode)` | optional | :91, :122-124 | Same plan-gate mapping as honesty note 1: whether Copilot's plan-approval surface emits a distinct exit event (in addition to the required `ask`) is platform-dependent, so it cannot be required |
+
+## Rules (0)
+
+`rules[] = []` — intentionally empty. quick-bugfix is a Step-numbered workflow (Steps 1–7) whose
+only mandatory gate is the EnterPlanMode/ExitPlanMode plan gate (:91, :122-124), not a set of
+phase-numbered exit gates. There are no `phase_completed(N)` predicates to key a gate-placement rule
+on, so no `gate_fired_at(phase-N)` predicate is invented; the required un-phased `gate_fired(ask)`
+(honesty note 1) remains the sole gate predicate. schema/wm are still bumped (1→2 / 2→3) in lockstep
+with the sibling references (rules-in-hash Option A contributes zero tokens here).
 
 ## Allowlist (0)
 

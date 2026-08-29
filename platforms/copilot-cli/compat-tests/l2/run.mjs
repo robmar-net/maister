@@ -114,6 +114,50 @@ export function parseArgs(argv) {
   return opts;
 }
 
+// --------------------------------------------------------------------------- deterministic responder
+// DETERMINISTIC gate answerer (extracted from the inline onUserInputRequest arrow so it is
+// unit-testable without a Copilot seat). Scans the scenario's `answerMap` ([{re, choice, phase?}],
+// first-match-wins) against `req.question`:
+//   * first `re` that matches -> pick `choice`, resolved against `req.choices` when present (else
+//     answered freeform) -> { matched:true, fallback:false, mappedPhase: entry.phase ?? null }.
+//   * no match -> the deterministic floor `req.choices?.[0] ?? 'yes'` -> { matched:false,
+//     fallback:true } (a visibly-flagged responder_fallback).
+// Return shape mirrors the SDK's UserInputResponse ({ answer, wasFreeform }) plus the reporting
+// fields ({ matched, mappedPhase, fallback }) consumed by the driveOnce gateLog + `## Gates` section.
+export function chooseAnswer(req, answerMap = []) {
+  const question = String(req?.question ?? '');
+  const choices = Array.isArray(req?.choices) ? req.choices : null;
+  const map = Array.isArray(answerMap) ? answerMap : [];
+
+  for (const entry of map) {
+    if (!entry || !(entry.re instanceof RegExp) || !entry.re.test(question)) continue;
+    const { answer, wasFreeform } = resolveChoice(entry.choice, choices);
+    return { answer, wasFreeform, matched: true, mappedPhase: entry.phase ?? null, fallback: false };
+  }
+
+  // Unmatched -> deterministic floor (responder_fallback, visibly flagged in the report).
+  return {
+    answer: choices?.[0] ?? 'yes',
+    wasFreeform: !choices,
+    matched: false,
+    mappedPhase: null,
+    fallback: true,
+  };
+}
+
+// Resolve a mapped `choice` against the offered `choices`. With no choices the answer is freeform
+// (the mapped string, or 'yes'); with choices it prefers an exact (case-insensitive) label, then a
+// substring match (a terse map value like "No, skip" resolves a longer real label), else choices[0]
+// (a `choice` of null/undefined explicitly means "the first/cheapest option").
+function resolveChoice(choice, choices) {
+  if (!choices || !choices.length) return { answer: choice ?? 'yes', wasFreeform: true };
+  if (choice == null) return { answer: choices[0], wasFreeform: false };
+  const lc = String(choice).toLowerCase();
+  const hit = choices.find((c) => String(c).toLowerCase() === lc)
+    ?? choices.find((c) => String(c).toLowerCase().includes(lc));
+  return { answer: hit ?? choices[0], wasFreeform: false };
+}
+
 function printUsage(stream = process.stdout) {
   stream.write([
     'L2 — Workflow-Model Conformance Testing Harness (run.mjs)',
@@ -385,7 +429,7 @@ export function buildReport(ctx) {
     scenarioId, mode, overall, counts, observed, reference, result,
     incompleteReason, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null,
-    usage = null, usageTotal = null,
+    usage = null, usageTotal = null, gateLog = [],
   } = ctx;
 
   const L = [];
@@ -464,6 +508,25 @@ export function buildReport(ctx) {
   }
   L.push('');
 
+  // ## Gates — the deterministic responder's per-gate answer log (in call order). Each interactive
+  // gate that fired and was answered is listed with the phase its answerMap entry mapped to; a
+  // `fallback:true` row (an unmapped question answered by the choices[0] ?? 'yes' floor) is flagged
+  // `responder-fallback` so a drifted / unmodeled gate prompt is visible, not silently absorbed.
+  L.push('## Gates');
+  L.push('');
+  L.push('| Question | Answer given | Mapped phase | Source |');
+  L.push('|----------|--------------|--------------|--------|');
+  if (gateLog && gateLog.length) {
+    for (const g of gateLog) {
+      const phase = g.mappedPhase != null ? esc(g.mappedPhase) : '—';
+      const source = g.fallback ? 'responder-fallback' : 'mapped';
+      L.push(`| ${esc(g.question)} | ${esc(g.answer)} | ${phase} | ${source} |`);
+    }
+  } else {
+    L.push('| _(none)_ | — | — | no interactive gate fired / answered this run |');
+  }
+  L.push('');
+
   if (parseWarnings && parseWarnings.length) {
     L.push('## State parse warnings');
     L.push('');
@@ -515,6 +578,8 @@ export function buildReport(ctx) {
   L.push('- **`delegated(a)`** — a `subagent.started` event delegated to bare agent `a` (typed events; plugin prefix stripped).');
   L.push('- **`invoked_skill(s)`** — a `skill.invoked` event ran skill `s` (typed events; `session.skills_loaded` is ignored — HIGH-1).');
   L.push('- **`gate_fired(k)`** — an interactive gate of kind `k` (`ask` / `permission` / `exit_plan_mode`) fired **and was answered** (never `--no-ask-user`).');
+  L.push('- **`gate_fired_at(phase-N)`** — an interactive `ask` gate fired on phase `N` — the extractor placed the `user_input.requested` question on its phase via the scenario `gateMap`. Promoted to *required* when `phase_completed(N)` is observed (a completed phase that dropped its mandatory exit gate is REGRESSED).');
+  L.push('- **`gate_count(ask)=K`** — `K` interactive `ask` gates fired this run. REPORT-ONLY: a normalized head surfaced here and in the `## Gates` section, but never placed in any reference `required`/`optional` and never diffed (a variable `K` is not a regression).');
   L.push('- **`reached_terminal(completion)`** — the session reached idle/shutdown with no `session.error`.');
   L.push('');
   L.push(
@@ -656,6 +721,7 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
   const { CopilotClient, RuntimeConnection, approveAll } = sdk;
   const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
   const recorded = [];
+  const gateLog = []; // per-run deterministic-responder log -> report `## Gates` section
   let client = null;
   let session = null;
   try {
@@ -672,11 +738,19 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
       pluginDirectories: [PLUGIN_DIR],
       // LOAD-BEARING: onEvent is a SessionConfig FIELD so it registers BEFORE the create RPC.
       onEvent: (e) => { recorded.push(e); },
-      // Gates FIRE and are ANSWERED (never suppressed via --no-ask-user; AC8).
-      onUserInputRequest: (req) => ({
-        answer: req.choices?.[0] ?? 'yes',
-        wasFreeform: !req.choices,
-      }),
+      // Gates FIRE and are ANSWERED (never suppressed via --no-ask-user; AC8) by the DETERMINISTIC
+      // responder (scenario answerMap); each answered gate is logged for the report `## Gates` section.
+      onUserInputRequest: (req) => {
+        const res = chooseAnswer(req, sc.answerMap);
+        gateLog.push({
+          question: req.question,
+          answer: res.answer,
+          mappedPhase: res.mappedPhase,
+          matched: res.matched,
+          fallback: res.fallback,
+        });
+        return { answer: res.answer, wasFreeform: res.wasFreeform };
+      },
       onPermissionRequest: approveAll,
       onExitPlanModeRequest: (req) => ({ approved: true, selectedAction: req.recommendedAction }),
     });
@@ -706,6 +780,7 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
         reason: `sendAndWait did not complete (timeout or session error): ${timeoutErr?.message ?? timeoutErr}`,
         run: runIndex,
         usage,
+        gateLog,
       };
     }
 
@@ -728,13 +803,14 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex) {
       taskType: sc.taskType,
       outcome: sc.outcome,
       sandboxTemplateDir: path.join(L2_DIR, 'sandbox', sc.sandboxTemplate),
+      gateMap: sc.gateMap, // per-scenario gate->phase placement (gate_fired_at(phase-N)); default [] no-op
     });
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
-    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage };
+    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog };
 
-    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage };
+    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog };
   } finally {
     // Bounded per-run teardown: disconnect the session, THEN stop + forceStop THIS run's OWN client
     // (the SDK client spawned an app.js runtime subprocess whose IPC handles keep the event loop alive —
@@ -856,7 +932,7 @@ function finalizeSingleRun(res, ctx) {
   } = ctx;
   const base = {
     scenarioId, mode: 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, finalN: 1, sdkPath, usage: res.usage ?? null,
+    pluginDir, pluginName, finalN: 1, sdkPath, usage: res.usage ?? null, gateLog: res.gateLog ?? [],
   };
   const INCOMPLETE_COUNTS = { pass: 0, limitation: 0, skip: 0, fail: 0 };
 

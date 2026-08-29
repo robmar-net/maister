@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { extract } from '../extractor.mjs';
 import { normalize } from '../normalize.mjs';
 import { compare, EXIT } from '../compare.mjs';
+import { scenario } from '../scenarios/development.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const L2_DIR = path.resolve(__dirname, '..');
@@ -40,7 +41,7 @@ const golden = JSON.parse(
 
 test('pipeline: extract -> normalize -> compare over committed fixtures yields the expected skeleton + AS-EXPECTED (AC3)', () => {
   // --- extract (events u tree u state -> raw records) ------------------------------------
-  const ex = extract({ events, taskDirRoot, stateYaml });
+  const ex = extract({ events, taskDirRoot, stateYaml, gateMap: scenario.gateMap });
 
   // The fixtures represent a COMPLETE run: the MEDIUM-2 sanity floor must NOT trip
   // (phases present alongside artifacts), so the pipeline yields a real verdict.
@@ -80,11 +81,15 @@ test('pipeline: extract -> normalize -> compare over committed fixtures yields t
   assert.equal(result.exitCode, EXIT.AS_EXPECTED, 'AS-EXPECTED must map to exit 0');
   assert.equal(result.counts.fail, 0, 'no candidate regressions expected');
   assert.equal(result.diffs.length, 0, `expected 0 classified diffs, got ${result.diffs.length}`);
-  // Every required predicate matched (nothing missing).
+  // Every EFFECTIVE-required predicate matched (nothing missing). `matched` filters over
+  // effectiveRequired, so the rules-expansion promotes gate_fired_at(phase-N) to required for each
+  // completed∩ruled phase (dev {2,5,6,7,8,10,11} = 7). Effective required = 26 base + 7 promoted = 33.
+  const EXPECTED_MATCHED = golden.required.length + 7; // 26 + 7 = 33
+  assert.equal(EXPECTED_MATCHED, 33, 'dev effective-required count sanity (26 base + 7 promoted gates)');
   assert.equal(
     result.matched.length,
-    golden.required.length,
-    `expected all ${golden.required.length} required predicates matched, got ${result.matched.length}`,
+    EXPECTED_MATCHED,
+    `expected all ${EXPECTED_MATCHED} effective-required predicates matched, got ${result.matched.length}`,
   );
 
   // A deliberately broken skeleton (drop a required delegation) MUST be caught as REGRESSED —

@@ -50,6 +50,23 @@ const fallbackPrompt =
   'the quick-bugfix TDD loop: present a fix plan, reproduce with a failing test, fix, and verify. Do ' +
   'NOT use the development workflow — this is a quick bug fix only.';
 
+/**
+ * gateMap (Stage 3) — EMPTY. quick-bugfix is a Step-numbered lightweight workflow with an
+ * EnterPlanMode/ExitPlanMode plan gate (plugins/maister/skills/quick-bugfix/SKILL.md, read-only),
+ * NOT phase-numbered exit gates — so no `gate_fired_at(phase-N)` is invented. It keeps its required
+ * un-phased `gate_fired(ask)` (always emitted by the extractor regardless of gateMap).
+ */
+const gateMap = [];
+
+/**
+ * answerMap (Stage 3) — deterministic gate choices for `chooseAnswer`. The plan-mode "is the bug
+ * description accurate?" confirmation takes the first option; unmatched -> `choices[0] ?? 'yes'`
+ * responder-fallback.
+ */
+const answerMap = [
+  { re: /is the bug description accurate/i, choice: null }, // null -> choices[0]
+];
+
 export const scenario = {
   id: 'quick-bugfix',
   // A copy of sample-cli with one seeded, test-reproducible defect (cmd_upper lower-cases).
@@ -68,6 +85,9 @@ export const scenario = {
   // `sh run-tests.sh` in the rundir root. Pass iff exit 0 — which requires the seeded
   // `cmd_upper` `tr` defect to have been fixed (`upper sample` -> `SAMPLE`).
   outcome: [{ id: 'bug-fixed', command: 'sh run-tests.sh', restage: ['run-tests.sh'] }],
+  // Stage 3: no phase-numbered gates (gateMap empty) + deterministic gate answers (chooseAnswer).
+  gateMap,
+  answerMap,
   fallbackPrompt,
 };
 

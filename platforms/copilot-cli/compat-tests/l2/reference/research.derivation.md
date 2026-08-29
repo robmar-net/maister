@@ -9,13 +9,13 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `research` |
 | Source (read-only citation source) | `plugins/maister/skills/research/SKILL.md` |
 | maister_version | `2.2.2` |
-| workflow_model_version | `2` |
-| Sibling JSON hash | `e823c815c895ee8c8a8fb16d5d8146c323dd03821ec557c8a8fb689d7c2ff497` |
+| workflow_model_version | `3` |
+| Sibling JSON hash | `40378fabe738e10ae426fb60a3b78272f03fdf87d401c33209ab129502fc116c` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
 `plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 10
-required + 17 optional + 0 allowlist = 27 rows. Partition rationale (genesis `db26a46`,
+required + 20 optional + 3 rules + 0 allowlist = 33 rows. Partition rationale (genesis `db26a46`,
 [CALIBRATION-LOG.md](CALIBRATION-LOG.md) entry 2): the Phase-1 research foundation is required;
 conditional brainstorming/design phases, their artifacts, and the root skill are optional.
 
@@ -34,7 +34,7 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 | `task_status(completed)` | required | :107; orchestrator-framework/references/orchestrator-patterns.md:254 | Terminal phase "Completing research" (:107); shared state model defines `status: … completed` reached at finalization |
 | `reached_terminal(completion)` | required | :377 | P6: "→ End of workflow" |
 
-## Optional (17)
+## Optional (20)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -55,6 +55,23 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 | `created_artifact(outputs/decision-log.md)` | optional | :314, :317 | P5 Output; phase skippable |
 | `gate_fired(permission)` | optional | platform divergence (no SKILL.md anchor) | Copilot permission prompts are a harness surface, not model-mandated |
 | `gate_fired(exit_plan_mode)` | optional | platform divergence (no SKILL.md anchor) | The research model gates via AskUserQuestion, not plan mode; Copilot's plan-approval surface may additionally emit this event |
+| `gate_fired_at(phase-1)` | optional | :198 | Fireable phase-1 exit gate (see `## Rules`); optional row keeps an observed-but-unpromoted gate from classifying as an unmodeled extra |
+| `gate_fired_at(phase-4)` | optional | :302 | Fireable phase-4 exit gate (brainstorming complete → high-level design) |
+| `gate_fired_at(phase-5)` | optional | :351 | Fireable phase-5 exit gate (design complete → output generation) |
+
+## Rules (3)
+
+Gate-placement rules (Stage 3). Each rule promotes its `require` predicate to *required* ONLY when
+its `when` predicate (`phase_completed(N)`) is observed — a gate whose phase never completed cannot
+false-alarm. Derived EXACTLY from the mandatory-gate exit markers in the source SKILL.md (research
+has a MANDATORY-GATE exit on phases 1, 4, and 5), never fitted to a run. Every `require` row is also
+modelled in `## Optional` above so an observed-but-unpromoted gate is not an unmodeled extra.
+
+| when | require | citation |
+|---|---|---|
+| `phase_completed(1)` | `gate_fired_at(phase-1)` | :198 ("Research foundation complete … Continue to brainstorming evaluation?", :200) |
+| `phase_completed(4)` | `gate_fired_at(phase-4)` | :302 ("Brainstorming complete. Continue to high-level design?", :304) |
+| `phase_completed(5)` | `gate_fired_at(phase-5)` | :351 ("Design complete. Continue to output generation?", :353) |
 
 ## Allowlist (0)
 

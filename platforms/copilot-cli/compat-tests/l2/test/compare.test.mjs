@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { compare, computeHash, checkReference, WORKFLOW_MODEL_VERSION } from '../compare.mjs';
+import { compare, computeHash, checkReference, WORKFLOW_MODEL_VERSION, EXIT } from '../compare.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIX = join(__dirname, 'fixtures', 'compare');
@@ -157,4 +157,135 @@ test('4.1f checkReference keys STALE on workflow_model_version — a package bum
   const corrupt = checkReference({ ...matched, hash: 'deadbeef' }, matched.maister_version);
   assert.equal(corrupt.status, 'corrupt');
   assert.equal(corrupt.exitCode, 2);
+});
+
+// ── Stage-3 gates: rules-expansion + rules-in-hash + reported-only (Group 2) ──────────
+//
+// Inline references (independent of the committed golden) exercise the rules[] promotion of a
+// gate_fired_at(phase-N) to *required* when phase_completed(N) is observed, the zero-token
+// backward-neutrality of computeHash when rules are absent/empty, and the reported-only
+// exclusion of gate_count( from the extra diff. Imitates pipeline.test.mjs negative→REGRESSED.
+
+// A reference whose sole rule promotes the phase-5 gate to required once phase 5 completes.
+const rulesReference = () => ({
+  scenario: 'gates-fixture',
+  schema_version: 2,
+  workflow_model_version: WORKFLOW_MODEL_VERSION,
+  required: ['task_status(completed)'],
+  // A real reference models both the fireable gate (optional, promoted by the rule) and the
+  // phase_completed `when` predicate — so an observed phase completion is never a spurious extra.
+  optional: ['gate_fired_at(phase-5)', 'phase_completed(5)'],
+  allowlist: [],
+  rules: [{ when: 'phase_completed(5)', require: 'gate_fired_at(phase-5)' }],
+});
+
+test('2.1a rules-expansion: when observed + require absent -> REGRESSED (exit 1)', () => {
+  const reference = rulesReference();
+  // phase 5 completed but its mandatory gate never fired -> the promoted-required gate is missing.
+  const observed = new Set(['task_status(completed)', 'phase_completed(5)']);
+
+  const result = compare(observed, reference);
+
+  assert.equal(result.overall, 'REGRESSED', 'a completed phase without its gate must REGRESS');
+  assert.equal(result.exitCode, EXIT.REGRESSED, 'REGRESSED must map to exit 1');
+  assert.equal(result.counts.fail, 1);
+
+  const diff = result.diffs.find((d) => d.predicate === 'gate_fired_at(phase-5)');
+  assert.ok(diff, 'the promoted-but-absent gate is reported as a diff');
+  assert.equal(diff.side, 'missing');
+  assert.equal(diff.classification, 'CANDIDATE_REGRESSION');
+});
+
+test('2.1b rules-expansion: when absent -> require NOT added (AS-EXPECTED, exit 0)', () => {
+  const reference = rulesReference();
+  // phase 5 NEVER completed, so its gate legitimately never fires -> no promotion, no false alarm.
+  const observed = new Set(['task_status(completed)']);
+
+  const result = compare(observed, reference);
+
+  assert.equal(result.overall, 'AS-EXPECTED', 'an unfired gate for an uncompleted phase must not fail');
+  assert.equal(result.exitCode, EXIT.AS_EXPECTED);
+  assert.equal(result.counts.fail, 0);
+  assert.equal(result.diffs.length, 0, 'no diff when when-predicate is absent');
+  // The gate stays an informational absent-optional, never a diff.
+  assert.ok(result.optionalAbsent.includes('gate_fired_at(phase-5)'));
+  assert.ok(!result.matched.includes('gate_fired_at(phase-5)'), 'an unpromoted gate is not matched-required');
+});
+
+test('2.1c rules-expansion: when observed + require present -> matched', () => {
+  const reference = rulesReference();
+  // phase 5 completed AND its gate fired -> the promoted gate is a matched-required predicate.
+  const observed = new Set([
+    'task_status(completed)',
+    'phase_completed(5)',
+    'gate_fired_at(phase-5)',
+  ]);
+
+  const result = compare(observed, reference);
+
+  assert.equal(result.overall, 'AS-EXPECTED');
+  assert.equal(result.exitCode, EXIT.AS_EXPECTED);
+  assert.equal(result.counts.fail, 0);
+  assert.equal(result.diffs.length, 0);
+  // Promoted gate counts as matched-required (effectiveRequired), NOT as optionalPresent.
+  assert.ok(result.matched.includes('gate_fired_at(phase-5)'), 'a fired promoted gate is matched');
+  assert.equal(result.counts.pass, 2, 'both task_status and the promoted gate matched');
+});
+
+test('2.1d computeHash: a rules edit re-stamps (hash changes)', () => {
+  const base = rulesReference();
+  const edited = { ...base, rules: [{ when: 'phase_completed(9)', require: 'gate_fired_at(phase-9)' }] };
+
+  assert.notEqual(
+    computeHash(base),
+    computeHash(edited),
+    'editing a rule (when/require) must re-stamp the hash',
+  );
+  // Adding a rule to a rules-free reference must also re-stamp.
+  const noRules = { ...base };
+  delete noRules.rules;
+  assert.notEqual(computeHash(noRules), computeHash(base), 'adding a rule changes the hash');
+});
+
+test('2.1e computeHash: rules:[]/absent => ZERO tokens (== no-rules value; rules:[] === absent)', () => {
+  // The committed no-rules fixture hash MUST stay byte-for-byte identical (protects :115 +
+  // backward-neutrality for the 3 current references).
+  const reference = loadReference();
+  assert.equal(reference.hash, '4b3caecb24924fb99b38b54850d8b93288f0d8fd5e1230fe6c9211758cf43760');
+  assert.equal(computeHash(reference), reference.hash, 'no-rules hash unchanged vs pre-change algorithm');
+
+  // rules:[] contributes exactly the same as the rules field being absent.
+  const withEmptyRules = { ...reference, rules: [] };
+  assert.equal(
+    computeHash(withEmptyRules),
+    computeHash(reference),
+    'rules:[] appends zero tokens — identical to a rules-field-absent reference',
+  );
+  // A rules:[] reference also equals the same reference with rules explicitly deleted.
+  const explicitlyAbsent = { ...reference };
+  delete explicitlyAbsent.rules;
+  assert.equal(computeHash(withEmptyRules), computeHash(explicitlyAbsent), 'rules:[] === rules-field-absent');
+});
+
+test('2.1f reported-only: an observed gate_count(ask)=K is never extra/CANDIDATE_REGRESSION', () => {
+  const reference = {
+    scenario: 'gates-fixture',
+    schema_version: 2,
+    required: ['task_status(completed)'],
+    optional: [],
+    allowlist: [],
+    rules: [],
+  };
+
+  for (const k of [1, 7, 42, 999]) {
+    const observed = new Set(['task_status(completed)', `gate_count(ask)=${k}`]);
+    const result = compare(observed, reference);
+    assert.equal(result.overall, 'AS-EXPECTED', `gate_count(ask)=${k} must never REGRESS`);
+    assert.equal(result.exitCode, EXIT.AS_EXPECTED);
+    assert.equal(result.counts.fail, 0, `gate_count(ask)=${k} is reported-only, not a candidate regression`);
+    assert.ok(
+      !result.diffs.some((d) => d.predicate === `gate_count(ask)=${k}`),
+      'a reported-only gate_count head never appears in the classified diff',
+    );
+  }
 });
