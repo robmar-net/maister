@@ -335,7 +335,7 @@ function stateToRecords(state) {
 // Reduce the typed SessionEvent[] to raw records. `invoked_skill` is pinned to `skill.invoked`
 // ONLY (HIGH-1); `session.skills_loaded` is never a source. Excluded/noise events (assistant
 // messages, tool executions, ordering/counts) yield no records.
-export function extractFromEvents(events, gateMap = [], precedesChain = [], minCounts = [], hookDecisions = []) {
+export function extractFromEvents(events, gateMap = [], precedesChain = [], minCounts = []) {
   const records = [];
   if (!Array.isArray(events)) return records;
 
@@ -404,9 +404,36 @@ export function extractFromEvents(events, gateMap = [], precedesChain = [], minC
         askCount += 1;
         break;
       }
-      case 'permission.requested':
+      case 'permission.requested': {
         records.push({ kind: 'gate_fired', name: 'permission', source: 'events', evidence: 'permission.requested' });
+        // hook_effect emit DIRECTLY from the event (issue #48). The live guard-originated permission is
+        // distinguished by `permissionRequest.kind === "hook"` (an ordinary shell permission is
+        // `kind:"shell"`). The command lives at `permissionRequest.toolArgs.command` and the guard marker
+        // is `permissionRequest.hookMessage` (there is NO permissionDecision/hookSpecificOutput field on the
+        // live shape — a kind:"hook" permission carrying the "Maister guard" hookMessage IS the `ask`). This
+        // makes `=ask` a DIRECTLY-OBSERVED value, replayable from events.json (confirmed by the first live
+        // run, reports/20260829T231857Z).
+        // Verbatim mirror of block-destructive-commands.sh:54 (case-insensitive). Zero-touch — never re-authored.
+        const DESTRUCTIVE = /git\s+stash|git\s+reset\s+--hard|git\s+checkout\s+--\s+\.|git\s+checkout\s+\.\s*$|git\s+clean|git\s+push\s+(-f|--force)|rm\s+-rf/i;
+        const pr = (e.data || {}).permissionRequest || {};
+        // EMPTY/BENIGN-PERMISSION INVARIANT: an ordinary permission.requested with kind:"shell"
+        // (dev/research fixtures) does NOT match kind==='hook' -> NO hook_effect -> the dev/research
+        // pipeline snapshots stay byte-identical. Only a guard-originated kind:"hook" permission emits.
+        if (pr.kind === 'hook') {
+          const msgMatch = /Maister guard: destructive command/i.test(pr.hookMessage || '');
+          const cmdMatch = DESTRUCTIVE.test((pr.toolArgs && pr.toolArgs.command) || '');
+          if (msgMatch || cmdMatch) {
+            records.push({
+              kind: 'hook_effect',
+              name: 'destructive_guard',
+              value: 'ask',
+              source: 'events',
+              evidence: 'permission.requested kind=hook ' + (msgMatch ? 'hookMessage matched' : 'command matched'),
+            });
+          }
+        }
         break;
+      }
       case 'exit_plan_mode.requested':
         records.push({ kind: 'gate_fired', name: 'exit_plan_mode', source: 'events', evidence: 'exit_plan_mode.requested' });
         break;
@@ -428,33 +455,6 @@ export function extractFromEvents(events, gateMap = [], precedesChain = [], minC
   // it consistent with every other event-derived record (and out of the tree/state source buckets).
   if (askCount >= 1) {
     records.push({ kind: 'gate_count', name: 'ask', value: askCount, source: 'events', evidence: `user_input.requested count=${askCount}` });
-  }
-
-  // Stage 6 (issue #48) — hook_effect emit from the threaded hookDecisions sink (Option B). The sink
-  // is per-run observed data, written by a custom onPermissionRequest responder (observeDestructiveGuard)
-  // and threaded in as a SEPARATE param — never fabricated into the pristine `events` stream, so the
-  // recorded fixture stays faithful. SINK ENTRY IS AUTHORITATIVE: each entry emits UNCONDITIONALLY (the
-  // responder, not the extractor, decides what to record). requestId correlation to a recorded
-  // permission.requested is best-effort EVIDENCE enrichment only (attach the command when found); a
-  // missed correlation NEVER suppresses the emit. Generic: no per-scenario gating here.
-  // EMPTY-SINK INVARIANT: dev/research/quick-bugfix drives pass hookDecisions=[] (or omit it) -> this
-  // loop emits nothing -> NO hook_effect record -> their pipeline snapshots stay byte-identical.
-  const hooks = Array.isArray(hookDecisions) ? hookDecisions : [];
-  for (const h of hooks) {
-    if (!h || typeof h !== 'object') continue;
-    const { requestId, name, value, reason } = h;
-    // Evidence-only correlation over the pristine events (never an emit gate).
-    let command = '';
-    if (requestId != null) {
-      const seen = events.find(
-        (e) => e && e.type === 'permission.requested' && (e.data || {}).requestId === requestId,
-      );
-      if (seen) command = ((seen.data || {}).permissionRequest || {}).command || '';
-    }
-    let evidence = `observed permission decision ${value} (requestId=${requestId})`;
-    if (command) evidence += ` command=${command}`;
-    if (reason) evidence += ` reason=${reason}`;
-    records.push({ kind: 'hook_effect', name, value, source: 'responder', evidence });
   }
 
   // Terminal success = the session reached idle/shutdown with no error. Emitted exactly once.
@@ -767,14 +767,14 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
 // `taskType` selects the tree profile (default 'development' -> byte-identical to the pre-scenario
 // harness; 'research' -> the research task layout). An unknown type falls back to the development
 // profile. Returns { records, incomplete, incompleteReason, parseWarnings }.
-export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [], precedesChain = [], minCounts = [], hookDecisions = [] } = {}) {
+export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [], precedesChain = [], minCounts = [] } = {}) {
   const state = stateYaml != null
     ? parseState(stateYaml)
     : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'], schemaDivergences: [] };
 
   const profile = TREE_PROFILES[taskType] || DEFAULT_TREE_PROFILE;
   const stateRecords = stateToRecords(state);
-  const eventRecords = extractFromEvents(events, gateMap, precedesChain, minCounts, hookDecisions);
+  const eventRecords = extractFromEvents(events, gateMap, precedesChain, minCounts);
   const treeRecords = taskDirRoot ? extractFromTree(taskDirRoot, profile) : [];
   // Functional oracle (source d): runs the scenario deliverable in the rundir. A bad-shape spec throws
   // here (fail-fast); a runtime/assertion failure is a `value:'fail'` record, never an exception.

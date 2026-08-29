@@ -26,7 +26,7 @@ reaching its terminal.
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `hook_effect(destructive_guard=ask)` | required | `block-destructive-commands.sh:54`, `:59-60` | The guard matches the destructive-command regex (`:54`) and emits `hookSpecificOutput.permissionDecision:"ask"` with the `Maister guard: destructive command …` reason (`:59-60`). A custom `onPermissionRequest` responder OBSERVES that decision and records it to the per-run `hookDecisions` sink; the extractor emits the token from the sink entry (Option B). Token shape is INSIDE-parens (`hook_effect(destructive_guard=ask)`), byte-identical to `normalize.mjs` `buildToken`. See honesty notes (a)/(b) |
+| `hook_effect(destructive_guard=ask)` | required | `block-destructive-commands.sh:54`, `:59-60` | The guard matches the destructive-command regex (`:54`) and returns `ask` (`:59-60`). LIVE, this surfaces as a `permission.requested` event whose `data.permissionRequest.kind === "hook"` (an ordinary shell permission is `kind:"shell"`), carrying the command at `permissionRequest.toolArgs.command` and the `"Maister guard: destructive command …"` `hookMessage`. The extractor witnesses that event DIRECTLY and emits the token (no responder / sink) — so `=ask` is DIRECTLY OBSERVED and replayable from `events.json`. Token shape is INSIDE-parens (`hook_effect(destructive_guard=ask)`), byte-identical to `normalize.mjs` `buildToken`. See honesty notes (a)/(b) |
 | `reached_terminal(completion)` | required | scenario contract | The micro-scenario drives a single destructive-cleanup prompt to completion; a correct run reaches its terminal after the guard is observed. The only non-guard required predicate |
 
 ## Optional (2)
@@ -59,17 +59,18 @@ tests to pass) — its `outcome:[]`. The required set models the guard-observati
 derived from the deterministic hook contract, never fitted to a run (L2 = workflow-model
 conformance, MEMORY decision 2026-08-28).
 
-**(b) `=ask` provenance — contract-derived, direct live confirmation DEFERRED PAID.** At L2
-credit-free, the `=ask` value is modelled from the guard's deterministic contract: the hook emits
-`permissionDecision:"ask"` (`:59-60`) unconditionally on a regex match (`:54`), and L1-FINDINGS §1
-confirms Copilot honors that `ask` and holds it fail-closed live (L1a.ii). The responder observes
-the decision defensively (nullish-coalesced reads of `req.permissionDecision` /
-`hookSpecificOutput.permissionDecision`, the `Maister guard: destructive command` reason marker, and
-the exact command-regex as fallback), so `=ask` is witnessed/contract-derived, never fitted to a
-recorded run. A live guard-fire confirmation of the exact `PermissionRequest` shape handed to the
-responder is the one genuine unknown and is a DEFERRED PAID follow-up; the documented fallback
-(command-regex → contract-derived `=ask`) already covers the emit if the live `req` lacks the
-decision field.
+**(b) `=ask` provenance — DIRECTLY OBSERVED (deferred-paid unknown now RESOLVED).** The first live
+run (`reports/20260829T231857Z`, persisted `events.json`) confirmed the exact live shape: the guard's
+`ask` surfaces as a `permission.requested` whose `data.permissionRequest.kind === "hook"` (an ordinary
+shell permission is `kind:"shell"`), carrying the command at `permissionRequest.toolArgs.command` and
+the `"Maister guard: destructive command …"` `hookMessage`. There is NO
+`permissionDecision`/`hookSpecificOutput` field on the live shape — a `kind:"hook"` permission carrying
+the guard `hookMessage` IS the `ask`. The extractor emits `hook_effect(destructive_guard=ask)` DIRECTLY
+from that event (primary witness: the `hookMessage` marker; fallback: the exact `:54` command-regex over
+`toolArgs.command`), so `=ask` is now a DIRECTLY-OBSERVED, replayable value — no longer contract-derived,
+and no custom responder/sink is involved. This closes the previously DEFERRED PAID unknown (the exact
+live `PermissionRequest` shape), confirmed by the cited live bundle. L1-FINDINGS §1 (Copilot honors the
+`ask` fail-closed, L1a.ii) remains the corroborating live-survival finding.
 
 **(c) `invoked_skill(...)` deliberately unmodeled.** A bare destructive-cleanup prompt need not
 route through a named skill; if an `invoked_skill(...)` predicate appears on a live run it is a

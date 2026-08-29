@@ -1,6 +1,7 @@
 // Credit-free unit checks for the destructive-guard scenario module — mirrors scenario-quick-bugfix.test.mjs
 // (shape + routing determinism), focused on the destructive-guard contract: an events-only shape driven
-// against a marker-seeded sandbox, carrying a `permissionResponder` selection field, with `outcome:[]`.
+// against a marker-seeded sandbox, with `outcome:[]` and no custom permission responder (hook_effect is
+// witnessed by the extractor directly from the live kind:"hook" permission.requested event).
 //
 // NOTE (Stage 6 staging): the reference-hash self-consistency assertion is GUARDED — it runs only once the
 // governance/landing group (G6) has created reference/destructive-guard.skeleton.json. Until then it SKIPS
@@ -41,11 +42,11 @@ test('destructive-guard scenario module exports a well-formed destructive-guard 
     'taskType reuses the quick-bugfix TREE_PROFILE (no artifacts / no task-dir → events-only skeleton)',
   );
 
-  // Responder-selection field — the key run.mjs reads to install observeDestructiveGuard over approveAll.
-  assert.equal(
-    scenario.permissionResponder,
-    'observe-destructive-guard',
-    'permissionResponder must select the observe-destructive-guard responder',
+  // No custom responder: hook_effect is witnessed by the extractor directly from the live
+  // permission.requested event (kind:"hook" + "Maister guard" hookMessage), so run.mjs uses approveAll.
+  assert.ok(
+    !('permissionResponder' in scenario),
+    'scenario must NOT carry a permissionResponder field (event-stream emit, no custom responder)',
   );
 
   // Guard-firing is the predicate, NOT a functional outcome — no run-tests.sh oracle.
@@ -99,17 +100,20 @@ test('destructive-guard scenario module exports a well-formed destructive-guard 
   assert.match(fallbackPrompt, /rm\s+-rf/i, 'fallbackPrompt must name the same rm -rf cleanup');
 });
 
-test('recorded permission-destructive fixture is faithful (no fabricated decision field)', () => {
+test('recorded permission-destructive fixture is faithful to the live kind:"hook" guard shape', () => {
   const fixture = JSON.parse(
     readFileSync(path.join(L2_ROOT, 'test', 'fixtures', 'extractor', 'permission-destructive.json'), 'utf8'),
   );
   assert.ok(Array.isArray(fixture), 'fixture must be an events array');
   const perm = fixture.find((e) => e.type === 'permission.requested');
   assert.ok(perm, 'fixture must contain a permission.requested event');
-  assert.equal(perm.data.permissionRequest.kind, 'shell', 'permissionRequest.kind must be shell');
-  assert.match(perm.data.permissionRequest.command, /rm\s+-rf/i, 'permissionRequest.command must be an rm -rf');
+  // The REAL live guard shape (reports/20260829T231857Z): the guard-originated permission is kind:"hook".
+  assert.equal(perm.data.permissionRequest.kind, 'hook', 'permissionRequest.kind must be hook (guard-originated)');
+  assert.match(perm.data.permissionRequest.toolArgs.command, /rm\s+-rf/i, 'command lives at permissionRequest.toolArgs.command and is an rm -rf');
+  assert.match(perm.data.permissionRequest.hookMessage, /Maister guard: destructive command/i, 'the guard marker is permissionRequest.hookMessage');
   assert.equal(typeof perm.data.requestId, 'string', 'permission.requested must carry a requestId');
-  // Faithful to the recorded live shape: the SDK does NOT re-surface the decision on the recorded event.
+  // Faithful to the live shape: there is NO permissionDecision/hookSpecificOutput field — kind:"hook" +
+  // the guard hookMessage IS the implicit `ask`.
   assert.ok(
     !('permissionDecision' in perm.data),
     'fixture must NOT fabricate a permissionDecision field on the recorded event',

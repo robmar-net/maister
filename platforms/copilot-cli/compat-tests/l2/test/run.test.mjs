@@ -28,7 +28,6 @@ import { fileURLToPath } from 'node:url';
 import {
   chooseAnswer, buildReport, finalizeSingleRun,
   resolveModel, modelActualFromUsage, runWindow, driveOnce,
-  observeDestructiveGuard,
 } from '../run.mjs';
 import developmentScenario from '../scenarios/development.mjs';
 import { EXIT } from '../compare.mjs';
@@ -366,103 +365,50 @@ test('runReplay: renders the PERSISTED model + cost from replay-meta.json (round
   }
 });
 
-// --------------------------------------------------------------------------- Stage 6 (Group 3): destructive-guard responder
+// --------------------------------------------------------------------------- issue #48: destructive-guard replay
 //
-// observeDestructiveGuard(sink) is the custom onPermissionRequest responder that OBSERVES the zero-touch
-// block-destructive-commands.sh guard's `ask` decision and records it to a per-run hookDecisions sink
-// (Option B). Pure, session-free, seat-free. It must (a) record ONLY a genuine destructive-guard `ask`,
-// (b) read the decision defensively (top-level OR hookSpecificOutput.*), (c) fall back to the exact hook
-// command-regex when the reason marker is absent, and (d) ALWAYS return the approve-shaped result
-// approveAll yields (the credit-free tests double approveAll as `() => ({})`).
-
-test('observeDestructiveGuard: top-level ask + guard reason -> records one sink entry AND approves', () => {
-  const sink = [];
-  const responder = observeDestructiveGuard(sink);
-  const res = responder({
-    permissionDecision: 'ask',
-    permissionDecisionReason: 'Maister guard: destructive command — confirm before running: rm -rf ./.tmp-scratch',
-    permissionRequest: { command: 'rm -rf ./x' },
-    requestId: 'req-dg-001',
-  });
-  assert.equal(sink.length, 1, 'a destructive-guard ask records exactly one entry');
-  assert.equal(sink[0].requestId, 'req-dg-001', 'carries the requestId for evidence correlation');
-  assert.equal(sink[0].name, 'destructive_guard');
-  assert.equal(sink[0].value, 'ask');
-  assert.match(sink[0].reason, /Maister guard: destructive command/, 'carries the observed reason');
-  assert.deepEqual(res, {}, 'returns the approve-shaped result (same shape approveAll yields)');
-});
-
-test('observeDestructiveGuard: DEFENSIVE read — decision under hookSpecificOutput.* is still recorded', () => {
-  const sink = [];
-  const responder = observeDestructiveGuard(sink);
-  const res = responder({
-    // The hook emits its decision under hookSpecificOutput (block-destructive-commands.sh:56-60); the
-    // responder must nullish-coalesce into it when the top-level fields are absent.
-    hookSpecificOutput: {
-      permissionDecision: 'ask',
-      permissionDecisionReason: 'Maister guard: destructive command — confirm before running: rm -rf ./.tmp-scratch',
-    },
-    permissionRequest: { command: 'rm -rf ./.tmp-scratch' },
-    requestId: 'req-dg-002',
-  });
-  assert.equal(sink.length, 1, 'hookSpecificOutput decision is read defensively and recorded');
-  assert.equal(sink[0].value, 'ask');
-  assert.equal(sink[0].requestId, 'req-dg-002');
-  assert.deepEqual(res, {}, 'still approves');
-});
-
-test('observeDestructiveGuard: command-regex FALLBACK — ask + no reason marker but destructive command -> recorded', () => {
-  const sink = [];
-  const responder = observeDestructiveGuard(sink);
-  // decision ask, reason absent -> the exact hook command-regex mirror must still trigger the record.
-  const res = responder({ permissionDecision: 'ask', command: 'rm -rf ./build', requestId: 'req-dg-003' });
-  assert.equal(sink.length, 1, 'the command-regex fallback records the entry when the reason marker is absent');
-  assert.equal(sink[0].name, 'destructive_guard');
-  assert.equal(sink[0].value, 'ask');
-  assert.deepEqual(res, {}, 'still approves');
-});
-
-test('observeDestructiveGuard: NON-destructive / non-ask reqs record NOTHING (and still approve)', () => {
-  const sink = [];
-  const responder = observeDestructiveGuard(sink);
-
-  // (a) benign command, ask decision, no guard reason -> not destructive -> no record.
-  assert.deepEqual(responder({ permissionDecision: 'ask', command: 'git status', requestId: 'r1' }), {});
-  // (b) destructive command but decision is NOT ask (approved outright) -> no record.
-  assert.deepEqual(responder({ permissionDecision: 'approve', command: 'rm -rf ./x', requestId: 'r2' }), {});
-  // (c) decision entirely absent (a plain approve gate) -> no record.
-  assert.deepEqual(responder({ permissionRequest: { command: 'ls -la' }, requestId: 'r3' }), {});
-
-  assert.equal(sink.length, 0, 'no benign / non-ask permission request is ever recorded');
-});
-
-// replay-meta round-trip: a persisted bundle whose replay-meta.json carries hookDecisions is read back
-// by runReplay and threaded into the replay extract() call, so the replayed skeleton carries
-// hook_effect(destructive_guard=ask). Exercises the real --replay entrypoint end-to-end (credit-free —
-// the bogus sdkPath is never imported), reusing the committed research fixture like the Stage-5 test.
-// A research bundle is used (its committed reference exists pre-landing); the injected hookDecisions
-// makes hook_effect an EXTRA vs the research reference -> the verdict is REGRESSED, but the assertion
-// surface is the token's presence in the persisted+replayed observed skeleton.
-test('runReplay: threads persisted meta.hookDecisions into extract() -> observed skeleton carries hook_effect(destructive_guard=ask)', () => {
+// hook_effect(destructive_guard=ask) is emitted by the EXTRACTOR directly from the live
+// permission.requested event (permissionRequest.kind==="hook" + the "Maister guard" hookMessage) — there
+// is no custom responder or persisted hookDecisions sink. A --replay therefore reproduces hook_effect
+// straight from the bundle's events.json. This end-to-end replay test injects a kind:"hook" guard
+// permission into a research bundle's events.json and asserts the replayed observed skeleton carries the
+// token (credit-free — the bogus sdkPath is never imported). The injected event makes hook_effect an
+// EXTRA vs the research reference (-> REGRESSED verdict), but the assertion surface is the token's
+// presence in the persisted+replayed observed skeleton.
+test('runReplay: a kind:"hook" permission.requested in events.json replays hook_effect(destructive_guard=ask)', () => {
   const GOOD_REPORT = [
-    '# Research Report: Stage-6 hookDecisions Replay Round-Trip',
+    '# Research Report: issue #48 event-stream hook_effect replay',
     '',
     '## Findings',
-    'The --replay path reads meta.hookDecisions from the persisted bundle and threads it into extract(),',
-    'so a destructive-guard bundle reproduces its hook_effect token faithfully and credit-free.',
+    'The --replay path re-derives hook_effect directly from the bundle events.json (the kind:"hook"',
+    'permission.requested), so a destructive-guard bundle reproduces its token faithfully and credit-free.',
     '',
     '## Conclusion',
-    'Persisted observed hook decisions replay deterministically.',
+    'Event-stream hook_effect replays deterministically from events.json.',
     '',
   ].join('\n');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-stage6-replay-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-hookeffect-replay-'));
   const ts = '20990301T000000Z';
   const reportPath = path.join(REPORTS_DIR, `l2-trace-equivalence-${ts}.md`);
   try {
     const bundleDir = path.join(root, ts);
-    const taskDir = path.join(bundleDir, 'rundir', '.maister', 'tasks', 'research', '2026-08-29-l2-stage6');
+    const taskDir = path.join(bundleDir, 'rundir', '.maister', 'tasks', 'research', '2026-08-29-l2-hookeffect');
     fs.mkdirSync(taskDir, { recursive: true });
-    fs.copyFileSync(path.join(RESEARCH_FIX, 'events.sample.json'), path.join(bundleDir, 'events.json'));
+    // Splice a live kind:"hook" guard permission into the research bundle's events.json so replay
+    // witnesses it (the token comes from the EVENT, not a persisted sink).
+    const baseEvents = JSON.parse(fs.readFileSync(path.join(RESEARCH_FIX, 'events.sample.json'), 'utf8'));
+    baseEvents.push({
+      type: 'permission.requested',
+      data: {
+        requestId: 'req-dg-001',
+        permissionRequest: {
+          kind: 'hook', toolName: 'bash',
+          toolArgs: { command: 'rm -rf ./.tmp-scratch' },
+          hookMessage: 'Maister guard: destructive command — confirm before running: rm -rf ./.tmp-scratch',
+        },
+      },
+    });
+    fs.writeFileSync(path.join(bundleDir, 'events.json'), JSON.stringify(baseEvents));
     fs.cpSync(path.join(RESEARCH_FIX, 'task-tree'), taskDir, { recursive: true });
     fs.copyFileSync(path.join(RESEARCH_FIX, 'orchestrator-state.sample.yml'), path.join(taskDir, 'orchestrator-state.yml'));
     fs.writeFileSync(path.join(taskDir, 'outputs', 'research-report.md'), GOOD_REPORT);
@@ -473,8 +419,6 @@ test('runReplay: threads persisted meta.hookDecisions into extract() -> observed
         sdkPath: '/nonexistent/replay/sdk/must-never-be-imported.mjs',
         ts, originalMode: 'live', maisterVersion: '0.0.0',
         model: null, modelActual: 'unknown', cost: null,
-        // Stage 6: the per-run observed decision, persisted for faithful replay.
-        hookDecisions: [{ requestId: 'req-dg-001', name: 'destructive_guard', value: 'ask', reason: 'Maister guard: destructive command' }],
       }, null, 2),
     );
 
@@ -484,7 +428,7 @@ test('runReplay: threads persisted meta.hookDecisions into extract() -> observed
 
     const md = fs.readFileSync(reportPath, 'utf8');
     assert.match(md, /\*\*Mode:\*\* replayed \(from /, 'replay mode marker');
-    assert.match(md, /hook_effect\(destructive_guard=ask\)/, 'the persisted hookDecisions replays the hook_effect token into the observed skeleton');
+    assert.match(md, /hook_effect\(destructive_guard=ask\)/, 'the kind:"hook" event in events.json replays the hook_effect token into the observed skeleton');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(reportPath, { force: true });
