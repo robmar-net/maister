@@ -36,6 +36,9 @@ notes. Provenance for the back-fill entries is the commit messages themselves
 | 7 | 2026-08-28 | development | `invoked_skill(reviews-code)`, `(reviews-pragmatic)`, `(reviews-spec-audit)`, `(reviews-reality-check)`, `(reviews-production-readiness)` | `optional` → `allowlist`/LIMITATION | platform divergence, citation `implementation-verifier/SKILL.md:108-142` — exact reason string in note 7 | shares entry 6's re-stamp: `261ce181…` → `a48a64e3…` | PR #49 |
 | 8 | 2026-08-28 | research | `hook_effect(destructive_guard=ask)` | `allowlist` → removed (dead entry) | same as entry 6: outside `GRAMMAR_HEADS` (`normalize.mjs:38-47`), unobservable by construction | `abed5d31…` → `12c51927…` | PR #49 |
 | 9 | 2026-08-28 | quick-bugfix | `hook_effect(destructive_guard=ask)` | `allowlist` → removed (dead entry) | same as entry 6: outside `GRAMMAR_HEADS` (`normalize.mjs:38-47`), unobservable by construction | `f925c9a4…` → `9855340d…` | PR #49 |
+| 10 | 2026-08-29 | development | `outcome(tests-pass)=pass` | absent → required | FUNCTIONAL ORACLE (issue #48, Stage 2): P11 verification (`development/SKILL.md:441`) + P8 implemented-code corroboration (:359); `workflow_model_version` 1→2 — see note 10 | `a48a64e3…` → `1180da9a…` | PR (Stage 2) |
+| 11 | 2026-08-29 | research | `outcome(report-produced)=pass` | absent → required | FUNCTIONAL ORACLE (issue #48, Stage 2): P1 Step 4 Artifacts (`research/SKILL.md:181`, phase Output :128) mandate `outputs/research-report.md`; `workflow_model_version` 1→2 — see note 11 | `12c51927…` → `e823c815…` | PR (Stage 2) |
+| 12 | 2026-08-29 | quick-bugfix | `outcome(bug-fixed)=pass` | absent → required | FUNCTIONAL ORACLE (issue #48, Stage 2): Step 7 verify terminal deliverable-fixed check (`quick-bugfix/SKILL.md:171-173`); `workflow_model_version` 1→2 — see note 12 | `9855340d…` → `6cff7eba…` | PR (Stage 2) |
 
 ## Entry notes
 
@@ -130,3 +133,34 @@ Identical rationale to entry 6. Full hashes:
 Identical rationale to entry 6. Full hashes:
 `f925c9a423561611fa1d3ad346b45623ef1caa086e0fb24b8d28b0a7f7488319 →
 9855340d04a2efb2bdef6541c736641aa16a9e35b6a1031184e2e95f2f24ff36`.
+
+### 10 — dev: required `outcome(tests-pass)=pass` (Stage 2 functional oracle)
+
+FUNCTIONAL ORACLE landing (issue #48, Stage 2): the `outcome(<id>)=pass|fail` grammar head becomes
+observable, so the development reference now **requires** a passing functional outcome, not merely
+the modeled delegations/artifacts. Citation: `development/SKILL.md:441` (P11 verification produces
+`verification/implementation-verification.md`), corroborated by `:359` (P8 implemented code) — a
+correct run's implemented code passes its test suite, making `tests-pass` a genuine deliverable
+check. `workflow_model_version` bumped 1→2 (the model now carries a required functional predicate;
+`--check-reference` reports STALE against any v1 reference). The hash re-stamp is driven solely by
+the new required predicate (`computeHash` is version-independent). Full hashes:
+`a48a64e3981717e5d0f93c243876cbf4f2fcc14f54f1a05fbc40b2d2a0acbcf2 →
+1180da9a65f7c5e30f3d4acc143f7cbc9c3391b4c8b3980f34ea82c703ab24a6`.
+
+### 11 — research: required `outcome(report-produced)=pass` (Stage 2 functional oracle)
+
+FUNCTIONAL ORACLE landing (issue #48, Stage 2). Citation: `research/SKILL.md:181` (P1 Step 4
+Artifacts) and `:128` (phase Output list) both mandate `outputs/research-report.md`; the terminal
+deliverable of a correct research run is a produced report, so `report-produced` is a passing
+functional deliverable check. `workflow_model_version` bumped 1→2. Full hashes:
+`12c51927084065a5c19dadd29c82a65438dfb029d7ceba0e484319dbed54c7f0 →
+e823c815c895ee8c8a8fb16d5d8146c323dd03821ec557c8a8fb689d7c2ff497`.
+
+### 12 — quick-bugfix: required `outcome(bug-fixed)=pass` (Stage 2 functional oracle)
+
+FUNCTIONAL ORACLE landing (issue #48, Stage 2). Citation: `quick-bugfix/SKILL.md:171-173` (Step 7
+verify — the terminal step provides the completion summary only after the deliverable defect is
+confirmed fixed), so `bug-fixed` is a passing functional deliverable check on the fix itself.
+`workflow_model_version` bumped 1→2. Full hashes:
+`9855340d04a2efb2bdef6541c736641aa16a9e35b6a1031184e2e95f2f24ff36 →
+6cff7ebaadc90cff557f6783d2bf2e1a6f71664eba8efa94ceef72b80db42215`.

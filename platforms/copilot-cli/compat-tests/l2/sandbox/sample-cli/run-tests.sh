@@ -34,6 +34,7 @@ check() {
 check "hello prints the fixed greeting" "Hello, world!" "$(sh "$CLI" hello)"
 check "upper upper-cases its argument"  "SAMPLE"        "$(sh "$CLI" upper sample)"
 check "version reports the CLI version" "0.1.0"         "$(sh "$CLI" version)"
+check "greet names the person" "Hello, Ada!" "$(sh "$CLI" --greet Ada)"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 

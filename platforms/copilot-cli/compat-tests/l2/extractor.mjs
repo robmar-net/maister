@@ -33,6 +33,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 // ---------------------------------------------------------------------------
 // State parsing (source a) — MEDIUM-2
@@ -474,6 +475,148 @@ export function extractFromTree(taskDirRoot, profile = DEFAULT_TREE_PROFILE) {
 }
 
 // ---------------------------------------------------------------------------
+// Functional oracle (source d) — `outcome(<id>)=pass|fail`  (issue #48, Stage 2)
+// ---------------------------------------------------------------------------
+//
+// The ONLY source that RUNS the scenario's produced deliverable in the live rundir and asserts it
+// actually worked (not merely that the workflow moved). Two spec kinds, kept in distinct code paths
+// so their failure evidence is distinguishable:
+//   command-type   {id, command, restage?, expect?}  — dev / quick-bugfix (`sh run-tests.sh` exit 0)
+//   assertion-type {id, assert:'research-deliverables', params:{minBytes,minNonBlankLines}} — research
+//
+// Rule of thumb (LOW-7): BAD SHAPE -> throw (fail-fast; specs are committed, trusted config);
+//                        BAD RESULT -> `value:'fail'` record (a runtime exec/assertion failure never
+//                        throws out of extract — it is fail-closed = REGRESSED, never a crash).
+
+const OUTCOME_TIMEOUT_MS = 30000; // 30s fixed POSIX-sh timeout (MEDIUM: no network; commands are sh only).
+
+// LOW-6: NAMESPACE HYGIENE ONLY (corrected rationale). Prevents outcome ids from shadowing the
+// state-predicate namespaces in reports/derivations. It does NOT protect any floor: the emitted token
+// always begins `outcome(`, which can never match the STATE_SOURCED / widened-F3 regex regardless of id.
+const OUTCOME_ID_NAMESPACE_GUARD = /^(phase_completed|task_characteristic|task_status)/;
+
+// Validate the SHAPE of one outcome spec. A structurally invalid spec is a developer error -> THROW.
+function assertValidOutcomeSpec(spec) {
+  if (!spec || typeof spec !== 'object') {
+    throw new Error('outcome spec entry must be an object');
+  }
+  if (typeof spec.id !== 'string' || spec.id.trim() === '') {
+    throw new Error('outcome spec entry is missing a string `id`');
+  }
+  if (OUTCOME_ID_NAMESPACE_GUARD.test(spec.id)) {
+    throw new Error(
+      `outcome id "${spec.id}" shadows a state-predicate namespace prefix ` +
+      '(phase_completed/task_characteristic/task_status) — reserved for namespace hygiene (LOW-6); ' +
+      'this is NOT floor protection.',
+    );
+  }
+  const hasCommand = typeof spec.command === 'string';
+  const hasAssert = typeof spec.assert === 'string';
+  if (!hasCommand && !hasAssert) {
+    throw new Error(`outcome spec "${spec.id}" has neither a \`command\` nor an \`assert\``);
+  }
+  if (hasAssert && spec.assert !== 'research-deliverables') {
+    throw new Error(`outcome spec "${spec.id}" has an unknown assert kind: ${spec.assert}`);
+  }
+}
+
+// command-type: restage the trusted oracle (MEDIUM-5) then run it in the rundir. Any non-pass -> fail.
+function runCommandOutcome(spec, rundir, sandboxTemplateDir) {
+  const id = spec.id;
+  const mk = (value, evidence) => ({ kind: 'outcome', name: id, value, source: 'outcome', evidence });
+
+  // MEDIUM-5 restage: replace the model-touched rundir copy of each trusted file with the committed
+  // template BEFORE the oracle runs, so the model cannot neuter its own test. Default: ['run-tests.sh'].
+  const restage = Array.isArray(spec.restage) ? spec.restage : ['run-tests.sh'];
+  for (const file of restage) {
+    try {
+      if (!sandboxTemplateDir) throw new Error('no sandboxTemplateDir provided for restage');
+      fs.copyFileSync(path.join(sandboxTemplateDir, file), path.join(rundir, file));
+    } catch (err) {
+      // A failed restage copy is a runtime FAILURE (bad result), not a malformed spec -> fail record.
+      return mk('fail', `restage of ${file} failed: ${err.message}`);
+    }
+  }
+
+  let res;
+  try {
+    res = spawnSync('sh', ['-c', spec.command], {
+      cwd: rundir,
+      timeout: OUTCOME_TIMEOUT_MS,
+      encoding: 'utf8',
+    });
+  } catch (err) {
+    return mk('fail', `command threw: ${err.message}`);
+  }
+  // spawnSync reports spawn failure (ENOENT) AND timeout (ETIMEDOUT) via `error`.
+  if (res.error) return mk('fail', `command failed to run: ${res.error.message}`);
+
+  const code = res.status; // null on signal/timeout
+  const stdout = String(res.stdout ?? '');
+  if (typeof spec.expect === 'string') {
+    const ok = code === 0 && stdout.trim() === spec.expect;
+    return mk(ok ? 'pass' : 'fail',
+      `${spec.command} exited ${code}; stdout ${ok ? 'matched' : 'did not match'} expect`);
+  }
+  const ok = code === 0;
+  return mk(ok ? 'pass' : 'fail', `${spec.command} exited ${code}`);
+}
+
+// assertion-type ('research-deliverables'): a content assertion over the newest research task dir. Any
+// unmet condition -> fail with evidence naming the FIRST failed condition.
+function runAssertionOutcome(spec, rundir) {
+  const id = spec.id;
+  const mk = (value, evidence) => ({ kind: 'outcome', name: id, value, source: 'outcome', evidence });
+  const params = spec.params || {};
+  const minBytes = Number(params.minBytes ?? 0);
+  const minNonBlankLines = Number(params.minNonBlankLines ?? 0);
+
+  // Resolve the NEWEST research task dir under rundir/.maister/tasks/research/*/.
+  const researchRoot = path.join(String(rundir ?? ''), '.maister', 'tasks', 'research');
+  let taskDir = null;
+  try {
+    const dirs = fs.readdirSync(researchRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => path.join(researchRoot, e.name));
+    taskDir = dirs.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] || null;
+  } catch { taskDir = null; }
+  if (!taskDir) return mk('fail', 'no research task dir under .maister/tasks/research/*');
+
+  const report = path.join(taskDir, 'outputs', 'research-report.md');
+  if (!isFile(report)) return mk('fail', 'outputs/research-report.md missing');
+  let text = '';
+  try { text = fs.readFileSync(report, 'utf8'); } catch (err) { return mk('fail', `research-report.md unreadable: ${err.message}`); }
+
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes < minBytes) return mk('fail', `research-report.md ${bytes} bytes < minBytes ${minBytes}`);
+  const nonBlank = text.split(/\r?\n/).filter((l) => l.trim() !== '').length;
+  if (nonBlank < minNonBlankLines) return mk('fail', `research-report.md ${nonBlank} non-blank lines < ${minNonBlankLines}`);
+  if (!/^#{1,6}\s/m.test(text)) return mk('fail', 'research-report.md has no markdown heading');
+  if (!isFile(path.join(taskDir, 'analysis', 'synthesis.md'))) return mk('fail', 'analysis/synthesis.md missing');
+
+  return mk('pass', `research-report.md ${bytes}B, ${nonBlank} non-blank lines, heading + synthesis present`);
+}
+
+// Run each outcome spec (array) against the live rundir, returning one record per entry in array order.
+// `outcome == null` (no spec) yields []. A bad-SHAPE spec throws; a bad-RESULT yields a fail record.
+export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = null) {
+  const records = [];
+  if (outcomeSpec == null) return records;
+  if (!Array.isArray(outcomeSpec)) {
+    throw new Error(`outcome spec must be an array, got ${typeof outcomeSpec}`);
+  }
+  for (const spec of outcomeSpec) {
+    assertValidOutcomeSpec(spec); // bad shape -> throw (fail-fast, before any exec)
+    records.push(
+      typeof spec.command === 'string'
+        ? runCommandOutcome(spec, rundir, sandboxTemplateDir)
+        : runAssertionOutcome(spec, rundir),
+    );
+  }
+  return records;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level merge + sanity floor
 // ---------------------------------------------------------------------------
 
@@ -483,7 +626,7 @@ export function extractFromTree(taskDirRoot, profile = DEFAULT_TREE_PROFILE) {
 // `taskType` selects the tree profile (default 'development' -> byte-identical to the pre-scenario
 // harness; 'research' -> the research task layout). An unknown type falls back to the development
 // profile. Returns { records, incomplete, incompleteReason, parseWarnings }.
-export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development' } = {}) {
+export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null } = {}) {
   const state = stateYaml != null
     ? parseState(stateYaml)
     : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'] };
@@ -492,13 +635,18 @@ export function extract({ events = [], taskDirRoot = null, stateYaml = null, tas
   const stateRecords = stateToRecords(state);
   const eventRecords = extractFromEvents(events);
   const treeRecords = taskDirRoot ? extractFromTree(taskDirRoot, profile) : [];
+  // Functional oracle (source d): runs the scenario deliverable in the rundir. A bad-shape spec throws
+  // here (fail-fast); a runtime/assertion failure is a `value:'fail'` record, never an exception.
+  const outcomeRecords = extractFromOutcome(outcome, taskDirRoot, sandboxTemplateDir);
 
-  const records = [...stateRecords, ...eventRecords, ...treeRecords];
+  const records = [...stateRecords, ...eventRecords, ...treeRecords, ...outcomeRecords];
 
-  // SANITY FLOOR: zero completed phases while task-tree artifacts exist is not a clean "everything
-  // missing" — it is a parse failure / stalled run. Flag INCOMPLETE rather than a silent REGRESSED.
+  // SANITY FLOOR (MEDIUM-2, now outcome-aware — MEDIUM-4): zero completed phases while task-tree
+  // artifacts exist is normally a parse failure / stalled run -> INCOMPLETE, never a silent REGRESSED.
+  // EXCEPTION: a FAILING outcome is the most trustworthy signal and must never be downgraded to
+  // INCOMPLETE — suppressing the short-circuit lets `compare` produce REGRESSED.
   const artifactsExist = treeRecords.some((r) => r.kind === 'created_artifact');
-  const incomplete = state.phases.length === 0 && artifactsExist;
+  const incomplete = state.phases.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
   const incompleteReason = incomplete
     ? 'State parse yielded ZERO completed phases while task-tree artifacts exist; refusing to emit a '
       + 'silent all-phases-missing set (which would false-alarm as REGRESSED). Treat as INCOMPLETE.'

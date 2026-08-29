@@ -9,17 +9,17 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Scenario | `research` |
 | Source (read-only citation source) | `plugins/maister/skills/research/SKILL.md` |
 | maister_version | `2.2.2` |
-| workflow_model_version | `1` |
-| Sibling JSON hash | `12c51927084065a5c19dadd29c82a65438dfb029d7ceba0e484319dbed54c7f0` |
+| workflow_model_version | `2` |
+| Sibling JSON hash | `e823c815c895ee8c8a8fb16d5d8146c323dd03821ec557c8a8fb689d7c2ff497` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
-`plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 9
-required + 17 optional + 0 allowlist = 26 rows. Partition rationale (genesis `db26a46`,
+`plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes: 10
+required + 17 optional + 0 allowlist = 27 rows. Partition rationale (genesis `db26a46`,
 [CALIBRATION-LOG.md](CALIBRATION-LOG.md) entry 2): the Phase-1 research foundation is required;
 conditional brainstorming/design phases, their artifacts, and the root skill are optional.
 
-## Required (9)
+## Required (10)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -30,6 +30,7 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 | `created_artifact(analysis/synthesis.md)` | required | :181 | P1 Step 4 Artifacts: `analysis/synthesis.md` (also in phase Output list :128) |
 | `created_artifact(outputs/research-report.md)` | required | :181 | P1 Step 4 Artifacts: `outputs/research-report.md` (also :128) |
 | `gate_fired(ask)` | required | :198-200 | P1 exit: "MANDATORY GATE … Invoke `AskUserQuestion` now" (:198) — fires on every path |
+| `outcome(report-produced)=pass` | required | :181, :128 | FUNCTIONAL ORACLE (issue #48, Stage 2). P1 Step 4 Artifacts (:181, phase Output :128) mandate `outputs/research-report.md`: a correct research run's terminal deliverable is a produced report, so the functional `report-produced` outcome is a passing deliverable check on that artifact |
 | `task_status(completed)` | required | :107; orchestrator-framework/references/orchestrator-patterns.md:254 | Terminal phase "Completing research" (:107); shared state model defines `status: … completed` reached at finalization |
 | `reached_terminal(completion)` | required | :377 | P6: "→ End of workflow" |
 

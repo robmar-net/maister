@@ -82,6 +82,11 @@ export const scenario = {
   // an under-sized value would false-INCOMPLETE a slow-but-progressing run. Smaller than development's
   // 45 min (no implement/verify chain). The seat-gated live run is operator-supervised.
   timeoutMs: 30 * 60 * 1000, // 30 minutes
+  // Functional oracle (Stage 2). Assertion-type outcome (no runnable CLI): the produced
+  // research report must be a non-trivial deliverable — `outputs/research-report.md`
+  // >= 200 bytes AND >= 5 non-blank lines (plus >=1 markdown heading and a present
+  // `analysis/synthesis.md`, enforced by the extractor) — so an empty/one-line stub fails.
+  outcome: [{ id: 'report-produced', assert: 'research-deliverables', params: { minBytes: 200, minNonBlankLines: 5 } }],
   // Pre-registered retry prompt; also exported as `fallbackPrompt`.
   fallbackPrompt,
 };

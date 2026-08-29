@@ -20,6 +20,7 @@
     "invoked_skill(development)",
     "invoked_skill(implementation-plan-executor)",
     "invoked_skill(implementation-verifier)",
+    "outcome(tests-pass)=pass",
     "phase_completed(1)",
     "phase_completed(10)",
     "phase_completed(11)",

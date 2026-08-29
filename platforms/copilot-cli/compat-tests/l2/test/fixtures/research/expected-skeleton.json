@@ -16,6 +16,7 @@
     "delegated(solution-designer)",
     "gate_fired(ask)",
     "invoked_skill(research)",
+    "outcome(report-produced)=pass",
     "phase_completed(1)",
     "phase_completed(2)",
     "phase_completed(3)",
