@@ -34,6 +34,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # Pin Node 24: node:sqlite is present + stable (no ExperimentalWarning) and node:test is fully
+      # supported, so the cost fixture test reads deterministically. Must run BEFORE the unit suite.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
       # Pure modules (extractor / normalize / compare / usage / aggregate) + the end-to-end pipeline
       # (development + research) over committed fixtures. No seat, no credits; node ships on the runner.
       - name: L2 unit suite (pure modules + pipeline; no seat, no credits)

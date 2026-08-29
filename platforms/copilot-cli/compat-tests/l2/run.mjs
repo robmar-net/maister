@@ -52,6 +52,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 import { resolveSdkPath } from './sdk-path.mjs';
+import { readCost } from './cost.mjs';
 import { extract } from './extractor.mjs';
 import { normalize } from './normalize.mjs';
 import { compare, checkReference, EXIT, witnessTokensForPhase } from './compare.mjs';
@@ -194,6 +195,8 @@ function printUsage(stream = process.stdout) {
     '  COMPAT_MAISTER_VERSION   Override the repo maister version --check-reference compares against',
     '                           (test/operator seam; default read from',
     '                           plugins/maister/.claude-plugin/plugin.json).',
+    '  COMPAT_L2_MODEL          Requested model for a live run (metadata; resolution opts ?? env ??',
+    '                           scenario default). A --model= flag may be added later.',
     '',
     'Normally invoked via `make test-l2` -> run.sh (seat preflight + plugin de-shadow + isolation).',
     '',
@@ -339,6 +342,42 @@ function usageSuffix(u) {
   return ` — ~${round4(u.aiu)} AIU, ${req}`;
 }
 
+// --------------------------------------------------------------------------- Stage-5 model + cost (pure)
+// Resolve the REQUESTED model for a live run: explicit opts.model (no --model flag this stage, so
+// normally undefined) ?? the COMPAT_L2_MODEL env override ?? the scenario default (sc.model) ?? null.
+// null = "account/SDK default" (the header renders `default`). PURE — unit-tested credit-free.
+export function resolveModel(opts, sc, env = process.env) {
+  return opts?.model ?? env.COMPAT_L2_MODEL ?? sc?.model ?? null;
+}
+
+// The ACTUAL model(s) that served the run, from extractUsage().models (the session.shutdown
+// modelMetrics keys, sorted + `+`-joined). Degrades to 'unknown' on the modelMetrics-absent 1.0.8x
+// shutdown shape (usage.models === null) — the same path that yields "AIU unknown". PURE.
+export function modelActualFromUsage(u) {
+  return u && u.models ? (Object.keys(u.models).sort().join('+') || 'unknown') : 'unknown';
+}
+
+// Whole-run cost window for an N>1 aggregate readCost: the FIRST run's startIso .. the LAST run's
+// endIso. PURE, SDK-free — so the N>1 window assembly is unit-testable without a live drive (M-2).
+// Empty results -> {null,null}; a singleton -> that single run's own window.
+export function runWindow(results) {
+  const list = Array.isArray(results) ? results : [];
+  if (!list.length) return { startIso: null, endIso: null };
+  return { startIso: list[0]?.startIso ?? null, endIso: list.at(-1)?.endIso ?? null };
+}
+
+// Terse model + real-cost segment APPENDED after usageSuffix on the stdout verdict line. The cost is
+// EXPLICITLY `session-store.db:`-labelled (M-4) so it never collides with usageSuffix's
+// session.shutdown-sourced `AIU:` token (the two AIU sources coexist and stay distinct).
+function costModelSuffix({ model, modelActual, cost } = {}) {
+  const db = cost?.unavailable
+    ? 'session-store.db: unavailable'
+    : (cost?.aiu != null
+        ? `session-store.db: ${round4(cost.aiu)} AIU / ${cost.weightedRequests ?? '?'} req`
+        : 'session-store.db: unknown');
+  return ` · model ${model ?? 'default'}/${modelActual ?? 'unknown'} · ${db}`;
+}
+
 // Render the "## AI-credit cost" report section. N=1 -> a single "This run" line from `usage`; N>1 ->
 // a per-run AIU/API-request table from `usageTotal.perRun` plus the summed TOTAL across ALL attempted
 // runs (an incomplete drive still spends credits, so it is billed too).
@@ -433,6 +472,7 @@ export function buildReport(ctx) {
     incompleteReason, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null,
     usage = null, usageTotal = null, gateLog = [], replaySource = null,
+    model = null, modelActual = null, cost = null,
   } = ctx;
 
   const L = [];
@@ -450,6 +490,17 @@ export function buildReport(ctx) {
   L.push(`- **Scenario:** ${scenarioId}`);
   L.push(`- **Final N:** ${finalN}`);
   L.push(`- **OS:** ${osStr}`);
+  // Stage-5 (M-4): requested/actual model + the REAL AIU cost read from session-store.db. The AIU row
+  // is source-labelled IN ITS KEY on EVERY branch (success / unavailable / unknown) so it never
+  // collides with the session.shutdown-sourced `## AI-credit cost` section below. Additive only; renders
+  // identically for live + replayed (replay sources model/cost from meta via ctx).
+  L.push(`- **Model (requested / actual):** \`${esc(model ?? 'default')}\` / \`${esc(modelActual ?? 'unknown')}\``);
+  L.push(
+    `- **AIU / weighted requests (session-store.db):** ` +
+    (cost?.unavailable
+      ? 'unavailable'
+      : (cost?.aiu != null ? `${round4(cost.aiu)} AIU / ${cost.weightedRequests ?? '?'} req` : 'unknown')),
+  );
   // Stage-4: a LIVE N=1 drive persists a replayable bundle at reports/<ts>/ — surface the path so an
   // operator can find the `--replay` source. Additive line only; no verdict impact.
   if (mode === 'live' && finalN === 1) L.push(`- **Persisted trace:** reports/${ts}/`);
@@ -725,7 +776,7 @@ export function sumUsage(usages) {
 //   { status:'ok', observed:Set, ex, rundir }   a verdict-eligible normalized skeleton
 // The session is disconnected, THEN this run's client stopped + force-stopped, THEN the fresh rundir
 // cleaned — all bounded/best-effort.
-async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null, persistMeta = null) {
+export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null, persistMeta = null, model = null) {
   const { CopilotClient, RuntimeConnection, approveAll } = sdk;
   const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
   const recorded = [];
@@ -744,6 +795,12 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null,
     session = await client.createSession({
       workingDirectory: rundir,
       pluginDirectories: [PLUGIN_DIR],
+      // Stage-5 (M-1): thread the requested model DEFENSIVELY via a CONDITIONAL SPREAD so the key is
+      // ABSENT (never `model: null`) when no model is requested. driveOnce's outer try (below) is
+      // catch-less (only a `finally`), so a strict runtime-resolved SDK that rejects a null/unknown
+      // `model` key would throw and turn EVERY live run INCOMPLETE — the default (null) MUST omit the
+      // key entirely. Passed best-effort; NEVER asserted to take effect this stage (deferred paid confirm).
+      ...(model != null ? { model } : {}),
       // LOAD-BEARING: onEvent is a SessionConfig FIELD so it registers BEFORE the create RPC.
       onEvent: (e) => { recorded.push(e); },
       // Gates FIRE and are ANSWERED (never suppressed via --no-ask-user; AC8) by the DETERMINISTIC
@@ -774,29 +831,48 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null,
 
     // Drive the scenario. sendAndWait THROWS on timeout (does not abort in-flight work) -> catch ->
     // abort() -> INCOMPLETE (exit 2, "no verdict"), never a false REGRESSED.
+    // Stage-5: bracket the drive with an ISO cost window (new Date() is fine here — run.mjs, not a
+    // Workflow-tool script). startIso is captured IMMEDIATELY before the drive; endIso immediately after
+    // (or inside the timeout catch), so even a timed-out run bounds its own cost window.
+    const startIso = new Date().toISOString();
     try {
       await session.sendAndWait(prompt, sc.timeoutMs);
     } catch (timeoutErr) {
+      const endIso = new Date().toISOString();
       try { await session.abort(); } catch { /* best-effort */ }
       // A timed-out / aborted drive may STILL have spent credits — best-effort collect whatever events
       // we have (onEvent recorder + a post-abort getEvents attempt) and self-report any usage.
       let history = [];
       try { history = await session.getEvents(); } catch { history = []; }
       const usage = extractUsage(mergeEvents(recorded, history));
+      const modelActual = modelActualFromUsage(usage);
+      // M-3: a timed-out N=1 drive STILL spent a seat and its window is known, so its real cost is read
+      // here too (NOT gated on a successful verdict). N>1 (persistTs null) skips — runLive reads once.
+      const cost = persistTs != null ? await readCost({ startIso, endIso }) : null;
       return {
         status: 'incomplete',
         reason: `sendAndWait did not complete (timeout or session error): ${timeoutErr?.message ?? timeoutErr}`,
         run: runIndex,
         usage,
         gateLog,
+        modelActual,
+        startIso,
+        endIso,
+        cost,
       };
     }
+    const endIso = new Date().toISOString();
 
     // Collect the full typed event stream (onEvent recorder + authoritative getEvents()).
     let history = [];
     try { history = await session.getEvents(); } catch { history = []; }
     const events = mergeEvents(recorded, history);
     const usage = extractUsage(events); // AI-credit cost from the session.shutdown event (may be all-null)
+    const modelActual = modelActualFromUsage(usage); // Stage-5: actual model(s), 'unknown' when absent
+    // Stage-5 (M-3): read the REAL cost over [startIso..endIso] for the persisted N=1 case (window known
+    // here); N>1 (persistTs null) leaves cost null and runLive reads the whole-run window once. The read
+    // is best-effort — a failure yields the `unavailable` sentinel, never throws.
+    const cost = persistTs != null ? await readCost({ startIso, endIso }) : null;
 
     // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/<taskType>/*); the scenario's
     // taskType selects both the state subtree and the extractor's tree profile.
@@ -838,6 +914,11 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null,
             ts: persistTs,
             originalMode: 'live',
             maisterVersion: persistMeta?.maisterVersion ?? null,
+            // Stage-5: persist the requested + actual model and the run's real cost so a --replay renders
+            // the SAME model/cost the live run showed (replay's res.usage is null — cost comes from meta).
+            model: persistMeta?.model ?? null,
+            modelActual: modelActual ?? 'unknown',
+            cost: cost ?? null,
           }, null, 2),
         );
         process.stderr.write(`L2: persisted replay trace: ${dest}\n`);
@@ -848,9 +929,9 @@ async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null,
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
-    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog };
+    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost };
 
-    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog };
+    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost };
   } finally {
     // Bounded per-run teardown: disconnect the session, THEN stop + forceStop THIS run's OWN client
     // (the SDK client spawned an app.js runtime subprocess whose IPC handles keep the event loop alive —
@@ -950,11 +1031,28 @@ async function runLive(opts) {
   // Drive N traces, each on its own fresh client + fresh rundir (run index is 1-based for reporting).
   // Stage-4 persist is N=1-only (keyed by the report `ts`); pass the ts + replay-meta fields ONLY when
   // N===1 so N>1 runs never persist (deferred to Stage 5) and never collide on a single ts.
+  // Stage-5: resolve the REQUESTED model ONCE (opts ?? COMPAT_L2_MODEL ?? scenario default), pass it
+  // into every driveOnce, and persist it in the N=1 replay-meta.
+  const model = resolveModel(opts, sc);
   const persistTs = N === 1 ? ts : null;
-  const persistMeta = N === 1 ? { copilotVersion, sdkPath, maisterVersion } : null;
+  const persistMeta = N === 1 ? { copilotVersion, sdkPath, maisterVersion, model } : null;
   const results = [];
   for (let i = 0; i < N; i++) {
-    results.push(await driveOnce(sdk, runtimePath, sc, opts, i + 1, persistTs, persistMeta));
+    results.push(await driveOnce(sdk, runtimePath, sc, opts, i + 1, persistTs, persistMeta, model));
+  }
+
+  // Stage-5 model/cost aggregate. N=1: the per-run readCost was done inside driveOnce (window known
+  // there, incl. the timeout path). N>1: read ONCE over the whole-run window [first start .. last end]
+  // (runWindow, SDK-free) and union the per-run actual models.
+  let modelActual;
+  let cost;
+  if (N === 1) {
+    cost = results[0].cost ?? null;
+    modelActual = results[0].modelActual ?? 'unknown';
+  } else {
+    const { startIso, endIso } = runWindow(results);
+    cost = await readCost({ startIso, endIso });
+    modelActual = [...new Set(results.map((r) => r.modelActual).filter(Boolean))].sort().join('+') || 'unknown';
   }
 
   // Verdict + report are produced AFTER every run tore down its own client (no live handles held
@@ -962,6 +1060,7 @@ async function runLive(opts) {
   const ctx = {
     reference, N, scenarioId: sc.id, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir: PLUGIN_DIR, pluginName: PLUGIN_NAME, sdkPath,
+    model, modelActual, cost,
   };
   return N === 1 ? finalizeSingleRun(results[0], ctx) : finalizeMultiRun(results, ctx);
 }
@@ -1017,6 +1116,11 @@ function runReplay(opts) {
     pluginDir: PLUGIN_DIR, pluginName: PLUGIN_NAME,
     sdkPath: meta.sdkPath ?? 'replayed',
     mode: 'replayed', replaySource: dir,
+    // Stage-5: replay sources model/cost from the PERSISTED meta (res.usage is null on replay — a live
+    // readCost is never issued on this credit-free path), so the report shows the recorded figures.
+    model: meta.model ?? 'replayed',
+    modelActual: meta.modelActual ?? 'unknown',
+    cost: meta.cost ?? null,
   };
   return finalizeSingleRun(res, ctx);
 }
@@ -1033,7 +1137,12 @@ export function finalizeSingleRun(res, ctx) {
     scenarioId, mode: ctx.mode ?? 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN: 1, sdkPath, replaySource: ctx.replaySource ?? null,
     usage: res.usage ?? null, gateLog: res.gateLog ?? [],
+    // Stage-5: model/actual/cost threaded from ctx into EVERY branch's report + stdout via the shared
+    // base — so an INCOMPLETE (timeout / sanity-floor) run renders its real cost too (M-3), no per-branch change.
+    model: ctx.model ?? null, modelActual: ctx.modelActual ?? 'unknown', cost: ctx.cost ?? null,
   };
+  // Stage-5: the model + session-store.db cost segment appended after usageSuffix on every stdout line.
+  const costSuffix = costModelSuffix({ model: base.model, modelActual: base.modelActual, cost: base.cost });
   const INCOMPLETE_COUNTS = { pass: 0, limitation: 0, skip: 0, fail: 0 };
 
   // Timeout / session error (driveOnce already abort()'d; no ex) — "no verdict".
@@ -1042,7 +1151,7 @@ export function finalizeSingleRun(res, ctx) {
       ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
       observed: null, result: null, incompleteReason: res.reason, parseWarnings: [],
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (no verdict) — ${res.reason}${usageSuffix(res.usage)}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (no verdict) — ${res.reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -1053,7 +1162,7 @@ export function finalizeSingleRun(res, ctx) {
       observed: normalize(res.ex.records), result: null,
       incompleteReason: res.reason, parseWarnings: res.ex.parseWarnings,
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (sanity floor) — ${res.reason}${usageSuffix(res.usage)}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (sanity floor) — ${res.reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -1103,7 +1212,7 @@ export function finalizeSingleRun(res, ctx) {
       ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
       observed, result, incompleteReason: reason, parseWarnings: ex.parseWarnings,
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (widened sanity floor) — ${reason}${usageSuffix(res.usage)}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (widened sanity floor) — ${reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -1116,7 +1225,7 @@ export function finalizeSingleRun(res, ctx) {
   }), ts);
   process.stdout.write(
     `\nL2: ${result.overall} — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
-    `${counts.fail} FAIL${usageSuffix(res.usage)}\nReport: ${rp}\n`,
+    `${counts.fail} FAIL${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`,
   );
   return result.exitCode; // 0 AS-EXPECTED / 1 REGRESSED
 }
@@ -1142,7 +1251,10 @@ function finalizeMultiRun(results, ctx) {
   const base = {
     scenarioId, mode: 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN: N, sdkPath, usageTotal,
+    // Stage-5: the whole-run model/cost aggregate (from runLive's ctx) threaded into the N>1 report + stdout.
+    model: ctx.model ?? null, modelActual: ctx.modelActual ?? 'unknown', cost: ctx.cost ?? null,
   };
+  const costSuffix = costModelSuffix({ model: base.model, modelActual: base.modelActual, cost: base.cost });
 
   // PER-RUN OUTCOMES — the diagnosis surface (no silent caps). One entry per drive, in run order,
   // carrying its status and any incomplete reason. Rendered into the report ("## Per-run outcomes")
@@ -1170,7 +1282,7 @@ function finalizeMultiRun(results, ctx) {
       ...base, overall: 'INCOMPLETE', counts: { pass: 0, limitation: 0, skip: 0, fail: 0 },
       observed: null, result: null, incompleteReason: reason, parseWarnings: [], perRun,
     }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (N=${N}) — ${reason}${usageSuffix(usageTotal)}\n${perRunStdout}\nReport: ${rp}\n`);
+    process.stdout.write(`\nL2: INCOMPLETE (N=${N}) — ${reason}${usageSuffix(usageTotal)}${costSuffix}\n${perRunStdout}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
@@ -1209,7 +1321,7 @@ function finalizeMultiRun(results, ctx) {
   }), ts);
   process.stdout.write(
     `\nL2: ${result.overall} (N=${N}) — stable ${agg.stable.length}, noise ${agg.noise.length}` +
-    usageSuffix(usageTotal) +
+    usageSuffix(usageTotal) + costSuffix +
     (shortfall ? `\n${shortfall}` : '') +
     `\n${perRunStdout}` +
     `\nReport: ${rp}\n`,

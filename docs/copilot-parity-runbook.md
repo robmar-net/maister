@@ -135,7 +135,7 @@ Live conformance/compat results are recorded on the **`robmar-net/maister` wiki*
 timestamped reports under `compat-tests/reports/` are **git-ignored** run artifacts). Update the wiki
 after a meaningful live run:
 
-- **[Compatibility-Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix)** — the living matrix, one row per `(maister version, Copilot CLI version, OS)` × layer (L0/L1/L2). This is the headline record.
+- **[Compatibility-Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix)** — the living matrix, one row per `(maister version, Copilot CLI version, model, OS)` × layer (L0/L1/L2). This is the headline record. **Re-run policy:** re-run the live layers (and record a new matrix row) on each new Copilot CLI release **and** on a model change (a different requested/served model is a distinct matrix cell — cost and behaviour are not comparable across models).
 - **[L2-Trace-Equivalence](https://github.com/robmar-net/maister/wiki/L2-Trace-Equivalence)** — L2 (workflow-model conformance) design + per-scenario status; the page keeps its historical name/URL.
 - **L0-Wiring-Contracts**, **L1-Hook-Effects**, **Copilot-CLI-Runtime-Notes**, **Running-the-Tests**, **Testing-Framework-Overview**, **Home**.
 
@@ -157,6 +157,36 @@ sqlite3 ~/.copilot/session-store.db \
   **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81; AIU weighting and request
   multipliers change across CLI versions, and per-run vs per-arc figures are NOT directly
   comparable — the `session-store.db` query above is the source of truth.
+
+  **Reconciliation (issue #48 historical figures).** The figures cited in issue #48 — e.g.
+  ~320 AIU / 232 requests for one 1.0.75 `development` run vs ~152 AIU / 662 requests for the whole
+  1.0.81 arc — are **NOT directly comparable and are NOT reproducible cross-version**: one is
+  per-run and the other per-arc, and both the AIU weighting and the `request_multiplier` changed
+  across those CLI versions. They are deliberately **NOT transcribed or back-filled into this repo**
+  (they can't be reproduced, so pinning them here would be fitting numbers to a single vanished run).
+  Going forward the single source of truth is the `session-store.db` query above, **bounded at BOTH
+  ends** (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`) — the start-only base query
+  sweeps in later sessions and overcounts. Record the ISO window with each live run and read the cost
+  from the DB; do not carry historical figures forward.
+
+### Pinning the model (`COMPAT_L2_MODEL`) + deferred live confirmation
+
+- **`COMPAT_L2_MODEL`** — env that pins the *requested* model for a live L2 run (metadata only; it is
+  threaded into `createSession({model})` defensively and surfaced in the report header, the stdout
+  verdict line, and the persisted `replay-meta.json`, but it is **never a conformance predicate** — the
+  workflow-model grammar, references, hashes, and snapshots are unchanged). Resolution precedence is
+  `opts.model ?? COMPAT_L2_MODEL ?? scenario.model` (scenario default is `null` = account/SDK default).
+  There is **no `--model=` CLI flag** this stage; the env var is the only override. A requested model
+  that the runtime-resolved SDK does not recognise may be silently ignored; the report degrades the
+  *actual* model to `unknown` when `modelMetrics` is absent, and requested-vs-actual divergence is
+  surfaced rather than asserted.
+- **DEFERRED paid live confirmation (operator-gated).** Two things remain **unconfirmed credit-free** and
+  are the single seat-consuming follow-up, gated behind explicit operator approval (no spend without it):
+  (1) does `createSession({model})` actually **pin the served model** (vs the SDK ignoring an unknown
+  key), and (2) does the **post-run cost window read correctly** against a real live `session-store.db`
+  (both-ends bound over the run's ISO window). Everything else in this stage is proven credit-free over a
+  committed fixture DB + unit tests; this live pin+read is the only item that consumes a seat and is
+  therefore held back.
 
 ## Gotchas & maintenance history (READ before debugging a red/incomplete L2)
 

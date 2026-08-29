@@ -19,9 +19,24 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-import { chooseAnswer, buildReport, finalizeSingleRun } from '../run.mjs';
+import {
+  chooseAnswer, buildReport, finalizeSingleRun,
+  resolveModel, modelActualFromUsage, runWindow, driveOnce,
+} from '../run.mjs';
+import developmentScenario from '../scenarios/development.mjs';
 import { EXIT } from '../compare.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const L2_DIR = path.resolve(__dirname, '..');
+const RUN_MJS = path.join(L2_DIR, 'run.mjs');
+const REPORTS_DIR = path.resolve(L2_DIR, '..', 'reports');
+const RESEARCH_FIX = path.join(__dirname, 'fixtures', 'research');
 
 // Minimal buildReport ctx — every field it interpolates, with an empty diff/observed
 // so the only interesting surface is the injected gateLog.
@@ -201,4 +216,151 @@ test('buildReport: replayed mode renders "Mode: replayed (from <dir>)" and no pe
 test('buildReport: LIVE N=1 emits the persisted-trace path line', () => {
   const md = buildReport(baseCtx({ mode: 'live', finalN: 1, ts: '20260101T000000Z' }));
   assert.match(md, /Persisted trace:\*\* reports\/20260101T000000Z\//, 'live N=1 surfaces the reports/<ts>/ bundle path');
+});
+
+// --------------------------------------------------------------------------- Stage 5 (Group 2): model + cost
+//
+// Six credit-free checks for the model/cost report threading (spec §2 / §6c). All pure-helper or
+// render/round-trip assertions — no SDK import, no seat, no credit.
+
+// M-2 — runWindow: the N>1 whole-run cost window, SDK-free.
+test('runWindow (M-2): whole-run window = first start .. last end; empty + singleton handled', () => {
+  assert.deepEqual(
+    runWindow([{ startIso: 'A', endIso: 'B' }, { startIso: 'C', endIso: 'D' }]),
+    { startIso: 'A', endIso: 'D' },
+    'first run start + last run end',
+  );
+  assert.deepEqual(runWindow([{ startIso: 'A', endIso: 'B' }]), { startIso: 'A', endIso: 'B' }, 'singleton = that run');
+  assert.deepEqual(runWindow([]), { startIso: null, endIso: null }, 'empty -> null window');
+});
+
+// resolveModel precedence: opts.model ?? COMPAT_L2_MODEL ?? sc.model ?? null.
+test('resolveModel: precedence opts ?? COMPAT_L2_MODEL ?? sc.model ?? null', () => {
+  assert.equal(resolveModel({ model: 'a' }, { model: 'c' }, { COMPAT_L2_MODEL: 'b' }), 'a', 'opts wins');
+  assert.equal(resolveModel({}, { model: 'c' }, { COMPAT_L2_MODEL: 'b' }), 'b', 'env over scenario');
+  assert.equal(resolveModel({}, { model: 'c' }, {}), 'c', 'scenario default');
+  assert.equal(resolveModel({}, {}, {}), null, 'nothing set -> null (SDK/account default)');
+});
+
+// modelActualFromUsage degrade — joins sorted keys; 'unknown' on the modelMetrics-absent shape.
+test('modelActualFromUsage: sorted-joined keys; degrades to unknown', () => {
+  assert.equal(modelActualFromUsage({ models: { 'gpt-5': {}, 'gpt-5-mini': {} } }), 'gpt-5+gpt-5-mini');
+  assert.equal(modelActualFromUsage({ models: null }), 'unknown', '1.0.8x shutdown shape -> unknown');
+  assert.equal(modelActualFromUsage(null), 'unknown', 'no usage -> unknown');
+});
+
+// M-1 — the createSession {model} CONDITIONAL SPREAD, via a mocked SDK spy (credit-free).
+test('driveOnce (M-1): {model} threaded via conditional spread — present when resolved, ABSENT when null', async () => {
+  let captured;
+  const makeSdk = () => {
+    const session = {
+      async sendAndWait() { throw new Error('bail-immediately-after-create'); },
+      async abort() {},
+      async getEvents() { return []; },
+      async disconnect() {},
+    };
+    class FakeClient {
+      async start() {}
+      async createSession(cfg) { captured = cfg; return session; }
+      async stop() {}
+      forceStop() {}
+    }
+    return { CopilotClient: FakeClient, RuntimeConnection: { forStdio: () => ({}) }, approveAll: () => ({}) };
+  };
+  const opts = { keepRundir: false };
+
+  // A resolved model -> the key is present with its value. persistTs=null so no readCost/persist.
+  captured = undefined;
+  await driveOnce(makeSdk(), '/runtime', developmentScenario, opts, 1, null, null, 'gpt-5-codex');
+  assert.equal(captured.model, 'gpt-5-codex', 'a resolved model is spread into the createSession config');
+
+  // No model -> the key is ABSENT entirely (never model:null — a strict SDK could reject that in the
+  // catch-less driveOnce try, turning every live run INCOMPLETE).
+  captured = undefined;
+  await driveOnce(makeSdk(), '/runtime', developmentScenario, opts, 1, null, null, null);
+  assert.equal('model' in captured, false, 'no requested model -> the model key is absent (not null)');
+});
+
+// M-4 — buildReport header rows, source-labelled on every branch (success / unavailable / unknown).
+test('buildReport (M-4): Model + AIU (session-store.db) rows render, source-labelled on every branch', () => {
+  const known = buildReport(baseCtx({ model: 'gpt-5', modelActual: 'gpt-5', cost: { aiu: 4, weightedRequests: 4.5 } }));
+  assert.match(known, /- \*\*Model \(requested \/ actual\):\*\* `gpt-5` \/ `gpt-5`/, 'requested/actual row');
+  assert.match(known, /- \*\*AIU \/ weighted requests \(session-store\.db\):\*\* 4 AIU \/ 4\.5 req/, 'success figure, labelled');
+
+  const degraded = buildReport(baseCtx({ model: null, modelActual: 'unknown', cost: { unavailable: true } }));
+  assert.match(degraded, /- \*\*Model \(requested \/ actual\):\*\* `default` \/ `unknown`/, 'null model -> default/unknown');
+  assert.match(degraded, /\(session-store\.db\):\*\* unavailable/, 'unavailable still carries the source label');
+
+  const unknownCost = buildReport(baseCtx({ model: 'x', modelActual: 'unknown', cost: null }));
+  assert.match(unknownCost, /\(session-store\.db\):\*\* unknown/, 'null cost -> unknown, still labelled');
+});
+
+// M-3 — cost is threaded onto the INCOMPLETE (timeout) branch too, via the shared base (not only ok).
+test('finalizeSingleRun (M-3): threads real cost onto the INCOMPLETE (timeout) report via the shared base', () => {
+  const reference = { required: [], optional: [], allowlist: [], rules: [] };
+  const ctx = finalizerCtx(reference, { model: 'gpt-5', modelActual: 'unknown', cost: { aiu: 2, weightedRequests: 1 } });
+  // Timeout-shaped result: status incomplete, NO ex -> the "no verdict" branch. usage null (session.shutdown
+  // empty) but cost is known from the window read in driveOnce -> must still render.
+  const res = { status: 'incomplete', reason: 'sendAndWait did not complete (timeout)', run: 1, usage: null, gateLog: [] };
+  const reportPath = path.join(REPORTS_DIR, `l2-trace-equivalence-${ctx.ts}.md`);
+  try {
+    const code = finalizeSingleRun(res, ctx);
+    assert.equal(code, EXIT.INCOMPLETE, 'a timeout is INCOMPLETE (exit 2)');
+    const md = fs.readFileSync(reportPath, 'utf8');
+    assert.match(md, /## INCOMPLETE — no verdict/, 'the no-verdict branch');
+    assert.match(md, /\(session-store\.db\):\*\* 2 AIU \/ 1 req/, 'a timed-out run STILL reports its real cost (M-3)');
+  } finally {
+    fs.rmSync(reportPath, { force: true });
+  }
+});
+
+// replay-meta round-trip: a persisted bundle's model/cost render from meta (NOT a live read; replay
+// res.usage is null). Exercises the real --replay entrypoint end-to-end (credit-free — a bogus sdkPath
+// is never imported), reusing the committed research fixture like replay.test.mjs.
+test('runReplay: renders the PERSISTED model + cost from replay-meta.json (round-trip, credit-free)', () => {
+  const GOOD_REPORT = [
+    '# Research Report: Stage-5 Replay Model/Cost Round-Trip',
+    '',
+    '## Findings',
+    'The --replay path reconstructs extract() inputs from a persisted bundle and re-runs the outcome',
+    'oracle against the persisted rundir copy, reusing finalizeSingleRun so the verdict and report match',
+    'a live N=1 run. The model and cost render from replay-meta.json, never from a live readCost.',
+    '',
+    '## Conclusion',
+    'A persisted bundle reproduces its recorded model + real cost deterministically and credit-free.',
+    '',
+  ].join('\n');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-stage5-replay-'));
+  const ts = '20990201T000000Z';
+  const reportPath = path.join(REPORTS_DIR, `l2-trace-equivalence-${ts}.md`);
+  try {
+    const bundleDir = path.join(root, ts);
+    const taskDir = path.join(bundleDir, 'rundir', '.maister', 'tasks', 'research', '2026-08-29-l2-stage5');
+    fs.mkdirSync(taskDir, { recursive: true });
+    fs.copyFileSync(path.join(RESEARCH_FIX, 'events.sample.json'), path.join(bundleDir, 'events.json'));
+    fs.cpSync(path.join(RESEARCH_FIX, 'task-tree'), taskDir, { recursive: true });
+    fs.copyFileSync(path.join(RESEARCH_FIX, 'orchestrator-state.sample.yml'), path.join(taskDir, 'orchestrator-state.yml'));
+    fs.writeFileSync(path.join(taskDir, 'outputs', 'research-report.md'), GOOD_REPORT);
+    fs.writeFileSync(
+      path.join(bundleDir, 'replay-meta.json'),
+      JSON.stringify({
+        scenario: 'research', taskType: 'research', copilotVersion: '1.0.81',
+        sdkPath: '/nonexistent/replay/sdk/must-never-be-imported.mjs',
+        ts, originalMode: 'live', maisterVersion: '0.0.0',
+        model: 'gpt-5-pinned', modelActual: 'gpt-5', cost: { aiu: 4, weightedRequests: 4.5, source: 'session-store.db' },
+      }, null, 2),
+    );
+
+    const r = spawnSync(process.execPath, [RUN_MJS, `--replay=${bundleDir}`], { cwd: L2_DIR, encoding: 'utf8', env: { ...process.env } });
+    assert.equal(r.error, undefined, `spawn failed: ${r.error && r.error.message}`);
+    assert.equal(r.status, 0, `expected AS-EXPECTED / exit 0, got ${r.status}\n${r.stdout}${r.stderr}`);
+
+    const md = fs.readFileSync(reportPath, 'utf8');
+    assert.match(md, /\*\*Mode:\*\* replayed \(from /, 'replay mode marker');
+    assert.match(md, /- \*\*Model \(requested \/ actual\):\*\* `gpt-5-pinned` \/ `gpt-5`/, 'model from meta, not a live read');
+    assert.match(md, /\(session-store\.db\):\*\* 4 AIU \/ 4\.5 req/, 'cost from meta.cost (res.usage is null on replay)');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(reportPath, { force: true });
+  }
 });
