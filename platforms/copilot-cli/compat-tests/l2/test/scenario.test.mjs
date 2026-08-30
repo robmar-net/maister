@@ -132,3 +132,40 @@ test('pristine sandbox missing deliverable -> runner is a real oracle (exits non
     `greet deliverable check must be the failing check.\n--- stdout ---\n${result.stdout}`,
   );
 });
+
+// Phase-11 exit-gate placement (regression for the 1.0.82 live REGRESSED, run 20260830T155522Z).
+// Phase 11's mandatory exit gate is "Continue to Phase 12?" (SKILL.md:436), but phases 12/13 are
+// CONDITIONAL (SKILL.md:120-122); when both skip, the orchestrator points the gate at the next ACTIVE
+// phase — 14 — so the question becomes "Continue to Phase 14 finalization?". BOTH phrasings are the
+// Phase-11 gate and must map to phase 11, without stealing phase-13's own →14 ("documentation complete").
+test('development gateMap: Phase-11 exit gate maps for BOTH the literal-12 and the skipped-12/13 →14 phrasing', () => {
+  const gm = scenario.gateMap;
+  assert.ok(Array.isArray(gm) && gm.length, 'scenario.gateMap must be a non-empty array');
+  const place = (q) => { const hit = gm.find((g) => g.re.test(q)); return hit ? hit.phase : null; };
+
+  // Literal (12 active): the documented gate text.
+  assert.equal(place('Continue to Phase 12?'), 11, 'literal "Continue to Phase 12?" → phase 11');
+
+  // Skipped 12/13 (the observed 1.0.82 phrasing): verification summary + →14/finalization.
+  assert.equal(
+    place('Re-verification passed: 12/12 tests, no critical issues; approved validation fixes are complete. One production-documentation mitigation remains outside scope. Continue to Phase 14 finalization?'),
+    11,
+    'verification-summary gate that continues to Phase 14 (12/13 skipped) → phase 11',
+  );
+
+  // Phase-13's OWN exit to 14 must NOT be stolen by phase-11 (no verification-summary text; its marker
+  // is "documentation complete").
+  assert.equal(
+    place('User documentation complete. Continue to Phase 14 finalization?'),
+    13,
+    'phase-13 "documentation complete" →14 gate stays on phase 13, not phase 11',
+  );
+
+  // A phase-11 FIX-LOOP question ("...Which should I fix?") is not the exit gate and must not spuriously
+  // map to a later phase; it lacks "continue to phase 14", so phase-11's exit branch does not match it.
+  assert.notEqual(
+    place('Verification found no critical issues. Warnings: ... Which should I fix?'),
+    12,
+    'the fix-loop question must not map to phase 12',
+  );
+});
