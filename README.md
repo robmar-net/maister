@@ -1,3 +1,21 @@
+> [!IMPORTANT]
+> **This fork is Maister for GitHub Copilot CLI** — the downstream, Copilot-focused build of
+> [SkillPanel/maister](https://github.com/SkillPanel/maister).
+>
+> - **Using Claude Code?** Install from **upstream**. The `plugins/maister` tree here is a byte-identical mirror that may lag behind.
+> - **Using GitHub Copilot CLI?** You are in the right place. The `maister-copilot` plugin here is produced by a generator that fixes the Copilot gaps found in live testing (MCP server loading, the destructive-command guard, task-item tools, hook adaptations — see [#13](https://github.com/robmar-net/maister/issues/13), [#15](https://github.com/robmar-net/maister/issues/15), [#19](https://github.com/robmar-net/maister/issues/19)) and is **verified live on real Copilot CLI releases** — see the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix) and the [wiki](https://github.com/robmar-net/maister/wiki).
+>
+> **Install on Copilot CLI**
+>
+> ```bash
+> copilot plugin marketplace add robmar-net/maister      # register this repo as the marketplace
+> copilot plugin install maister-copilot@maister-plugins  # install the Copilot build
+> ```
+>
+> Slash commands do not exist on Copilot CLI — describe the task in plain language (e.g. *"Run the maister development workflow to add …"*) and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/README.md`](platforms/copilot-cli/README.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
+>
+> *Everything below is the upstream Claude Code documentation, kept verbatim.*
+
 <div align="center">
 
 # Maister
