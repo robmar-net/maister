@@ -105,6 +105,47 @@ test('chooseAnswer: unmatched question -> choices[0] ?? \'yes\' fallback, flagge
   assert.equal(noChoices.wasFreeform, true);
 });
 
+// #63 item 4 — bidirectional choice<->label matching + honest `matched`.
+test('chooseAnswer (#63.4): terse map value resolves a longer real label (exact, case-insensitive)', () => {
+  const answerMap = [{ re: /brainstorm/i, choice: 'No, skip', phase: 4 }];
+  const r = chooseAnswer({ question: 'Explore solution alternatives (brainstorming)?', choices: ['Yes (Recommended)', 'No, skip'] }, answerMap);
+  assert.equal(r.answer, 'No, skip');
+  assert.equal(r.matched, true);
+  assert.equal(r.fallback, false);
+  assert.equal(r.mappedPhase, 4);
+});
+
+test('chooseAnswer (#63.4): "No, skip" against terse ["Yes","No"] resolves to "No" (the fixed bug — was "Yes")', () => {
+  const answerMap = [{ re: /enable e2e/i, choice: 'No, skip', phase: 12 }];
+  const r = chooseAnswer({ question: 'Enable E2E testing?', choices: ['Yes', 'No'] }, answerMap);
+  assert.equal(r.answer, 'No', 'either-side substring: "No, skip" includes "No" -> the intended skip, NOT choices[0]');
+  assert.equal(r.matched, true, 'a real (bidirectional) resolution is a genuine match');
+  assert.equal(r.fallback, false);
+});
+
+test('chooseAnswer (#63.4): "Yes" against ["Yes, enable","No"] resolves to "Yes, enable" (either-side substring)', () => {
+  const answerMap = [{ re: /enable/i, choice: 'Yes', phase: 12 }];
+  const r = chooseAnswer({ question: 'Enable user docs?', choices: ['Yes, enable', 'No'] }, answerMap);
+  assert.equal(r.answer, 'Yes, enable');
+  assert.equal(r.matched, true);
+  assert.equal(r.fallback, false);
+});
+
+test('chooseAnswer (#63.4): a regex hit whose choice matches NO offered label is an honest responder-fallback', () => {
+  const answerMap = [{ re: /enable e2e/i, choice: 'Maybe later', phase: 12 }];
+  const r = chooseAnswer({ question: 'Enable E2E testing?', choices: ['Yes', 'No'] }, answerMap);
+  assert.equal(r.answer, 'Yes', 'unresolvable choice -> choices[0] floor so the run proceeds');
+  assert.equal(r.matched, false, 'but it is NOT a deliberate match');
+  assert.equal(r.fallback, true, 'surfaces as responder-fallback, not "mapped"');
+});
+
+test('chooseAnswer (#63.4): first-token match resolves a paraphrased choice', () => {
+  const answerMap = [{ re: /continue/i, choice: 'continue to design', phase: 5 }];
+  const r = chooseAnswer({ question: 'Continue?', choices: ['Continue', 'Stop'] }, answerMap);
+  assert.equal(r.answer, 'Continue');
+  assert.equal(r.matched, true);
+});
+
 test('buildReport: gateLog with mapped + fallback rows renders ## Gates with phases and flags the fallback', () => {
   const gateLog = [
     { question: 'Continue to implementation?', answer: 'yes', mappedPhase: 7, matched: true, fallback: false },
