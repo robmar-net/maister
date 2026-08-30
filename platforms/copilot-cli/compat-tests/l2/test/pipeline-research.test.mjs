@@ -93,8 +93,8 @@ test('pipeline (research): extract(taskType:research) -> normalize -> compare yi
   // {when:phase_completed(1), require:min_count(delegated(information-gatherer))=2} promotes a token
   // NOT in required[] but PRESENT in observed (the fixture has 2 gatherers → =2 emitted), so it
   // counts as +1 matched. Effective required = 13 base + 3 promoted gates + 1 min_count rule = 17.
-  const EXPECTED_MATCHED = golden.required.length + 3 + 1; // 13 + 3 gates + 1 min_count rule = 17
-  assert.equal(EXPECTED_MATCHED, 17, 'research effective-required count sanity (13 base + 3 promoted gates + 1 min_count rule)');
+  const EXPECTED_MATCHED = golden.required.length + 3 + 1; // 12 + 3 gates + 1 min_count rule = 16 (state_schema(conformant) demoted to optional, #57)
+  assert.equal(EXPECTED_MATCHED, 16, 'research effective-required count sanity (12 base + 3 promoted gates + 1 min_count rule; conformant now optional, #57)');
   assert.equal(
     result.matched.length,
     EXPECTED_MATCHED,

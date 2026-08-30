@@ -33,6 +33,29 @@ We maintain the **GitHub Copilot CLI adaptation** of maister as a downstream of 
 That reaction-and-adaptation loop — merge upstream, regenerate, fix our Copilot layer — **is the
 entire purpose of this fork.** Improving upstream is not our concern.
 
+### Parity, and honest knowledge of the gaps — never swept under the rug
+
+The point of this project is **behavioral parity** — the generated `maister-copilot` variant behaving
+the way maister is documented to behave for Claude — **and honest knowledge of exactly where that
+parity cannot be reached and why.** The conformance tests (L0/L1/L2) are a *means to that end, not the
+end in themselves.* A passing test suite is worthless if it passes by hiding a real divergence.
+
+So for every divergence a test surfaces, do one of two things — never a third:
+
+1. **Fix it** — adapt the Copilot layer (`build.sh` transforms, `hooks-overrides/`, generator rules)
+   so the variant matches Claude's documented behavior.
+2. **Document it as a limitation, with a justification** — say *what* diverges, *why* it can't be made
+   to match (which mechanism is missing / can't be simulated on Copilot), keep it **visible** (a
+   `🟢 ADAPTED` / `LIMITATION` cell in the Compatibility-Matrix + the report, never absorbed silently),
+   and **track it** (a fork issue with the analysis). If it's hard, ticket it and tackle it separately
+   — we do not have to solve everything at once.
+
+**Never sweep a problem under the rug or hide it quietly.** Relaxing a conformance signal (moving a
+required predicate to `optional`/`allowlist`, widening a sanity floor, softening an assertion) to make
+a run go green is legitimate **only** when the divergence is simultaneously (a) justified from the
+**workflow model** — not fitted to an observed run — and (b) documented + visible + tracked per point 2.
+A silent green that buries a real gap is the one outcome this project exists to prevent.
+
 ## Remotes — identify by repo SLUG, not by remote name
 
 Remote *names* differ between clones (`origin`/`upstream`/`fork` are used inconsistently across
