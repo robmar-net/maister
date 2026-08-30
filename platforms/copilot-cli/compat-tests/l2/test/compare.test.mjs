@@ -305,8 +305,8 @@ test('2.1f reported-only: an observed gate_count(ask)=K is never extra/CANDIDATE
 // min_count( head joining gate_count( as reported-only for the EXTRA partition ONLY (required-side
 // matching stays intact), and the witnessTokensForPhase authority that run.mjs's N=1 floor imports.
 
-test('4.4a WORKFLOW_MODEL_VERSION is 5 (Stage-6 workflow-model bump)', () => {
-  assert.equal(WORKFLOW_MODEL_VERSION, 5, 'the harness now models workflow-model v5');
+test('4.4a WORKFLOW_MODEL_VERSION is 6 (WP-D todos/standards grammar-head bump)', () => {
+  assert.equal(WORKFLOW_MODEL_VERSION, 6, 'the harness now models workflow-model v6');
 });
 
 test('4.4b min_count( is reported-only for EXTRA: observed =1,=2 vs required-only =1 never REGRESSES', () => {

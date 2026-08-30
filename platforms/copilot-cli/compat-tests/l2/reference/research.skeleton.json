@@ -1,8 +1,8 @@
 {
   "scenario": "research",
   "maister_version": "2.2.2",
-  "schema_version": 4,
-  "workflow_model_version": 5,
+  "schema_version": 5,
+  "workflow_model_version": 6,
   "required": [
     "phase_completed(1)",
     "delegated(research-planner)",
@@ -69,5 +69,5 @@
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "b30b1e64ae874af60386def5ebaf29222daa79a7b01e0f67216965f5a9749b01"
+  "hash": "2bc10f7492ae9685a1eb4c4ca3ccd509f030252491f6949914cebaf9ed01c8d1"
 }

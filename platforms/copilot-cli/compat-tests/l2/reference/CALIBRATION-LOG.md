@@ -398,3 +398,55 @@ and the `createSession({model})` pin threading, `model gpt-5.6-luna/unknown`). `
 required→optional; `state_schema(off-schema)` stays a visible allowlist LIMITATION. **HASH-NEUTRAL**
 (`16c635b4…` → `16c635b4…`). Replaying that live bundle after the demotion yields **AS-EXPECTED —
 14 PASS · 1 LIMITATION · 0 FAIL** (credit-free proof).
+
+### 25 — development: WP-D CHEAP PREDICATES — `todos(created)` + `standards(index_read)` grammar heads + 2 dashboard artifacts (#76)
+
+WP-D of the Parity-Map epic ([#76](https://github.com/robmar-net/maister/issues/76)) lands the first
+batch of **cheap, credit-free predicates** — behaviors maister's development model mandates and the SDK
+already surfaces, but the harness never measured. Two NEW grammar heads (`todos`, `standards`, both
+1-arg literal, mirroring `task_status`) plus two entries under the EXISTING `created_artifact` head:
+
+- `todos(created)` — the observable effect of the `TaskCreate`/`TaskUpdate` → `todos` transform
+  (`development/SKILL.md:46` "Create Task Items"; `orchestrator-patterns.md` state schema). Extracted
+  from `session.todos_changed` (single-shot census — emitted once if ≥1, never per-event, like
+  `gate_count`).
+- `standards(index_read)` — lazy standards discovery: a READ-tool read of `.maister/docs/INDEX.md`
+  (`development/SKILL.md` Step 6 "Discover project documentation"; implementation-plan-executor lazy
+  loading). Extracted from `tool.execution_start` with a READ_TOOLS filter (view/read/rg/glob/cat/grep)
+  so `apply_patch` writes that merely MENTION the path in the state file are NOT counted as reads.
+- `created_artifact(dashboard.html)` + `created_artifact(dashboard-data.js)` — the Operator Dashboard
+  (`development/SKILL.md` Init Step 5 / § 8; produced at task root when `html_output=true`, the default).
+
+**All four land OPTIONAL** (WP-D discipline: report/optional first, promote to required after ≥2 runs),
+so a run lacking any of them (e.g. `html_output=false`) is AS-EXPECTED, never REGRESSED — zero
+false-positive risk. **NOT fitted to a run**: every predicate cites the generated SKILL.md model line;
+the real 1.0.82 dev bundle is the confirmation of *observability*, not the derivation.
+
+**Credit-free proof**: replaying the persisted development 1.0.82 bundle (`reports/20260830T155522Z`,
+the #63-item-9 run) after this landing yields **AS-EXPECTED — 37 PASS · 6 LIMITATION · 0 FAIL**, with
+all four new tokens MATCHED (10 `session.todos_changed`, 27 INDEX.md reads, both dashboard files
+present). Deferred to later WP-D increments (documented, tracked, NOT silent): `compaction(occurred)`
+(no `session.compaction_*` event in ANY persisted bundle — belongs with the WP-C2 probe),
+`parallel(...)≥2` (review agents run SEQUENTIALLY on 1.0.82 — the honest delta; needs verdict-semantics
++ ADR, overlaps #71), and the artifact-heading oracles (need a new file-content reader — WP-D2).
+
+Hash re-stamp `77b935c1… → 8f99c546…` (schema_version 4→5 enters the digest via `schema:<n>`).
+
+### 26 — research: WP-D LOCKSTEP re-stamp — schema 4→5 + wm 5→6, NO predicate change (#76)
+
+Grammar-head additions (`todos`, `standards` in note 25) force the global `WORKFLOW_MODEL_VERSION`
+5→6, so EVERY reference re-stamps its `workflow_model_version` (staleness keys on it) and
+`schema_version` 4→5 (it enters `computeHash` via the `schema:<n>` token) to stay CURRENT. The
+`research` reference gains NO predicate — `todos`/`standards`/dashboard are development-model behaviors
+(research has no `.maister/docs` lazy-load step in scope here and no Operator Dashboard). **Mechanical
+re-stamp only.** Hash `b30b1e64… → 2bc10f74…`. `--check-reference` CURRENT at wm v6.
+
+### 27 — quick-bugfix: WP-D LOCKSTEP re-stamp — schema 4→5 + wm 5→6, NO predicate change (#76)
+
+Same lockstep mechanism as note 26. `quick-bugfix` is events-only (no task tree, no state) and gains
+no WP-D predicate. Mechanical re-stamp only. Hash `817a43ee… → f063ad0c…`. CURRENT at wm v6.
+
+### 28 — destructive-guard: WP-D LOCKSTEP re-stamp — schema 4→5 + wm 5→6, NO predicate change (#76)
+
+Same lockstep mechanism as note 26. The `destructive-guard` micro-scenario gains no WP-D predicate.
+Mechanical re-stamp only. Hash `b0b145b0… → 3eb5626d…`. CURRENT at wm v6.

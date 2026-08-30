@@ -1,8 +1,8 @@
 {
   "scenario": "development",
   "maister_version": "2.2.2",
-  "schema_version": 4,
-  "workflow_model_version": 5,
+  "schema_version": 5,
+  "workflow_model_version": 6,
   "required": [
     "phase_completed(1)",
     "phase_completed(2)",
@@ -70,7 +70,11 @@
     "gate_fired_at(phase-12)",
     "gate_fired_at(phase-13)",
     "state_schema(conformant)",
-    "task_status(completed)"
+    "task_status(completed)",
+    "todos(created)",
+    "standards(index_read)",
+    "created_artifact(dashboard.html)",
+    "created_artifact(dashboard-data.js)"
   ],
   "rules": [
     {
@@ -190,5 +194,5 @@
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "77b935c141d259b366b73c29126ae0584b34738529125e3591742a2b597f8907"
+  "hash": "8f99c5463959772e80f9cff324c22796f79e71a80b625b2a3d06346928808210"
 }
