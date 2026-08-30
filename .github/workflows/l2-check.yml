@@ -41,8 +41,9 @@ jobs:
         with:
           node-version: '24'
 
-      # Pure modules (extractor / normalize / compare / usage / aggregate) + the end-to-end pipeline
-      # (development + research) over committed fixtures. No seat, no credits; node ships on the runner.
+      # Pure modules (extractor / normalize / compare / usage / aggregate / cost) + the end-to-end
+      # pipeline (development + research) + scenario checks (quick-bugfix, destructive-guard) + replay
+      # round-trips over committed fixtures. No seat, no credits; node ships on the runner.
       - name: L2 unit suite (pure modules + pipeline; no seat, no credits)
         run: node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs
 
