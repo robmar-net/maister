@@ -11,9 +11,10 @@
   ],
   "optional": [
     "gate_fired(permission)",
-    "gate_fired(exit_plan_mode)"
+    "gate_fired(exit_plan_mode)",
+    "standards(index_read)"
   ],
   "rules": [],
   "allowlist": [],
-  "hash": "f063ad0cd35d620633b637e23cdbcbfce1cb58db4c9776a55e1047943619b0d4"
+  "hash": "1472c4239621a983136a5f07f1feb49ce61b1804b6988a7ac71425b776a306e9"
 }

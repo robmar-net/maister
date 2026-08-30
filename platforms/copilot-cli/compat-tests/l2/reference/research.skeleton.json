@@ -38,7 +38,9 @@
     "gate_fired_at(phase-4)",
     "gate_fired_at(phase-5)",
     "state_schema(conformant)",
-    "task_status(completed)"
+    "task_status(completed)",
+    "standards(index_read)",
+    "todos(created)"
   ],
   "rules": [
     {
@@ -69,5 +71,5 @@
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "2bc10f7492ae9685a1eb4c4ca3ccd509f030252491f6949914cebaf9ed01c8d1"
+  "hash": "6d811965d4c39e8faf7c6bde1f231675f2b5d171a15f179d1f5d55333797d918"
 }
