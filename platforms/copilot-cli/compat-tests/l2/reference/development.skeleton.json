@@ -34,8 +34,7 @@
     "precedes(specification-creator,implementation-planner)",
     "precedes(implementation-planner,task-group-implementer)",
     "precedes(task-group-implementer,implementation-verifier)",
-    "min_count(delegated(task-group-implementer))=1",
-    "state_schema(conformant)"
+    "min_count(delegated(task-group-implementer))=1"
   ],
   "optional": [
     "phase_completed(6)",
@@ -70,7 +69,8 @@
     "gate_fired_at(phase-10)",
     "gate_fired_at(phase-11)",
     "gate_fired_at(phase-12)",
-    "gate_fired_at(phase-13)"
+    "gate_fired_at(phase-13)",
+    "state_schema(conformant)"
   ],
   "rules": [
     {

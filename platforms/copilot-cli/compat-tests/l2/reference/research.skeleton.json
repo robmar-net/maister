@@ -15,8 +15,7 @@
     "task_status(completed)",
     "reached_terminal(completion)",
     "precedes(research-planner,information-gatherer)",
-    "precedes(information-gatherer,research-synthesizer)",
-    "state_schema(conformant)"
+    "precedes(information-gatherer,research-synthesizer)"
   ],
   "optional": [
     "phase_completed(2)",
@@ -38,7 +37,8 @@
     "gate_fired(exit_plan_mode)",
     "gate_fired_at(phase-1)",
     "gate_fired_at(phase-4)",
-    "gate_fired_at(phase-5)"
+    "gate_fired_at(phase-5)",
+    "state_schema(conformant)"
   ],
   "rules": [
     {
