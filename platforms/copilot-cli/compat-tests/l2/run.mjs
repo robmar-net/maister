@@ -137,8 +137,17 @@ export function chooseAnswer(req, answerMap = []) {
 
   for (const entry of map) {
     if (!entry || !(entry.re instanceof RegExp) || !entry.re.test(question)) continue;
-    const { answer, wasFreeform } = resolveChoice(entry.choice, choices);
-    return { answer, wasFreeform, matched: true, mappedPhase: entry.phase ?? null, fallback: false };
+    const { answer, wasFreeform, resolved } = resolveChoice(entry.choice, choices);
+    // #63 item 4: a regex hit whose mapped choice is NOT among the offered labels is NOT a deliberate
+    // match — it fell back to choices[0]. Report it honestly (matched:false, fallback:true) so the
+    // `## Gates` table shows `responder-fallback`, not `mapped`. mappedPhase stays (the gate's phase is
+    // still identified). A resolved choice (or a null-choice / freeform) is a genuine match.
+    return {
+      answer, wasFreeform,
+      matched: resolved,
+      mappedPhase: entry.phase ?? null,
+      fallback: !resolved,
+    };
   }
 
   // Unmatched -> deterministic floor (responder_fallback, visibly flagged in the report).
@@ -152,16 +161,28 @@ export function chooseAnswer(req, answerMap = []) {
 }
 
 // Resolve a mapped `choice` against the offered `choices`. With no choices the answer is freeform
-// (the mapped string, or 'yes'); with choices it prefers an exact (case-insensitive) label, then a
-// substring match (a terse map value like "No, skip" resolves a longer real label), else choices[0]
-// (a `choice` of null/undefined explicitly means "the first/cheapest option").
+// (the mapped string, or 'yes'); with choices it matches BIDIRECTIONALLY and layered: exact
+// (case-insensitive) -> either-side substring -> first-token. `resolved` reports whether a real match
+// was found: a `choice` of null/undefined means "the first/cheapest option" (resolved), but a non-null
+// choice that matches NOTHING among the offered labels resolves to choices[0] as a usable floor with
+// `resolved:false` — so the caller can flag it as a responder-fallback instead of a silent mismatch.
+//
+// #63 item 4: the old match was one-directional (`label.includes(choice)`), so a terse map value like
+// "No, skip" against offered ["Yes","No"] found nothing -> silently took choices[0] ("Yes"), ENABLING a
+// phase the map meant to SKIP, while the caller still reported it as a deliberate match. Either-side
+// substring makes "No, skip" -> "No" (the intended skip), and `resolved` keeps `matched` honest.
 function resolveChoice(choice, choices) {
-  if (!choices || !choices.length) return { answer: choice ?? 'yes', wasFreeform: true };
-  if (choice == null) return { answer: choices[0], wasFreeform: false };
-  const lc = String(choice).toLowerCase();
-  const hit = choices.find((c) => String(c).toLowerCase() === lc)
-    ?? choices.find((c) => String(c).toLowerCase().includes(lc));
-  return { answer: hit ?? choices[0], wasFreeform: false };
+  if (!choices || !choices.length) return { answer: choice ?? 'yes', wasFreeform: true, resolved: true };
+  if (choice == null) return { answer: choices[0], wasFreeform: false, resolved: true };
+  const norm = (s) => String(s).toLowerCase().trim();
+  const firstTok = (s) => norm(s).split(/[\s,]+/).filter(Boolean)[0] ?? '';
+  const lc = norm(choice);
+  const ct = firstTok(choice);
+  const hit = choices.find((c) => norm(c) === lc)                                    // exact (ci)
+    ?? choices.find((c) => norm(c).includes(lc) || lc.includes(norm(c)))             // either-side substring
+    ?? choices.find((c) => ct && firstTok(c) === ct);                               // first-token
+  if (hit != null) return { answer: hit, wasFreeform: false, resolved: true };
+  return { answer: choices[0], wasFreeform: false, resolved: false };
 }
 
 function printUsage(stream = process.stdout) {
