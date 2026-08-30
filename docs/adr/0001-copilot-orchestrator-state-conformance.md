@@ -1,6 +1,6 @@
 # ADR 0001 — L2 conformance handling of Copilot's off-schema `orchestrator-state.yml`
 
-- **Status:** Accepted (layered direction); the normalizer + extractor-companion layer is **Proposed / prototyped** (branch `proto/57-state-normalizer`), not yet shipped.
+- **Status:** Accepted — resolved as **LIMITATION** ([#57](https://github.com/robmar-net/maister/issues/57)); Layers 2–3 prototyped, **not shipped** (branch `proto/57-state-normalizer`).
 - **Date:** 2026-08-30
 - **Deciders:** robmar (operator) + agent
 - **Tracking:** [robmar-net/maister#57](https://github.com/robmar-net/maister/issues/57), [#48](https://github.com/robmar-net/maister/issues/48) (L2 hardening)
@@ -59,17 +59,25 @@ self-detection false-negated across a symlink). Result with in-place forced:
 - The hook **does** rewrite the working file → it ends **canonicalized** (real parity on the working file).
 - **But** it induces apply-patch failures: `Failed to apply patch: Error: Failed to find expected lines in …
   completed_phases: [1, 2]` — the model's next `*** Update File:` patch expected the pre-rewrite bytes.
-- Copilot's model **recovers**: it detects the drift, re-reads the file, and re-edits (`File drift detected
-  during ordered updates; restoring exact requested YAML state`). Final state was correct.
+- Copilot's model **recovers**: it detects the drift, re-reads the file, and re-edits — but it re-edits
+  toward **its own** requested shape (`File drift detected during ordered updates; restoring exact
+  requested YAML state`), i.e. it tries to restore the off-schema YAML it wrote. So the hook and the model
+  **ping-pong** over the file and **the last writer wins**: the probe run happened to end canonicalized, but
+  which side wins is **not guaranteed** run-to-run.
 
-So in-place is **functionally survivable but not clean**: every state update becomes a patch-fail →
-re-read → re-edit cycle (extra model turns, AIU, latency, and a "file drift detected" signal to the
-model). Over a real run's 6–18 state updates that is fragile and wasteful — and **full structural scope
-(more rewritten lines) would make the drift worse**. Conclusion: neither mode is a clean ship —
-in-place buys working-file parity at a per-update churn cost; shadow is drift-safe but only the L2
-harness reads it. The honest shipped handling remains **Layer 1** (documented LIMITATION); Layers 2–3
-stand as the prototype that documents *why* clean lexical parity fights Copilot's incremental apply-patch
-model (the missing mechanism is not `PostToolUse` — it exists — but a non-diff whole-file write path).
+So in-place is **functionally survivable but not clean, and non-deterministic**: every state update becomes
+a patch-fail → re-read → re-edit cycle (extra model turns, AIU, latency, a "file drift detected" signal to
+the model), AND the final on-disk shape depends on who wrote last (hook vs model) — so a shipped in-place
+hook could not even guarantee the working file is conformant. Over a real run's 6–18 state updates that is
+fragile and wasteful — and **full structural scope (more rewritten lines) would make the drift worse**.
+Conclusion: neither mode is a clean ship — in-place buys (non-deterministic) working-file parity at a
+per-update churn cost; shadow is drift-safe but only the L2 harness reads it. The honest shipped handling
+remains **Layer 1** (documented LIMITATION); Layers 2–3 stand as the prototype that documents *why* clean
+lexical parity fights Copilot's incremental apply-patch model. The missing mechanism is **not** `PostToolUse`
+(it exists) and **not** a whole-file write path either — Copilot HAS one (`*** Add File:`, used ~6×/run in
+the traces); it is that the model uses incremental `*** Update File:` **hunks** for state updates, which any
+in-session rewrite desyncs. (An unexplored alternative: nudge the Copilot variant to always full-rewrite the
+state file — out of scope here.)
 
 ## Consequences
 
@@ -103,5 +111,9 @@ model (the missing mechanism is not `PostToolUse` — it exists — but a non-di
   only stops the false REGRESSED. Retained as the interim, not the end state.
 - **Prose-only prescription** (make the SKILL template more prescriptive): rejected — the source instruction is
   already maximal; prose cannot force a non-deterministic model's serialization shape.
-- **Accept a permanent LIMITATION:** the honest fallback **iff** the platform could not host the hook — but the
-  probe showed `PostToolUse` IS supported, so parity is reachable and this is not the conclusion.
+- **Accept a documented LIMITATION:** **this IS the resolution** ([#57](https://github.com/robmar-net/maister/issues/57)
+  closed as such). Not because the platform can't host the hook — `PostToolUse` is supported and the path is
+  recoverable — but because the drift test showed **neither hook mode is clean**: in-place is a
+  non-deterministic patch-fail/recover ping-pong, and shadow is drift-safe but only the L2 harness reads it.
+  So clean lexical parity is not reachable *in-session*, and the divergence is documented with its exact
+  mechanism (above) rather than papered over — the "document why it can't be" half of the AGENTS.md contract.
