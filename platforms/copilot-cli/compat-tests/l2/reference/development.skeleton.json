@@ -28,7 +28,6 @@
     "task_characteristic(involves_data_operations)=false",
     "gate_fired(ask)",
     "outcome(tests-pass)=pass",
-    "task_status(completed)",
     "reached_terminal(completion)",
     "precedes(gap-analyzer,specification-creator)",
     "precedes(specification-creator,implementation-planner)",
@@ -70,7 +69,8 @@
     "gate_fired_at(phase-11)",
     "gate_fired_at(phase-12)",
     "gate_fired_at(phase-13)",
-    "state_schema(conformant)"
+    "state_schema(conformant)",
+    "task_status(completed)"
   ],
   "rules": [
     {
