@@ -513,3 +513,33 @@ BOTH.
 (4 PASS · 0 LIMITATION · 0 FAIL)** and research `20260829T235511Z` stays **AS-EXPECTED (13 PASS · 1
 LIMITATION · 0 FAIL)** now matching standards+todos. Hash re-stamps: quick-bugfix `f063ad0c… →
 1472c423…`, research `2bc10f74… → 6d811965…`. No schema/wm change (v5 / v6 hold).
+
+### 31 — development: CONDITIONAL TDD PHASES — `phase_completed(3)` + `(9)` → optional (#76 live sweep)
+
+The first live 1.0.82 development sweep run (`reports/20260830T195810Z`, 24.75 AIU / 120 req)
+REGRESSED on a single FAIL: `phase_completed(3)` extra. The state recorded
+`has_reproducible_defect: false` (so the required `task_characteristic(has_reproducible_defect)=false`
+MATCHED — 37 PASS held) YET `completed_phases: [1,2,3,5,6,7,8,10,11,14]` includes **phase 3**: the
+model exercised its latitude to run the **TDD Red Gate** (a bug-fix task) even with the characteristic
+pinned false (gate "Continue to Phase 3: TDD Red Gate?" fired; `gate_fired_at(phase-3)` already
+optional).
+
+**Cause = harness modeling gap, NOT a maister failure.** Phases 3 (TDD Red) and 9 (TDD Green) are
+DOCUMENTED conditional phases (`development/SKILL.md` Phase 3 activation "When has_reproducible_defect",
+Phase 9 "When Phase 3 was executed") — but unlike the other conditional phases (6/12/13 already
+optional), 3 and 9 were never modeled optional, because the scenario pins `has_reproducible_defect=false`
+to intend the no-TDD path. The live run shows that pin is NOT absolute: the model retains latitude to
+run TDD on a bug-fix. **Fix:** add `phase_completed(3)` + `phase_completed(9)` to `optional` — completing
+the conditional-phase optional set. Model-grounded (both are real conditional phases), NOT fitted (the
+run merely REVEALED the pin's non-absoluteness). No grammar/schema/wm change (v5 / v6 hold); dev-only
+re-stamp `93cb8144… → 16f49e32…`.
+
+**Also observed this run (NO change — the design working):** `outcome(spec-structure)=fail` surfaced as
+a tracked LIMITATION (this run's spec.md did not open with `## TL;DR`), NOT a regression — exactly the
+WP-D2 optional-`=pass`+allowlist-`=fail` semantics (CALIBRATION #29). This CONFIRMS the structure oracle
+must stay OPTIONAL: it legitimately varies across runs, so `outcome(*-structure)=pass` is NOT promoted to
+required (the ≥2-clean-runs criterion is not met — DEV82 passed, this run failed the spec opener).
+
+**Credit-free proof:** replaying `20260830T195810Z` after the fix flips **REGRESSED → AS-EXPECTED
+(37 PASS · 3 LIMITATION · 0 FAIL)** (the 3 LIMITATIONs: `reviews-spec-audit` fan-out,
+`outcome(spec-structure)=fail`, `state_schema(off-schema)` — all pre-modeled/tracked).

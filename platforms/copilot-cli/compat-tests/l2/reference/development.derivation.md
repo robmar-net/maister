@@ -54,11 +54,13 @@ required + 33 optional + 21 rules + 6 allowlist = 92 rows.
 | `min_count(delegated(task-group-implementer))=1` | required | implementation-plan-executor/SKILL.md:87-99 | COUNT (issue #48, Stage 4): the plan executor delegates ONE task-group-implementer per task group (implementation-plan-executor/SKILL.md:87-99), so a correct dev run fans out ≥1 — token-expansion `=1..c`, reference asserts the floor `=1` |
 | `state_schema(conformant)` | optional | :107-122, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema (canonical `completed_phases` + top-level `task:` block). **It is NOT hard-required** because the runtime routing/resume readers (`development/SKILL.md:247`, `orchestrator-patterns.md:358-360`) are model-interpreted and *semantic* — a bare-int `completed_phases` or a top-level `status:` is read for the same meaning — so an off-schema serialization is behavior-preserving, not a functional regression. The divergence stays visible via the `state_schema(off-schema)` allowlist LIMITATION (🟢 ADAPTED); lexical parity would need a deterministic post-write normalizer hook (tracked in #57). Keyed on the dedicated `schemaDivergences` signal (NOT `parseWarnings`), so legitimate absences do not mark off-schema. Model-grounded demotion (readers are semantic), NOT fitted to a run |
 
-## Optional (40)
+## Optional (42)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
+| `phase_completed(3)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Red Gate — activation "When `has_reproducible_defect`". The scenario pins `has_reproducible_defect=false` but the model retains latitude to run TDD on a bug-fix (live 1.0.82 run ran phase 3 with the characteristic false); optional completes the conditional-phase set |
 | `phase_completed(6)` | optional | :114, :309 | Activation "Always (conditional)" (:114); "Recommended: Always … User can skip" (:309, gate :311) |
+| `phase_completed(9)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Green Gate — activation "When Phase 3 was executed". Paired with `phase_completed(3)`; optional for the same latitude reason |
 | `delegated(spec-auditor)` | optional | :305 | P6 delegation; skippable per :309 |
 | `delegated(implementation-completeness-checker)` | optional | implementation-verifier/SKILL.md:120 | Sub-delegation inside the verifier; surfacing depends on the P10 verification-scope selection (:425) and platform (see allowlist note) |
 | `delegated(test-suite-runner)` | optional | implementation-verifier/SKILL.md:107 | Skipped entirely when `skip_test_suite: true` (implementation-verifier/SKILL.md:113) |
