@@ -305,17 +305,17 @@ sqlite3 ~/.copilot/session-store.db \
 predate the **#63 gate-witness recalibration** (why the current credit-free *effective-required* counts
 differ: development 37, research 15 effective). What is **CURRENT** today is the credit-free conformance:
 `--check-reference` **×4** (development / research / quick-bugfix / **destructive-guard**) + the full
-pipeline / replay / cost unit suite, all green (workflow-model v5). **Item-9 sweep progress (1.0.82):**
-`development` refreshed live (AS-EXPECTED, 47.49 AIU — see the row + the gateMap-fix note below) and
-`research` ran an `--runs=3` calibration; `quick-bugfix` and a first `destructive-guard` live verdict
-at 1.0.82 remain for a later dedicated run (the credit-free conformance for both is CURRENT).
+pipeline / replay / cost unit suite, all green (**workflow-model v6**, after the #76 WP-D grammar-head
+bump). **#76 WP-D live sweep (2026-08-30, Copilot 1.0.82, ~39.5 AIU total):** all four scenarios driven
+live on the WP-D/WP-D2 harness — `destructive-guard`, `research` clean; `quick-bugfix` and `development`
+each caught a real harness modeling gap (fixed credit-free, PRs #81/#82) then replay-confirmed AS-EXPECTED.
 
 | Layer / scenario | Copilot CLI | Verdict |
 |---|---|---|
 | L0 / WS7 (7 contracts) | 1.0.76 & 1.0.81 | ✅ 7/7 (live) |
-| L2 research | 1.0.81 · N=3 re-run 1.0.82 | ✅ AS-EXPECTED (9/9, diff NONE) live; 1.0.82 `--runs=3` noise-cal 275.14 AIU (see Cost) |
-| L2 development | **1.0.82** (item-9 sweep) | ✅ AS-EXPECTED (37 PASS · 6 LIMITATION · 0 FAIL) — **47.49 AIU**. Raw drive was REGRESSED on one false FAIL (`gate_fired_at(phase-11)`): the Phase-11 exit gate fired as *"Continue to Phase 14 finalization?"* (12/13 skipped) but the gateMap hard-coded "phase 12". Fixed the gateMap regex; **replay of the persisted 1.0.82 bundle flipped REGRESSED→AS-EXPECTED credit-free**. 1.0.81: 25/25 diff NONE (post-#46). |
-| L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2 vs pre-calibration partition, diff NONE — see CALIBRATION-LOG note 4) live |
-| L2 destructive-guard | — | credit-free CURRENT (`--check-reference` + scenario/replay tests); **live verdict pending the item-9 sweep** |
+| L2 research | **1.0.82** (WP-D sweep) | ✅ AS-EXPECTED (**13 PASS · 0 LIMITATION · 0 FAIL**, **12.41 AIU**, `20260830T195404Z`) — confirmed the #81 fix (`standards`/`todos` modeled) live. Earlier: 1.0.81 9/9 diff NONE; 1.0.82 `--runs=3` noise-cal 275.14 AIU (see Cost) |
+| L2 development | **1.0.82** (WP-D sweep) | ✅ AS-EXPECTED (**37 PASS · 3 LIMITATION · 0 FAIL**, **24.75 AIU**, `20260830T195810Z`) **after** fix #82. Raw drive REGRESSED on `phase_completed(3)`: the model ran the TDD Red Gate (conditional phase 3) with `has_reproducible_defect=false` — phases 3/9 were unmodeled; added optional (CALIBRATION #31). This run also showed `outcome(spec-structure)=fail` as a tracked LIMITATION (spec.md did not open with `## TL;DR`) — the WP-D2 oracle working; structure oracle stays OPTIONAL (varies across runs). Prior item-9 run `20260830T155522Z`: 37/6/0, 47.49 AIU. |
+| L2 quick-bugfix | **1.0.82** (WP-D sweep) | ✅ AS-EXPECTED (**4 PASS · 0 LIMITATION · 0 FAIL**, **1.53 AIU**, `20260830T192629Z`) **after** fix #81. Raw drive REGRESSED on `standards(index_read)` extra — quick-bugfix reads INDEX.md (SKILL.md:52) but the global emit was modeled only on development; added optional (CALIBRATION #30). Earlier: 1.0.81 2/2 diff NONE. |
+| L2 destructive-guard | **1.0.82** (WP-D sweep) | ✅ AS-EXPECTED (**2 PASS · 0 LIMITATION · 0 FAIL**, **0.84 AIU**, `20260830T192611Z`) live — first 1.0.82 verdict; live guard-fire `hook_effect(destructive_guard=ask)` confirmed. |
 
 _(Record each new live run in the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix).)_
