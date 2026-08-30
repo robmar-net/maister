@@ -1,0 +1,277 @@
+{
+  "inventory": {
+    "skills": [
+      "codebase-analyzer",
+      "development",
+      "docs-manager",
+      "implementation-plan-executor",
+      "implementation-verifier",
+      "init",
+      "migration",
+      "mockup-studio",
+      "orchestrator-framework",
+      "performance",
+      "product-design",
+      "quick-bugfix",
+      "quick-dev",
+      "quick-plan",
+      "research",
+      "standards-discover",
+      "standards-update"
+    ],
+    "commands": [
+      "reviews-code",
+      "reviews-pragmatic",
+      "reviews-production-readiness",
+      "reviews-reality-check",
+      "reviews-spec-audit",
+      "work"
+    ],
+    "agents": [
+      "ascii-mockup-generator",
+      "bottleneck-analyzer",
+      "code-quality-pragmatist",
+      "code-reviewer",
+      "codebase-analysis-reporter",
+      "docs-operator",
+      "e2e-test-verifier",
+      "gap-analyzer",
+      "html-companion-writer",
+      "implementation-completeness-checker",
+      "implementation-planner",
+      "information-gatherer",
+      "production-readiness-checker",
+      "project-analyzer",
+      "reality-assessor",
+      "research-planner",
+      "research-synthesizer",
+      "solution-brainstormer",
+      "solution-designer",
+      "spec-auditor",
+      "specification-creator",
+      "task-classifier",
+      "task-group-implementer",
+      "test-suite-runner",
+      "user-docs-generator"
+    ],
+    "hooks": [
+      "block-destructive-commands",
+      "post-compact-reminder",
+      "skill-invocation-reminder"
+    ]
+  },
+  "coverage": {
+    "skills": [
+      {
+        "name": "codebase-analyzer",
+        "l2Evidence": true
+      },
+      {
+        "name": "development",
+        "l2Evidence": true
+      },
+      {
+        "name": "docs-manager",
+        "l2Evidence": false
+      },
+      {
+        "name": "implementation-plan-executor",
+        "l2Evidence": true
+      },
+      {
+        "name": "implementation-verifier",
+        "l2Evidence": true
+      },
+      {
+        "name": "init",
+        "l2Evidence": false
+      },
+      {
+        "name": "migration",
+        "l2Evidence": false
+      },
+      {
+        "name": "mockup-studio",
+        "l2Evidence": false
+      },
+      {
+        "name": "orchestrator-framework",
+        "l2Evidence": false
+      },
+      {
+        "name": "performance",
+        "l2Evidence": false
+      },
+      {
+        "name": "product-design",
+        "l2Evidence": false
+      },
+      {
+        "name": "quick-bugfix",
+        "l2Evidence": true
+      },
+      {
+        "name": "quick-dev",
+        "l2Evidence": false
+      },
+      {
+        "name": "quick-plan",
+        "l2Evidence": false
+      },
+      {
+        "name": "research",
+        "l2Evidence": true
+      },
+      {
+        "name": "standards-discover",
+        "l2Evidence": false
+      },
+      {
+        "name": "standards-update",
+        "l2Evidence": false
+      }
+    ],
+    "commands": [
+      {
+        "name": "reviews-code",
+        "l2Evidence": true
+      },
+      {
+        "name": "reviews-pragmatic",
+        "l2Evidence": true
+      },
+      {
+        "name": "reviews-production-readiness",
+        "l2Evidence": true
+      },
+      {
+        "name": "reviews-reality-check",
+        "l2Evidence": true
+      },
+      {
+        "name": "reviews-spec-audit",
+        "l2Evidence": true
+      },
+      {
+        "name": "work",
+        "l2Evidence": false
+      }
+    ],
+    "agents": [
+      {
+        "name": "ascii-mockup-generator",
+        "l2Evidence": false
+      },
+      {
+        "name": "bottleneck-analyzer",
+        "l2Evidence": false
+      },
+      {
+        "name": "code-quality-pragmatist",
+        "l2Evidence": true
+      },
+      {
+        "name": "code-reviewer",
+        "l2Evidence": true
+      },
+      {
+        "name": "codebase-analysis-reporter",
+        "l2Evidence": true
+      },
+      {
+        "name": "docs-operator",
+        "l2Evidence": false
+      },
+      {
+        "name": "e2e-test-verifier",
+        "l2Evidence": true
+      },
+      {
+        "name": "gap-analyzer",
+        "l2Evidence": true
+      },
+      {
+        "name": "html-companion-writer",
+        "l2Evidence": false
+      },
+      {
+        "name": "implementation-completeness-checker",
+        "l2Evidence": true
+      },
+      {
+        "name": "implementation-planner",
+        "l2Evidence": true
+      },
+      {
+        "name": "information-gatherer",
+        "l2Evidence": true
+      },
+      {
+        "name": "production-readiness-checker",
+        "l2Evidence": true
+      },
+      {
+        "name": "project-analyzer",
+        "l2Evidence": false
+      },
+      {
+        "name": "reality-assessor",
+        "l2Evidence": true
+      },
+      {
+        "name": "research-planner",
+        "l2Evidence": true
+      },
+      {
+        "name": "research-synthesizer",
+        "l2Evidence": true
+      },
+      {
+        "name": "solution-brainstormer",
+        "l2Evidence": true
+      },
+      {
+        "name": "solution-designer",
+        "l2Evidence": true
+      },
+      {
+        "name": "spec-auditor",
+        "l2Evidence": true
+      },
+      {
+        "name": "specification-creator",
+        "l2Evidence": true
+      },
+      {
+        "name": "task-classifier",
+        "l2Evidence": false
+      },
+      {
+        "name": "task-group-implementer",
+        "l2Evidence": true
+      },
+      {
+        "name": "test-suite-runner",
+        "l2Evidence": true
+      },
+      {
+        "name": "user-docs-generator",
+        "l2Evidence": true
+      }
+    ],
+    "hooks": [
+      {
+        "name": "block-destructive-commands",
+        "l2Evidence": false
+      },
+      {
+        "name": "post-compact-reminder",
+        "l2Evidence": false
+      },
+      {
+        "name": "skill-invocation-reminder",
+        "l2Evidence": false
+      }
+    ]
+  }
+}
