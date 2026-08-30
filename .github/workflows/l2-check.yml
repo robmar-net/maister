@@ -47,6 +47,15 @@ jobs:
       - name: L2 unit suite (pure modules + pipeline; no seat, no credits)
         run: node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs
 
+      # Parity-Map coverage guard (#76 WP-F): regenerate the source-inventory snapshot and fail if it
+      # drifted from the committed one — an upstream skill/agent/command/hook added or removed must be
+      # absorbed into the Parity-Map (wiki) before merge, so the map cannot silently omit a behavior.
+      - name: Parity-Map inventory snapshot is current
+        run: |
+          node platforms/copilot-cli/compat-tests/l2/tools/parity-coverage.mjs --json > docs/parity/inventory.json
+          git diff --exit-code -- docs/parity/inventory.json \
+            || { echo "::error::plugins/maister inventory changed — regenerate docs/parity/inventory.json and update the Parity-Map wiki page"; exit 1; }
+
       # Credit-free staleness/tamper verdict per scenario. `run.sh --check-reference` short-circuits
       # BEFORE the seat preflight (LOW-4), so it works with no seat and touches no operator config.
       # exit 0 current · exit 1 stale (re-derive) · exit 2 corrupt — any non-zero fails the run.
