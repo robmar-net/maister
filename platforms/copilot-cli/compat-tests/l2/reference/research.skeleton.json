@@ -46,11 +46,11 @@
       "require": "gate_fired_at(phase-1)"
     },
     {
-      "when": "phase_completed(4)",
+      "when": "delegated(solution-brainstormer)",
       "require": "gate_fired_at(phase-4)"
     },
     {
-      "when": "phase_completed(5)",
+      "when": "delegated(solution-designer)",
       "require": "gate_fired_at(phase-5)"
     },
     {
@@ -69,5 +69,5 @@
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "16c635b402773e7ae03c5ad0aaf5bb7cb9e5e58b7753768dca915d4e80607d92"
+  "hash": "b30b1e64ae874af60386def5ebaf29222daa79a7b01e0f67216965f5a9749b01"
 }

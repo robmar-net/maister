@@ -10,7 +10,7 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Source (read-only citation source) | `plugins/maister/skills/research/SKILL.md` |
 | maister_version | `2.2.2` |
 | workflow_model_version | `5` |
-| Sibling JSON hash | `16c635b402773e7ae03c5ad0aaf5bb7cb9e5e58b7753768dca915d4e80607d92` |
+| Sibling JSON hash | `b30b1e64ae874af60386def5ebaf29222daa79a7b01e0f67216965f5a9749b01` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
@@ -72,16 +72,27 @@ prefix keys the run.mjs floor via `WITNESS_REQUIRE_RE`, see L2-DESIGN): `gate_fi
 ### Gate-placement rules (Stage 3, 3)
 
 Each rule promotes its `require` predicate to *required* ONLY when
-its `when` predicate (`phase_completed(N)`) is observed — a gate whose phase never completed cannot
-false-alarm. Derived EXACTLY from the mandatory-gate exit markers in the source SKILL.md (research
-has a MANDATORY-GATE exit on phases 1, 4, and 5), never fitted to a run. Every `require` row is also
-modelled in `## Optional` above so an observed-but-unpromoted gate is not an unmodeled extra.
+its `when` predicate is observed — a gate whose phase never ran cannot false-alarm. Derived EXACTLY
+from the mandatory-gate exit markers in the source SKILL.md (research has a MANDATORY-GATE exit on
+phases 1, 4, and 5), never fitted to a run. Every `require` row is also modelled in `## Optional` above
+so an observed-but-unpromoted gate is not an unmodeled extra.
+
+**#63 item 1 (#59): conditional-phase gates are keyed on the phase's EXECUTION WITNESS, not
+`phase_completed(N)`.** Phase 1 (always-run foundation) keeps `phase_completed(1)`. Phases 4
+(brainstorming) and 5 (design) are **skippable** (`:246`/`:317` "Skip if …") and maister marks skipped
+phases "completed" — so `when: phase_completed(4/5)` false-REGRESSED a legitimate skip-path run on the
+phase-4/5 exit gates (N=3 evidence: `phase_completed(4/5)` stable 3/3, `gate_fired_at(phase-4/5)` 1/3).
+Keying on the delegation that only fires when the phase actually runs (`delegated(solution-brainstormer)`
+= P3/P4 brainstormer, `delegated(solution-designer)` = P5 designer) makes the exit gate required only
+when the phase executed. Model-cited, not run-fitted; validated credit-free by replaying the skip-path
+bundle `reports/20260830T002503Z/` (the two `gate_fired_at(phase-4/5)` FAILs disappear; M2 still REGRESSES
+for the intended knockout).
 
 | when | require | citation |
 |---|---|---|
-| `phase_completed(1)` | `gate_fired_at(phase-1)` | :198 ("Research foundation complete … Continue to brainstorming evaluation?", :200) |
-| `phase_completed(4)` | `gate_fired_at(phase-4)` | :302 ("Brainstorming complete. Continue to high-level design?", :304) |
-| `phase_completed(5)` | `gate_fired_at(phase-5)` | :351 ("Design complete. Continue to output generation?", :353) |
+| `phase_completed(1)` | `gate_fired_at(phase-1)` | :198 ("Research foundation complete … Continue to brainstorming evaluation?", :200) — Phase 1 is the unconditional foundation |
+| `delegated(solution-brainstormer)` | `gate_fired_at(phase-4)` | brainstormer delegated ⇒ brainstorming RAN (:246 "Skip if `brainstorming_enabled=false`"); its exit gate is :302 ("Brainstorming complete. Continue to high-level design?", :304) |
+| `delegated(solution-designer)` | `gate_fired_at(phase-5)` | designer delegated ⇒ design RAN (:317 "Skip if `design_enabled=false`"); its exit gate is :351 ("Design complete. Continue to output generation?", :353) |
 
 ### Witness relation + count rule (Stage 4, 2)
 

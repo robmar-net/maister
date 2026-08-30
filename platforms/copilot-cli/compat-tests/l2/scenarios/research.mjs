@@ -79,12 +79,21 @@ const gateMap = [
 ];
 
 /**
- * answerMap (Stage 3) — deterministic gate choices for `chooseAnswer`. Every phase-exit gate
- * proceeds with `yes`; a design constraints/preferences prompt takes the first option. Unmatched ->
- * `choices[0] ?? 'yes'` responder-fallback.
+ * answerMap (Stage 3; extended #63 item 1) — deterministic gate choices for `chooseAnswer`. Every
+ * phase-exit gate proceeds with `yes`. The brainstorming/design SKIP-DECISION gates ("Explore solution
+ * alternatives anyway?" / "Generate a high-level design anyway?") are answered EXPLICITLY so the routing
+ * is a HARNESS decision, not `choices[0]` order chosen by the model (both were `responder-fallback` in
+ * reports/20260830T002503Z, and the N=3 run split 1 deep / 2 skip = 275 AIU precisely because the path
+ * was model-decided). DEFAULT = SKIP (the cheap ~13 AIU foundation path, which also exercises the #59
+ * skip-path where gate_fired_at(phase-4/5) must NOT be required); `COMPAT_L2_DEEP=1` answers "Yes" to
+ * exercise phases 4/5 (brainstorming + design; the expensive path). A design constraints/preferences
+ * prompt takes the first option. Unmatched -> `choices[0] ?? 'yes'` responder-fallback.
  */
+const DEEP = process.env.COMPAT_L2_DEEP === '1';
 const answerMap = [
   { re: /continue to/i, choice: 'yes' },
+  { re: /explore solution alternatives|solution alternatives anyway|brainstorm[a-z]*\s+anyway/i, choice: DEEP ? 'Yes' : 'No', phase: 4 },
+  { re: /generate a high-level design|high-level design anyway|\bdesign\b[^?]*anyway/i, choice: DEEP ? 'Yes' : 'No', phase: 5 },
   { re: /architectural constraints|preferences/i, choice: null }, // null -> choices[0]
 ];
 

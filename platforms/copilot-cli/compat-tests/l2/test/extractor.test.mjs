@@ -43,6 +43,7 @@ test('T1 events: subagent.started -> delegated(agentName), name preserved as obs
   const expected = [
     'maister-copilot:gap-analyzer',
     'maister-copilot:specification-creator',
+    'maister-copilot:spec-auditor',
     'maister-copilot:implementation-planner',
     'maister-copilot:task-group-implementer',
     'maister-copilot:implementation-completeness-checker',

@@ -78,11 +78,11 @@
       "require": "gate_fired_at(phase-2)"
     },
     {
-      "when": "phase_completed(3)",
+      "when": "task_characteristic(has_reproducible_defect)=true",
       "require": "gate_fired_at(phase-3)"
     },
     {
-      "when": "phase_completed(4)",
+      "when": "task_characteristic(ui_heavy)=true",
       "require": "gate_fired_at(phase-4)"
     },
     {
@@ -90,7 +90,7 @@
       "require": "gate_fired_at(phase-5)"
     },
     {
-      "when": "phase_completed(6)",
+      "when": "delegated(spec-auditor)",
       "require": "gate_fired_at(phase-6)"
     },
     {
@@ -102,7 +102,7 @@
       "require": "gate_fired_at(phase-8)"
     },
     {
-      "when": "phase_completed(9)",
+      "when": "task_characteristic(has_reproducible_defect)=true",
       "require": "gate_fired_at(phase-9)"
     },
     {
@@ -114,11 +114,11 @@
       "require": "gate_fired_at(phase-11)"
     },
     {
-      "when": "phase_completed(12)",
+      "when": "delegated(e2e-test-verifier)",
       "require": "gate_fired_at(phase-12)"
     },
     {
-      "when": "phase_completed(13)",
+      "when": "delegated(user-docs-generator)",
       "require": "gate_fired_at(phase-13)"
     },
     {
@@ -190,5 +190,5 @@
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
     }
   ],
-  "hash": "9f431947b38a08dd892dd0c0f233595200ff772ea5c794ceb2740b170b54b830"
+  "hash": "77b935c141d259b366b73c29126ae0584b34738529125e3591742a2b597f8907"
 }
