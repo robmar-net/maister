@@ -130,6 +130,15 @@ full Stage-1 negative-control exploration cost **~39.97 AIU / 180 requests acros
 bound the query at BOTH ends (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`); the base
 query bounds only the start and would sweep in later sessions.
 
+> **Research cost is highly variable — do NOT budget `N × single-run`.** A `research` drive that
+> *skips* brainstorming/design (a "narrow investigation" the model self-routes past) costs ~13–14 AIU;
+> one that *executes* them runs ~5–7× that. Observed live: single foundation/skip runs 13.21 / 13.96 AIU,
+> but a `--runs=3` noise calibration (2026-08-30, Copilot 1.0.82) cost **275.14 AIU / 244 req** because
+> 1 of the 3 drives went deep (`gate_count(ask)=9`, full brainstorming+design). Estimate research N>1
+> against the **deep-run** cost (~90–100 AIU/run), not the skip-run cost, and gate the spend accordingly.
+> The re-run rule ("after any grammar change and on each new CLI version") also states: N>1 does **not**
+> persist a replay trace, so there is no credit-free re-score of an N>1 run.
+
 ## L2 re-run cadence policy
 
 L2 is the **occasional** layer (L0/L1 are the per-build guardrails; L2 runs on demand). This policy
