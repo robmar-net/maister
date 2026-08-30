@@ -36,7 +36,9 @@
     "min_count(delegated(task-group-implementer))=1"
   ],
   "optional": [
+    "phase_completed(3)",
     "phase_completed(6)",
+    "phase_completed(9)",
     "delegated(spec-auditor)",
     "delegated(implementation-completeness-checker)",
     "delegated(test-suite-runner)",
@@ -212,5 +214,5 @@
       "reason": "WP-D2 (issue #76) structure oracle: verification/implementation-verification.md did not open with the § 7 Artifact Summary Contract '## TL;DR'. Tracked LIMITATION while outcome(verification-structure)=pass is optional; same promotion path."
     }
   ],
-  "hash": "93cb81448f90bffe126edaa42fee75ec7d4d0a3b85c4c51be1e8a7b017dae7b1"
+  "hash": "16f49e328351b5bc5ee6c7578a56b007d83e1674053c91832b618bd0464ed618"
 }
