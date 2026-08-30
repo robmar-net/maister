@@ -1,7 +1,7 @@
 // Credit-free proof: canonicalize() turns REAL captured off-schema state files into ones the
 // L2 extractor scores as state_schema(conformant), with task.status still derivable.
 import fs from 'node:fs';
-import { canonicalize } from './canonicalize-orchestrator-state.mjs';
+import { canonicalize } from '../../../../hooks-overrides/canonicalize-orchestrator-state.mjs';
 import { parseState } from '../../extractor.mjs';
 
 const files = process.argv.slice(2);

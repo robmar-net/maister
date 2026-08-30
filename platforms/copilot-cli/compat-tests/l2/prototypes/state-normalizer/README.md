@@ -37,11 +37,20 @@ silent preference (per [ADR 0001](../../../../../../docs/adr/0001-copilot-orches
 
 Full L2 unit suite still 137 pass / 0 fail / 2 skip; `make build` / `validate` / `check-deterministic` green.
 
-## Remaining gates before this can ship (governed, separate steps)
-1. ~~Extractor companion~~ — **done on this branch** (above).
-2. **In-place safety:** a live research drive with `in-place` to confirm whether re-read-before-patch holds (else keep shadow).
-3. **Scope:** this fixes the two conformance-oracle sites (`completed_phases` format, `task:` block). Full structural parity with maister's documented schema (nesting, `task_context.task_characteristics`) is broader and not attempted here.
-4. **Wiring:** integrate the hook via `platforms/copilot-cli/hooks-overrides/` + a `build.sh` WS2-style overlay, with L1 coverage + formal harness tests for the companion — a real PR, not this prototype.
+## Now WIRED into the build (this branch)
+The shipped files live in `platforms/copilot-cli/hooks-overrides/` (`normalize-orchestrator-state.sh`,
+`canonicalize-orchestrator-state.mjs`); `build.sh` WS2e/WS2f copies them into `plugins/maister-copilot/hooks/`
+and registers a `PostToolUse:Edit` entry (default mode **shadow**). Verified: `make build` / `validate` /
+`check-deterministic` green (byte-identical rebuild with the hook), L2 suite 137/0/2, L1 `--no-live` AS-EXPECTED.
+
+## Remaining gates before this is a real (mergeable) PR
+1. ~~Extractor companion~~ — **done** (above).
+2. ~~Build wiring~~ — **done** (WS2e/WS2f).
+3. **In-place safety / shipped-mode decision:** shadow's only consumer is the L2 harness — a real user gets an
+   unread sidecar + a per-edit `jq` tax. A live `in-place` drift test decides whether we upgrade to in-place
+   (real user parity, no sidecar) or keep shadow / a documented LIMITATION. **This is the deciding gate — see ADR 0001.**
+4. **L1 coverage for the new hook:** the PostToolUse normalizer has no L1 check yet (only the 3 original hooks).
+5. **Scope:** fixes the two conformance-oracle sites; full structural schema parity is broader.
 
 ## Correction logged (honesty)
 An earlier #57 comment claimed off-schema state "knocks out `task_status(completed)`". The extractor's

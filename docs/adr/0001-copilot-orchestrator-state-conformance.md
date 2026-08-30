@@ -72,6 +72,12 @@ Rewrite the working file in place **only** if a live drive proves the workflow r
   not a stable `file_path` field — brittle to payload changes across CLI versions; re-verify on bumps.
 - Scope: Layer 2 fixes only the two conformance-oracle sites (`completed_phases` format, `task:` block).
   Full structural schema parity (nesting, `task_context.task_characteristics`) is broader and out of scope here.
+- **Shadow's only consumer is the L2 harness companion.** For a *real* maister-copilot user the shadow is an
+  unread `orchestrator-state.canonical.yml` sidecar, and the `Edit`-matched hook runs on **every** file edit
+  (a small per-edit `bash`+`jq` tax). So shipping shadow mode measures the variant's conformance but does **not**
+  give a real user a conformant *working* file — only **in-place** (Layer 3) does, without a sidecar. Treat
+  shadow as the safe, measurable **interim**; the drift test decides whether we upgrade to in-place for true
+  user-facing parity (or keep the documented LIMITATION rather than ship test-only instrumentation to users).
 
 ## Alternatives considered
 

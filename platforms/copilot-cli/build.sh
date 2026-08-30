@@ -56,6 +56,26 @@ perl -0777 -i -pe '
   END { exit($c == 1 ? 0 : 1) }
 ' "$OUT/hooks/hooks.json" || { echo "FAIL: WS2d: SessionStart compact block not found exactly once in \$OUT/hooks/hooks.json (source drift?)" >&2; exit 1; }
 
+# WS2e (#57 / ADR 0001): overlay the PostToolUse orchestrator-state normalizer. Copilot writes
+# orchestrator-state.yml off-schema (bare-int completed_phases; top-level status: with no task: block);
+# this hook re-serializes it to maister's documented shape so the variant emits conformant state. It
+# matches Copilot's `Edit` (apply-patch) file tool — PostToolUse support + the tool_result path verified
+# live on Copilot 1.0.82. DEFAULT MODE is `shadow` (writes orchestrator-state.canonical.yml, never mutates
+# the working file — Copilot patches state incrementally, so an in-place rewrite would desync the next
+# patch; the L2 harness's findStateYaml prefers the shadow and names the source). in-place is opt-in via
+# STATE_NORMALIZER_MODE, gated on a live drift test (ADR 0001 Layer 3). NOT in the Claude source (Claude
+# serializes on-schema and has no apply-patch tool); Copilot-only overlay.
+cp "$SCRIPT_DIR/hooks-overrides/normalize-orchestrator-state.sh" "$OUT/hooks/normalize-orchestrator-state.sh"
+cp "$SCRIPT_DIR/hooks-overrides/canonicalize-orchestrator-state.mjs" "$OUT/hooks/canonicalize-orchestrator-state.mjs"
+chmod +x "$OUT/hooks/normalize-orchestrator-state.sh"
+
+# WS2f: register the normalizer as a PostToolUse:Edit hook in hooks.json. Guarded: the PreToolUse-closing
+# anchor (end of the hooks object) must match exactly once; inserts a sibling PostToolUse array after it.
+perl -0777 -i -pe '
+  $c = s/(        \]\n      \}\n    \])\n  \}\n\}\n?$/$1,\n    "PostToolUse": [\n      {\n        "matcher": "Edit",\n        "hooks": [\n          {\n            "type": "command",\n            "command": "\${CLAUDE_PLUGIN_ROOT}\/hooks\/normalize-orchestrator-state.sh",\n            "timeout": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n/s;
+  END { exit($c == 1 ? 0 : 1) }
+' "$OUT/hooks/hooks.json" || { echo "FAIL: WS2f: PreToolUse-closing anchor not found exactly once in \$OUT/hooks/hooks.json (source drift?)" >&2; exit 1; }
+
 # 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
 #    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
 sedi -e 's/"name": "maister"/"name": "maister-copilot"/' \

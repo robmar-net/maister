@@ -56,6 +56,23 @@ a run go green is legitimate **only** when the divergence is simultaneously (a) 
 **workflow model** — not fitted to an observed run — and (b) documented + visible + tracked per point 2.
 A silent green that buries a real gap is the one outcome this project exists to prevent.
 
+### Decision records (ADRs) — write them, and never delete them
+
+Significant decisions get an **ADR** under [`docs/adr/`](docs/adr/) (`NNNN-short-slug.md`, zero-padded,
+sequential). "Significant" = anything a future contributor would otherwise have to reverse-engineer or
+re-litigate: an architectural choice, a conformance/harness-semantics decision, a parity trade-off, a
+"why we did NOT do the obvious thing" call. When in doubt, write one.
+
+**ADRs are append-only history, not living docs.** When we change our mind, we do **not** edit away or
+delete the old ADR — the superseded reasoning is exactly the record we want to keep. Instead:
+
+- Add a **new** ADR that states the new decision and opens with `Supersedes ADR NNNN`.
+- Update the **old** ADR's `Status` to `Superseded by ADR MMMM` (a one-line status change + link only —
+  leave its body intact as the historical record).
+
+The point is the same as the parity principle above: never quietly erase a decision or the context that
+produced it. The trail of *why we thought X, then learned Y, then chose Z* is the asset.
+
 ## Remotes — identify by repo SLUG, not by remote name
 
 Remote *names* differ between clones (`origin`/`upstream`/`fork` are used inconsistently across
