@@ -691,7 +691,7 @@ function assertValidOutcomeSpec(spec) {
   if (!hasCommand && !hasAssert) {
     throw new Error(`outcome spec "${spec.id}" has neither a \`command\` nor an \`assert\``);
   }
-  if (hasAssert && spec.assert !== 'research-deliverables') {
+  if (hasAssert && spec.assert !== 'research-deliverables' && spec.assert !== 'artifact-headings') {
     throw new Error(`outcome spec "${spec.id}" has an unknown assert kind: ${spec.assert}`);
   }
 }
@@ -773,6 +773,54 @@ function runAssertionOutcome(spec, rundir) {
   return mk('pass', `research-report.md ${bytes}B, ${nonBlank} non-blank lines, heading + synthesis present`);
 }
 
+// assertion-type ('artifact-headings'): a STRUCTURE oracle over ONE produced artifact. Asserts the
+// maister Artifact Summary Contract (orchestrator-patterns.md § 7:408 — "every artifact opens with a
+// TL;DR"): the artifact's FIRST markdown heading is `## TL;DR`, and the file is non-stub (>= minBytes).
+// Body-section headings are deliberately NOT asserted: the templates mandate them but their WORDING
+// legitimately varies per task (e.g. spec "## Goal" vs a run's "## Goal and User Journey"), so a
+// wording match would fit-to-run; the § 7 opener is the stable, uniformly-mandated invariant. This is
+// content/structure, NOT mere existence (the created_artifact tree records already prove existence).
+// params: { file (task-dir-relative), taskType (default 'development'), requiredHeading (default
+// '## TL;DR'), minBytes (default 0) }. Any unmet condition -> fail naming it (surfaced VISIBLY; the
+// reference allowlists the matching `=fail` as a tracked LIMITATION until >=2 runs promote `=pass`).
+function runArtifactHeadingsOutcome(spec, rundir) {
+  const id = spec.id;
+  const mk = (value, evidence) => ({ kind: 'outcome', name: id, value, source: 'outcome', evidence });
+  const params = spec.params || {};
+  const rel = String(params.file ?? '');
+  const taskType = String(params.taskType ?? 'development');
+  const requiredHeading = String(params.requiredHeading ?? '## TL;DR');
+  const minBytes = Number(params.minBytes ?? 0);
+  if (!rel) return mk('fail', 'artifact-headings spec missing params.file');
+
+  // Newest task dir under rundir/.maister/tasks/<taskType>/*.
+  const typeRoot = path.join(String(rundir ?? ''), '.maister', 'tasks', taskType);
+  let taskDir = null;
+  try {
+    const dirs = fs.readdirSync(typeRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => path.join(typeRoot, e.name));
+    taskDir = dirs.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] || null;
+  } catch { taskDir = null; }
+  if (!taskDir) return mk('fail', `no ${taskType} task dir under .maister/tasks/${taskType}/*`);
+
+  const file = path.join(taskDir, rel);
+  if (!isFile(file)) return mk('fail', `${rel} missing`);
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch (err) { return mk('fail', `${rel} unreadable: ${err.message}`); }
+
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes < minBytes) return mk('fail', `${rel} ${bytes} bytes < minBytes ${minBytes}`);
+
+  // FIRST markdown heading (any level) must be the § 7 opener. Trailing whitespace tolerated.
+  const firstHeading = (text.match(/^#{1,6}\s+.*$/m) || [null])[0];
+  if (firstHeading == null) return mk('fail', `${rel} has no markdown heading`);
+  if (firstHeading.trim() !== requiredHeading) {
+    return mk('fail', `${rel} opens with "${firstHeading.trim()}", not the § 7 contract "${requiredHeading}"`);
+  }
+  return mk('pass', `${rel} opens with "${requiredHeading}" (§ 7 Artifact Summary Contract), ${bytes}B`);
+}
+
 // Run each outcome spec (array) against the live rundir, returning one record per entry in array order.
 // `outcome == null` (no spec) yields []. A bad-SHAPE spec throws; a bad-RESULT yields a fail record.
 export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = null) {
@@ -786,7 +834,9 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
     records.push(
       typeof spec.command === 'string'
         ? runCommandOutcome(spec, rundir, sandboxTemplateDir)
-        : runAssertionOutcome(spec, rundir),
+        : spec.assert === 'artifact-headings'
+          ? runArtifactHeadingsOutcome(spec, rundir)
+          : runAssertionOutcome(spec, rundir),
     );
   }
   return records;

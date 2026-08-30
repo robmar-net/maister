@@ -74,7 +74,10 @@
     "todos(created)",
     "standards(index_read)",
     "created_artifact(dashboard.html)",
-    "created_artifact(dashboard-data.js)"
+    "created_artifact(dashboard-data.js)",
+    "outcome(spec-structure)=pass",
+    "outcome(plan-structure)=pass",
+    "outcome(verification-structure)=pass"
   ],
   "rules": [
     {
@@ -192,7 +195,22 @@
       "predicate": "state_schema(off-schema)",
       "classification": "LIMITATION",
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
+    },
+    {
+      "predicate": "outcome(spec-structure)=fail",
+      "classification": "LIMITATION",
+      "reason": "WP-D2 (issue #76) structure oracle: implementation/spec.md did not open with the § 7 Artifact Summary Contract '## TL;DR'. Surfaced as a tracked LIMITATION (not REGRESSED) while outcome(spec-structure)=pass is optional; promote =pass to required and retire this entry after >=2 runs confirm the structure on Copilot."
+    },
+    {
+      "predicate": "outcome(plan-structure)=fail",
+      "classification": "LIMITATION",
+      "reason": "WP-D2 (issue #76) structure oracle: implementation/implementation-plan.md did not open with the § 7 Artifact Summary Contract '## TL;DR'. Tracked LIMITATION while outcome(plan-structure)=pass is optional; same promotion path."
+    },
+    {
+      "predicate": "outcome(verification-structure)=fail",
+      "classification": "LIMITATION",
+      "reason": "WP-D2 (issue #76) structure oracle: verification/implementation-verification.md did not open with the § 7 Artifact Summary Contract '## TL;DR'. Tracked LIMITATION while outcome(verification-structure)=pass is optional; same promotion path."
     }
   ],
-  "hash": "8f99c5463959772e80f9cff324c22796f79e71a80b625b2a3d06346928808210"
+  "hash": "93cb81448f90bffe126edaa42fee75ec7d4d0a3b85c4c51be1e8a7b017dae7b1"
 }

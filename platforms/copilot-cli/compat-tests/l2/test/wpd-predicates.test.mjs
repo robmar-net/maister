@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { extractFromEvents, extractFromTree, TREE_PROFILES } from '../extractor.mjs';
+import { extractFromEvents, extractFromTree, extractFromOutcome, TREE_PROFILES } from '../extractor.mjs';
 import { normalize } from '../normalize.mjs';
 
 const namesOf = (records, kind) => records.filter((r) => r.kind === kind).map((r) => r.name);
@@ -94,4 +94,57 @@ test('WP-D tree: dashboard files are development-only (research profile does not
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// --------------------------------------------------------------- WP-D2: artifact-headings structure oracle
+// Stages a development task dir and runs extractFromOutcome with an artifact-headings spec. Asserts the
+// § 7 Artifact Summary Contract opener (## TL;DR first) is what pass/fail keys on — NOT body headings.
+function stageDevTask(root, relFiles /* {rel: content} */) {
+  const taskDir = path.join(root, '.maister', 'tasks', 'development', '2026-08-30-x');
+  for (const [rel, content] of Object.entries(relFiles)) {
+    const f = path.join(taskDir, rel);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, content);
+  }
+  return root;
+}
+const SPEC_OK = '## TL;DR\nDoes X.\n\n## Goal and User Journey\nY\n\n## Acceptance Criteria\nZ\n';
+const specOutcome = (file) => [{ id: 'spec-structure', assert: 'artifact-headings', params: { file, minBytes: 20 } }];
+const outVal = (recs) => recs.map((r) => `${r.name}=${r.value}`);
+
+test('WP-D2 oracle: artifact opening with ## TL;DR (§ 7) -> pass; body-heading wording is NOT asserted', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wpd2-ok-'));
+  try {
+    stageDevTask(root, { 'implementation/spec.md': SPEC_OK });
+    const recs = extractFromOutcome(specOutcome('implementation/spec.md'), root, null);
+    assert.deepEqual(outVal(recs), ['spec-structure=pass'], 'opens with ## TL;DR -> pass regardless of body heading wording');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('WP-D2 oracle: artifact NOT opening with ## TL;DR -> fail (structure divergence surfaced)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wpd2-bad-'));
+  try {
+    stageDevTask(root, { 'implementation/spec.md': '## Goal\nNo contract block here.\nExtra text to clear minBytes.\n' });
+    const recs = extractFromOutcome(specOutcome('implementation/spec.md'), root, null);
+    assert.deepEqual(outVal(recs), ['spec-structure=fail'], 'missing § 7 opener -> fail');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('WP-D2 oracle: missing file -> fail; below minBytes -> fail', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wpd2-miss-'));
+  try {
+    stageDevTask(root, { 'implementation/other.md': SPEC_OK });
+    assert.deepEqual(outVal(extractFromOutcome(specOutcome('implementation/spec.md'), root, null)), ['spec-structure=fail'], 'missing file -> fail');
+    stageDevTask(root, { 'implementation/spec.md': '## TL;DR\n' }); // ~9 bytes < minBytes 20
+    assert.deepEqual(outVal(extractFromOutcome(specOutcome('implementation/spec.md'), root, null)), ['spec-structure=fail'], 'stub below minBytes -> fail');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('WP-D2 oracle: normalize emits outcome(...)=pass|fail tokens (existing outcome head, no new grammar)', () => {
+  const toks = new Set(normalize([
+    { kind: 'outcome', name: 'spec-structure', value: 'pass', source: 'outcome' },
+    { kind: 'outcome', name: 'plan-structure', value: 'fail', source: 'outcome' },
+  ]));
+  assert.ok(toks.has('outcome(spec-structure)=pass'));
+  assert.ok(toks.has('outcome(plan-structure)=fail'));
 });

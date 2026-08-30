@@ -146,7 +146,16 @@ export const scenario = {
   // rundir copy (MEDIUM-5, tamper-resistance), then run `sh run-tests.sh` in the rundir
   // root. Pass iff exit 0 — which now requires the `--greet` deliverable (HIGH-3), so a
   // pristine sandbox fails and only a completed dev workflow passes.
-  outcome: [{ id: 'tests-pass', command: 'sh run-tests.sh', restage: ['run-tests.sh'] }],
+  // WP-D2 (issue #76): artifact STRUCTURE oracles. Assert the § 7 Artifact Summary Contract opener
+  // (`## TL;DR` first) on the three core development deliverables — content/structure, beyond the
+  // created_artifact existence records. `=pass` lands OPTIONAL; the matching `=fail` is allowlisted
+  // as a tracked LIMITATION (promote `=pass` to required after >=2 runs confirm structure on Copilot).
+  outcome: [
+    { id: 'tests-pass', command: 'sh run-tests.sh', restage: ['run-tests.sh'] },
+    { id: 'spec-structure', assert: 'artifact-headings', params: { file: 'implementation/spec.md', minBytes: 200 } },
+    { id: 'plan-structure', assert: 'artifact-headings', params: { file: 'implementation/implementation-plan.md', minBytes: 200 } },
+    { id: 'verification-structure', assert: 'artifact-headings', params: { file: 'verification/implementation-verification.md', minBytes: 200 } },
+  ],
   // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
   gateMap,
   answerMap,

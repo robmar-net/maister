@@ -450,3 +450,38 @@ no WP-D predicate. Mechanical re-stamp only. Hash `817a43ee… → f063ad0c…`.
 
 Same lockstep mechanism as note 26. The `destructive-guard` micro-scenario gains no WP-D predicate.
 Mechanical re-stamp only. Hash `b0b145b0… → 3eb5626d…`. CURRENT at wm v6.
+
+### 29 — development: WP-D2 ARTIFACT-STRUCTURE ORACLE — `outcome(spec|plan|verification-structure)` (#76)
+
+WP-D2 of the Parity-Map epic ([#76](https://github.com/robmar-net/maister/issues/76)) moves the
+"Artifact production — **content/structure**" map row off ⚪ (only existence was checked). A new
+assertion-type outcome, `assert: 'artifact-headings'`, reads ONE produced artifact and asserts the
+**Artifact Summary Contract** (`orchestrator-patterns.md § 7:408` — "every artifact opens with a
+TL;DR"): the file's FIRST markdown heading is `## TL;DR`, and the file is non-stub (≥200 B). Three
+oracles on the development deliverables: `outcome(spec-structure)`, `outcome(plan-structure)`,
+`outcome(verification-structure)` (files `implementation/spec.md`, `implementation/implementation-plan.md`,
+`verification/implementation-verification.md`).
+
+**NO grammar bump**: `outcome` is a pre-existing head (Stage 2) — this reuses it, so `schema_version`
+and `WORKFLOW_MODEL_VERSION` are UNCHANGED (v5 / v6); only the `development` reference re-stamps.
+
+**Why the § 7 opener and NOT the body headings** (anti-fitting): the templates mandate body sections
+(specification-creator `## Goal`/`## Core Requirements`/`## Success Criteria`;
+implementation-planner `## Overview`/`## Standards Compliance`), but the real 1.0.82 run's WORDING
+legitimately varies (`## Goal and User Journey`, `## Requirements`, `## Acceptance Criteria`,
+`## Verification Results`) — asserting body headings would fit-to-run and false-fail. The § 7 `## TL;DR`
+opener is the UNIFORMLY-mandated, run-stable invariant (Key Decisions / Open Questions are omit-when-
+empty, § 7:425, so they are NOT asserted either). Derived from the contract, confirmed observable — not
+fitted.
+
+**Verdict semantics (no false REGRESSED on one bundle):** `outcome(<id>)=pass` lands **OPTIONAL**; the
+matching `outcome(<id>)=fail` is **allowlisted as LIMITATION**. A well-structured run matches the
+optional `=pass`; a structural miss surfaces the `=fail` as a VISIBLE tracked limitation, never a silent
+green and never a false regression against an unproven-across-runs oracle. Promotion path: after ≥2 runs
+confirm the § 7 opener on Copilot, promote `=pass` to required and retire the `=fail` allowlist entry.
+
+**Credit-free proof**: replaying the persisted 1.0.82 dev bundle (`reports/20260830T155522Z`) yields
+**AS-EXPECTED — 37 PASS · 6 LIMITATION · 0 FAIL**; all three oracles emit `=pass` (spec 2136 B, plan
+1451 B, verification 1593 B — each opening with `## TL;DR`), matched as optional (LIMITATION stays 6,
+not 9 → the `=fail` allowlist entries are not triggered). Hash re-stamp `8f99c546… → 93cb8144…`
+(3 optional + 3 allowlist entries enter `computeHash`).
