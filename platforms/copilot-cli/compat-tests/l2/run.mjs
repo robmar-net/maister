@@ -192,7 +192,8 @@ function printUsage(stream = process.stdout) {
     'Usage: node run.mjs [--scenario=ID] [--check-reference] [--replay=DIR] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
     '',
     'Flags:',
-    '  --scenario=ID       Workflow shape to drive / check: development (default) | research | quick-bugfix. Selects the',
+    '  --scenario=ID       Workflow shape to drive / check: development (default) | research | quick-bugfix |',
+    '                      destructive-guard. Selects the',
     '                      live drive AND which reference/<ID>.skeleton.json --check-reference reads.',
     '  --check-reference   Credit-free, offline: recompute the reference hash + check its version',
     '                      stamp (workflow-model, or maister package as fallback). No SDK session,',
@@ -309,7 +310,11 @@ function findStateYaml(rundir, taskType) {
 }
 
 // Merge the onEvent recorder stream with the authoritative getEvents() history, de-duplicating by
-// event id (the extractor is order-independent, so ordering is irrelevant to correctness).
+// event id. ORDER IS LOAD-BEARING since Stage 4: the extractor derives the precedes(a,b) order spine
+// from each agent's FIRST-occurrence index over the event stream, so the merge preserves true arrival
+// order by concatenating the real-time recorder stream (already in arrival order) AHEAD of the
+// authoritative history and keeping the FIRST occurrence per id. (Pre-Stage-4 the extractor was
+// order-independent; that is no longer true — do not reorder here.)
 function mergeEvents(recorded, history) {
   const seen = new Set();
   const out = [];

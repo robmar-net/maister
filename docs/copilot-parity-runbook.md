@@ -296,11 +296,20 @@ sqlite3 ~/.copilot/session-store.db \
 
 ## Latest verified (maister 2.2.3)
 
+**These rows are HISTORICAL live verdicts at the stated CLI version** — the per-scenario PASS counts
+predate the **#63 gate-witness recalibration** (why the current credit-free *effective-required* counts
+differ: development 37, research 15 effective). What is **CURRENT** today is the credit-free conformance:
+`--check-reference` **×4** (development / research / quick-bugfix / **destructive-guard**) + the full
+pipeline / replay / cost unit suite, all green (workflow-model v5). A **full live matrix refresh at the
+current CLI (1.0.82) across all four scenarios — including a first recorded `destructive-guard` live
+verdict — is tracked to [issue #63 item 9](https://github.com/robmar-net/maister/issues/63)** (spend-gated).
+
 | Layer / scenario | Copilot CLI | Verdict |
 |---|---|---|
-| L0 / WS7 (7 contracts) | 1.0.76 & 1.0.81 | ✅ 7/7 |
-| L2 research | 1.0.81 | ✅ AS-EXPECTED (9/9, diff NONE) |
-| L2 development | 1.0.81 | ✅ AS-EXPECTED (25/25, diff NONE) — post-#46 parser fix |
-| L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2 vs pre-calibration partition, diff NONE — see CALIBRATION-LOG note 4) |
+| L0 / WS7 (7 contracts) | 1.0.76 & 1.0.81 | ✅ 7/7 (live) |
+| L2 research | 1.0.81 · N=3 re-run 1.0.82 | ✅ AS-EXPECTED (9/9, diff NONE) live; 1.0.82 `--runs=3` noise-cal 275.14 AIU (see Cost) |
+| L2 development | 1.0.81 | ✅ AS-EXPECTED (25/25, diff NONE) live — post-#46 parser fix |
+| L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2 vs pre-calibration partition, diff NONE — see CALIBRATION-LOG note 4) live |
+| L2 destructive-guard | — | credit-free CURRENT (`--check-reference` + scenario/replay tests); **live verdict pending the item-9 sweep** |
 
 _(Record each new live run in the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix).)_
