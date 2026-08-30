@@ -272,13 +272,23 @@ function makeFreshRundir(sc) {
 
 // Read the run's orchestrator-state.yml from the rundir task tree (first task dir of the scenario's
 // workflow type — `.maister/tasks/<taskType>/*/`).
+//
+// #57 (ADR 0001) COMPANION: prefer a canonical shadow `orchestrator-state.canonical.yml` when present.
+// The PostToolUse state-normalizer hook (proto/57-state-normalizer) writes that shadow — a lossless
+// re-serialization of the model's off-schema working file — WITHOUT touching the working file (Copilot
+// writes state via incremental apply-patch hunks; rewriting it in place would desync the next patch).
+// Reading the shadow lets the ADAPTED variant score `state_schema(conformant)`. Returns { text, source }
+// so the report can NAME the source (never a silent preference — AGENTS.md). `source` is 'canonical-shadow'
+// or 'working'; null when no state file exists at all.
 function findStateYaml(rundir, taskType) {
   const typeDir = path.join(rundir, '.maister', 'tasks', taskType);
   if (!isDir(typeDir)) return null;
   for (const e of fs.readdirSync(typeDir, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
+    const canon = path.join(typeDir, e.name, 'orchestrator-state.canonical.yml');
+    if (isFile(canon)) return { text: fs.readFileSync(canon, 'utf8'), source: 'canonical-shadow' };
     const sp = path.join(typeDir, e.name, 'orchestrator-state.yml');
-    if (isFile(sp)) return fs.readFileSync(sp, 'utf8');
+    if (isFile(sp)) return { text: fs.readFileSync(sp, 'utf8'), source: 'working' };
   }
   return null;
 }
@@ -472,7 +482,7 @@ export function buildReport(ctx) {
   const {
     scenarioId, mode, overall, counts, observed, reference, result,
     incompleteReason, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null,
+    pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null, stateSource = null,
     usage = null, usageTotal = null, gateLog = [], replaySource = null,
     model = null, modelActual = null, cost = null,
   } = ctx;
@@ -506,6 +516,11 @@ export function buildReport(ctx) {
   // Stage-4: a LIVE N=1 drive persists a replayable bundle at reports/<ts>/ — surface the path so an
   // operator can find the `--replay` source. Additive line only; no verdict impact.
   if (mode === 'live' && finalN === 1) L.push(`- **Persisted trace:** reports/${ts}/`);
+  // #57/ADR-0001: NEVER prefer the canonical shadow silently — name the source when the normalizer
+  // hook's shadow was read instead of the model's working file.
+  if (stateSource === 'canonical-shadow') {
+    L.push('- **State source:** `orchestrator-state.canonical.yml` (canonical shadow — **normalizer hook active**; the model\'s working file was off-schema and re-serialized losslessly to canonical form for conformance measurement)');
+  }
   L.push('');
   L.push(
     `**Result:** **${overall}** — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
@@ -882,7 +897,9 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
 
     // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/<taskType>/*); the scenario's
     // taskType selects both the state subtree and the extractor's tree profile.
-    const stateYaml = findStateYaml(rundir, sc.taskType);
+    const stateFile = findStateYaml(rundir, sc.taskType);
+    const stateYaml = stateFile?.text ?? null;
+    const stateSource = stateFile?.source ?? null; // #57/ADR-0001: 'canonical-shadow' | 'working' | null
     // Functional oracle (issue #48): run the scenario's `outcome` spec in the LIVE rundir (session shut
     // down, pre-`finally` rmSync). `sandboxTemplateDir` lets extractFromOutcome RESTAGE the trusted oracle
     // script over the model-touched rundir copy (MEDIUM-5) before running it.
@@ -938,9 +955,9 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
-    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost };
+    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost, stateSource };
 
-    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost };
+    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost, stateSource };
   } finally {
     // Bounded per-run teardown: disconnect the session, THEN stop + forceStop THIS run's OWN client
     // (the SDK client spawned an app.js runtime subprocess whose IPC handles keep the event loop alive —
@@ -1092,7 +1109,9 @@ function runReplay(opts) {
   const sc = getScenario(meta.scenario); // resolves gateMap, precedesChain, minCounts, outcome, sandboxTemplate, taskType
   const events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
   const taskDirRoot = path.join(dir, 'rundir');
-  const stateYaml = findStateYaml(taskDirRoot, sc.taskType);
+  const stateFile = findStateYaml(taskDirRoot, sc.taskType);
+  const stateYaml = stateFile?.text ?? null;
+  const stateSource = stateFile?.source ?? null; // #57/ADR-0001: 'canonical-shadow' | 'working' | null
 
   // IDENTICAL to driveOnce's extract() — same inputs, so the same normalized skeleton + verdict.
   // hook_effect(destructive_guard=ask) replays directly from events.json (the persisted kind:"hook"
@@ -1111,8 +1130,8 @@ function runReplay(opts) {
 
   // Build a driveOnce-shaped result so finalizeSingleRun consumes it unchanged.
   const res = ex.incomplete
-    ? { status: 'incomplete', reason: ex.incompleteReason, ex, run: 1, usage: null, gateLog: [] }
-    : { status: 'ok', observed: normalize(ex.records), ex, rundir: taskDirRoot, run: 1, usage: null, gateLog: [] };
+    ? { status: 'incomplete', reason: ex.incompleteReason, ex, run: 1, usage: null, gateLog: [], stateSource }
+    : { status: 'ok', observed: normalize(ex.records), ex, rundir: taskDirRoot, run: 1, usage: null, gateLog: [], stateSource };
 
   // Credit-free ctx (loadReference / readRepoMaisterVersion / osString only — NO SDK).
   const reference = loadReference(sc.id).reference;
@@ -1148,6 +1167,7 @@ export function finalizeSingleRun(res, ctx) {
     scenarioId, mode: ctx.mode ?? 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN: 1, sdkPath, replaySource: ctx.replaySource ?? null,
     usage: res.usage ?? null, gateLog: res.gateLog ?? [],
+    stateSource: res.stateSource ?? null, // #57/ADR-0001: report names the state source (shadow vs working)
     // Stage-5: model/actual/cost threaded from ctx into EVERY branch's report + stdout via the shared
     // base — so an INCOMPLETE (timeout / sanity-floor) run renders its real cost too (M-3), no per-branch change.
     model: ctx.model ?? null, modelActual: ctx.modelActual ?? 'unknown', cost: ctx.cost ?? null,
