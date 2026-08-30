@@ -189,7 +189,7 @@ function printUsage(stream = process.stdout) {
   stream.write([
     'L2 — Workflow-Model Conformance Testing Harness (run.mjs)',
     '',
-    'Usage: node run.mjs [--scenario=ID] [--check-reference] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
+    'Usage: node run.mjs [--scenario=ID] [--check-reference] [--replay=DIR] [--runs=N] [--yes] [--keep-rundir] [-h|--help]',
     '',
     'Flags:',
     '  --scenario=ID       Workflow shape to drive / check: development (default) | research | quick-bugfix. Selects the',
@@ -197,6 +197,10 @@ function printUsage(stream = process.stdout) {
     '  --check-reference   Credit-free, offline: recompute the reference hash + check its version',
     '                      stamp (workflow-model, or maister package as fallback). No SDK session,',
     '                      no credits. Exits 0 (current) / 1 (stale — re-derive) / 2 (corrupt).',
+    '  --replay=DIR        Credit-free: reproduce a verdict from a persisted trace bundle WITHOUT a live',
+    '                      drive (no SDK, no credits). DIR is a reports/<ts>/ bundle (N=1) or a per-run',
+    '                      reports/<ts>/run-<i>/ bundle (N>1). Reconstructs extract()\'s inputs + re-runs',
+    '                      the outcome oracle, then reuses the same verdict/report/exit code path.',
     '  --runs=N            Noise-calibration sample size (L2-DESIGN §4). Default 1 (single live drive,',
     '                      unchanged behavior). N>1 drives N live traces in fresh per-run rundirs,',
     '                      keeps predicates present in ALL runs as the STABLE skeleton (compared to',
@@ -524,9 +528,14 @@ export function buildReport(ctx) {
       ? 'unavailable'
       : (cost?.aiu != null ? `${round4(cost.aiu)} AIU / ${cost.weightedRequests ?? '?'} req` : 'unknown')),
   );
-  // Stage-4: a LIVE N=1 drive persists a replayable bundle at reports/<ts>/ — surface the path so an
-  // operator can find the `--replay` source. Additive line only; no verdict impact.
+  // Stage-4 / #63 item 3: a LIVE drive persists replayable bundle(s) — surface the path(s) so an
+  // operator can find the `--replay` source. N=1 -> one flat bundle; N>1 -> one per-run bundle each.
+  // Additive line only; no verdict impact.
   if (mode === 'live' && finalN === 1) L.push(`- **Persisted trace:** reports/${ts}/`);
+  else if (mode === 'live' && finalN > 1) {
+    const paths = Array.from({ length: finalN }, (_, i) => `\`reports/${ts}/run-${i + 1}/\``);
+    L.push(`- **Persisted traces (per run):** ${paths.join(', ')}`);
+  }
   L.push('');
   L.push(
     `**Result:** **${overall}** — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
@@ -799,7 +808,29 @@ export function sumUsage(usages) {
 //   { status:'ok', observed:Set, ex, rundir }   a verdict-eligible normalized skeleton
 // The session is disconnected, THEN this run's client stopped + force-stopped, THEN the fresh rundir
 // cleaned — all bounded/best-effort.
-export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs = null, persistMeta = null, model = null) {
+// Per-run persist destination. N=1 keeps the flat reports/<ts>/ bundle (Stage-4 behavior, unchanged);
+// N>1 nests each drive under reports/<ts>/run-<i>/ so the N drives never collide on one ts (#63 item 3
+// extends persistence — Stage 4 was N=1-only). PURE (path math only) -> unit-testable.
+export function persistDirFor(reportsDir, ts, runIndex, n) {
+  return n === 1 ? path.join(reportsDir, ts) : path.join(reportsDir, ts, `run-${runIndex}`);
+}
+
+// Write a replayable trace bundle {events.json, rundir/, replay-meta.json} at `dest`. PURE fs side-effect
+// (no SDK, no globals) so a synthetic N=2 persist is unit-testable without a live drive (#63 item 3).
+// The caller owns best-effort framing (try/catch) — a persist failure must never break a live verdict.
+export function persistTraceBundle(dest, { events, rundir, meta }) {
+  fs.mkdirSync(dest, { recursive: true });
+  fs.writeFileSync(path.join(dest, 'events.json'), JSON.stringify(events));
+  fs.cpSync(rundir, path.join(dest, 'rundir'), { recursive: true });
+  fs.writeFileSync(path.join(dest, 'replay-meta.json'), JSON.stringify(meta, null, 2));
+  return dest;
+}
+
+// persistDir: absolute destination for this run's replay bundle (null = do not persist). Decoupled from
+// readCostHere so N>1 can persist every drive (#63 item 3) while STILL leaving per-run cost null (the
+// aggregate is read once in runLive). readCostHere: read the per-run AIU cost here (N=1 only — the window
+// is known; N>1 reads the whole-run window once in runLive).
+export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir = null, persistMeta = null, model = null, readCostHere = false) {
   const { CopilotClient, RuntimeConnection, approveAll } = sdk;
   const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
   const recorded = [];
@@ -874,8 +905,8 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
       const usage = extractUsage(mergeEvents(recorded, history));
       const modelActual = modelActualFromUsage(usage);
       // M-3: a timed-out N=1 drive STILL spent a seat and its window is known, so its real cost is read
-      // here too (NOT gated on a successful verdict). N>1 (persistTs null) skips — runLive reads once.
-      const cost = persistTs != null ? await readCost({ startIso, endIso }) : null;
+      // here too (NOT gated on a successful verdict). N>1 (readCostHere false) skips — runLive reads once.
+      const cost = readCostHere ? await readCost({ startIso, endIso }) : null;
       return {
         status: 'incomplete',
         reason: `sendAndWait did not complete (timeout or session error): ${timeoutErr?.message ?? timeoutErr}`,
@@ -896,10 +927,10 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
     const events = mergeEvents(recorded, history);
     const usage = extractUsage(events); // AI-credit cost from the session.shutdown event (may be all-null)
     const modelActual = modelActualFromUsage(usage); // Stage-5: actual model(s), 'unknown' when absent
-    // Stage-5 (M-3): read the REAL cost over [startIso..endIso] for the persisted N=1 case (window known
-    // here); N>1 (persistTs null) leaves cost null and runLive reads the whole-run window once. The read
+    // Stage-5 (M-3): read the REAL cost over [startIso..endIso] for the N=1 case (window known here);
+    // N>1 (readCostHere false) leaves cost null and runLive reads the whole-run window once. The read
     // is best-effort — a failure yields the `unavailable` sentinel, never throws.
-    const cost = persistTs != null ? await readCost({ startIso, endIso }) : null;
+    const cost = readCostHere ? await readCost({ startIso, endIso }) : null;
 
     // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/<taskType>/*); the scenario's
     // taskType selects both the state subtree and the extractor's tree profile.
@@ -919,38 +950,34 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistTs 
       minCounts: sc.minCounts, // Stage-4 fan-out counts (min_count expansions); default [] no-op
     });
 
-    // Persist a replayable trace bundle (Stage 4) — best-effort, NEVER breaks the live verdict.
-    // Placed BEFORE the ex.incomplete early return below so INCOMPLETE runs (the ones a maintainer
-    // most wants to diagnose/replay) also get a bundle. N=1-only: persistTs is non-null only when the
-    // caller (runLive) drove a single run, so the bundle is keyed by the same ts as the .md report and
-    // there is no per-run collision (N>1 persist deferred to Stage 5). Wrapped in try/catch; a persist
-    // failure logs to stderr and continues to the verdict.
-    if (persistTs != null) {
+    // Persist a replayable trace bundle (Stage 4; #63 item 3) — best-effort, NEVER breaks the live
+    // verdict. Placed BEFORE the ex.incomplete early return below so INCOMPLETE runs (the ones a
+    // maintainer most wants to diagnose/replay) also get a bundle. persistDir is the caller-chosen
+    // destination: N=1 -> reports/<ts>/ (flat), N>1 -> reports/<ts>/run-<i>/ (per-run, collision-free).
+    // Wrapped in try/catch; a persist failure logs to stderr and continues to the verdict.
+    if (persistDir != null) {
       try {
-        const dest = path.join(REPORTS_DIR, persistTs);
-        fs.mkdirSync(dest, { recursive: true });
-        fs.writeFileSync(path.join(dest, 'events.json'), JSON.stringify(events));
-        fs.cpSync(rundir, path.join(dest, 'rundir'), { recursive: true });
-        fs.writeFileSync(
-          path.join(dest, 'replay-meta.json'),
-          JSON.stringify({
-            scenario: sc.id,
-            taskType: sc.taskType,
-            copilotVersion: persistMeta?.copilotVersion ?? null,
-            sdkPath: persistMeta?.sdkPath ?? null,
-            ts: persistTs,
-            originalMode: 'live',
-            maisterVersion: persistMeta?.maisterVersion ?? null,
-            // Stage-5: persist the requested + actual model and the run's real cost so a --replay renders
-            // the SAME model/cost the live run showed (replay's res.usage is null — cost comes from meta).
-            model: persistMeta?.model ?? null,
-            modelActual: modelActual ?? 'unknown',
-            cost: cost ?? null,
-            // hook_effect(destructive_guard=ask) is NOT persisted as a sink — it replays directly from
-            // events.json (the persisted permission.requested carries kind:"hook" + the guard hookMessage),
-            // so the extractor re-derives it on replay with no separate observed-decision channel.
-          }, null, 2),
-        );
+        const meta = {
+          scenario: sc.id,
+          taskType: sc.taskType,
+          copilotVersion: persistMeta?.copilotVersion ?? null,
+          sdkPath: persistMeta?.sdkPath ?? null,
+          ts: persistMeta?.ts ?? null,
+          // #63 item 3: 1-based run index + N so an N>1 bundle self-identifies which drive it captured.
+          runIndex: persistMeta?.runIndex ?? runIndex,
+          runs: persistMeta?.runs ?? 1,
+          originalMode: 'live',
+          maisterVersion: persistMeta?.maisterVersion ?? null,
+          // Stage-5: persist the requested + actual model and the run's real cost so a --replay renders
+          // the SAME model/cost the live run showed (replay's res.usage is null — cost comes from meta).
+          model: persistMeta?.model ?? null,
+          modelActual: modelActual ?? 'unknown',
+          cost: cost ?? null,
+          // hook_effect(destructive_guard=ask) is NOT persisted as a sink — it replays directly from
+          // events.json (the persisted permission.requested carries kind:"hook" + the guard hookMessage),
+          // so the extractor re-derives it on replay with no separate observed-decision channel.
+        };
+        const dest = persistTraceBundle(persistDir, { events, rundir, meta });
         process.stderr.write(`L2: persisted replay trace: ${dest}\n`);
       } catch (persistErr) {
         process.stderr.write(`L2: replay-trace persist failed (non-fatal): ${persistErr?.message ?? persistErr}\n`);
@@ -1059,16 +1086,19 @@ async function runLive(opts) {
     || path.resolve(path.dirname(sdkPath), '..', 'app.js');
 
   // Drive N traces, each on its own fresh client + fresh rundir (run index is 1-based for reporting).
-  // Stage-4 persist is N=1-only (keyed by the report `ts`); pass the ts + replay-meta fields ONLY when
-  // N===1 so N>1 runs never persist (deferred to Stage 5) and never collide on a single ts.
+  // #63 item 3: EVERY drive persists a replay bundle now — N=1 -> reports/<ts>/, N>1 -> reports/<ts>/
+  // run-<i>/ (INCOMPLETE drives included; the persist is BEFORE the sanity-floor early return in
+  // driveOnce). Per-run cost stays N=1-only (readCostHere): the N>1 aggregate is read once below, so an
+  // N>1 bundle records cost:null (honest — per-run cost is not separately measured).
   // Stage-5: resolve the REQUESTED model ONCE (opts ?? COMPAT_L2_MODEL ?? scenario default), pass it
-  // into every driveOnce, and persist it in the N=1 replay-meta.
+  // into every driveOnce, and persist it in each bundle's replay-meta.
   const model = resolveModel(opts, sc);
-  const persistTs = N === 1 ? ts : null;
-  const persistMeta = N === 1 ? { copilotVersion, sdkPath, maisterVersion, model } : null;
   const results = [];
   for (let i = 0; i < N; i++) {
-    results.push(await driveOnce(sdk, runtimePath, sc, opts, i + 1, persistTs, persistMeta, model));
+    const runIndex = i + 1;
+    const persistDir = persistDirFor(REPORTS_DIR, ts, runIndex, N);
+    const persistMeta = { copilotVersion, sdkPath, maisterVersion, model, ts, runIndex, runs: N };
+    results.push(await driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir, persistMeta, model, /* readCostHere */ N === 1));
   }
 
   // Stage-5 model/cost aggregate. N=1: the per-run readCost was done inside driveOnce (window known
@@ -1137,8 +1167,11 @@ function runReplay(opts) {
 
   // Credit-free ctx (loadReference / readRepoMaisterVersion / osString only — NO SDK).
   const reference = loadReference(sc.id).reference;
+  // ts for the replay report: a flat reports/<ts>/ bundle carries the ts in its basename; a per-run
+  // reports/<ts>/run-<i>/ bundle (#63 item 3) does not, so fall back to the persisted meta.ts, then a
+  // fresh stamp.
   const dirName = path.basename(dir);
-  const ts = /^\d{8}T\d{6}Z$/.test(dirName) ? dirName : utcStamp();
+  const ts = /^\d{8}T\d{6}Z$/.test(dirName) ? dirName : (meta.ts ?? utcStamp());
   const ctx = {
     reference, N: 1, scenarioId: sc.id,
     copilotVersion: meta.copilotVersion ?? 'replayed',
