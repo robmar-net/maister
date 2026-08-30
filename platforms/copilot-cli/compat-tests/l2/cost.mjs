@@ -24,11 +24,12 @@
 //     cannot double-count. Absent column / no sessionId → window-only (the Stage-5 behavior).
 //   • GROUP BY model — when a `model` column exists, a per-model breakdown fills `modelActual` from the
 //     BILLING record (more reliable than the session.shutdown usage, which is often empty on 1.0.8x).
-// ⚠ UNVERIFIED-LIVE-SCHEMA GAP (tracked to issue #63 item 9): the exact column names (`session_id`,
-// `model`) and whether the SDK's ctx.sessionId equals `assistant_usage_events.session_id` are asserted
-// against the FIXTURE db only — they have NOT been confirmed against a real Copilot session-store.db.
-// The schema-probe makes a name mismatch DEGRADE SAFELY (falls back to window-only / models:null), never
-// a crash — but a silent fallback is still a gap, so the item-9 live sweep must confirm the real names.
+// LIVE-SCHEMA STATUS (#63 item 5, narrowed): the column names `session_id` and `model` are now
+// CONFIRMED present on a real Copilot 1.0.82 `session-store.db` (read credit-free — the probe + the
+// session filter + GROUP BY model all return correct real data). The ONLY residual unverified point is
+// whether the SDK's ctx.sessionId (captured in run.mjs) EQUALS the DB's `session_id` value — that needs a
+// live L2 drive to correlate, tracked to issue #63 item 9. The schema-probe still makes ANY future name
+// mismatch DEGRADE SAFELY (window-only / models:null), never a crash.
 
 import os from 'node:os';
 import path from 'node:path';

@@ -228,13 +228,14 @@ sqlite3 ~/.copilot/session-store.db \
    WHERE created_at >= '<ISO-start>' AND created_at <= '<ISO-end>' AND session_id = '<session-id>' \
    GROUP BY model;"
 ```
-> ⚠️ **UNVERIFIED LIVE SCHEMA (tracked — issue #63 item 9).** The column names `session_id` and `model`,
-> and whether the SDK's `ctx.sessionId` equals `assistant_usage_events.session_id`, are proven against the
-> **committed fixture DB only** — they have **not** been confirmed against a real `session-store.db`. The
-> `readCost` schema-probe (`pragma_table_info`) makes a name mismatch **degrade safely** (window-only /
-> `models:null`), never crash — but a silent fallback is still a gap, so the **item-9 live sweep must
-> confirm the real column names** and re-scope this query if they differ. Not a silent green: this box is
-> the visible, tracked record of the gap.
+> ✅ **LIVE SCHEMA CONFIRMED (2026-08-30, Copilot 1.0.82) — gap narrowed.** The column names `session_id`
+> and `model` **are present on a real `session-store.db`** — verified **credit-free** by pointing `readCost`
+> at the operator's own DB: the `pragma_table_info` probe activated both refinements, the session filter
+> scoped correctly (a real busy session read 160 AIU vs 292 AIU window-only), and `GROUP BY model` returned
+> a real per-model split (`claude-sonnet-4.6` 232 AIU + `gpt-5.6-luna` 60 AIU). **The only residual
+> unverified point** (tracked to [issue #63 item 9](https://github.com/robmar-net/maister/issues/63)) is
+> whether the SDK's `ctx.sessionId` captured in `run.mjs` **equals** the DB's `session_id` value — that
+> needs a live L2 drive to correlate. The schema-probe still degrades safely on any future name change.
 - Rough guide: `research` L2 ≈ tens of AIU; `development` L2 ≈ a few hundred AIU (~1-2 dev runs can dent a monthly quota). Prefer credit-free checks; run live only when you must.
   **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81; AIU weighting and request
   multipliers change across CLI versions, and per-run vs per-arc figures are NOT directly
