@@ -485,3 +485,31 @@ confirm the § 7 opener on Copilot, promote `=pass` to required and retire the `
 1451 B, verification 1593 B — each opening with `## TL;DR`), matched as optional (LIMITATION stays 6,
 not 9 → the `=fail` allowlist entries are not triggered). Hash re-stamp `8f99c546… → 93cb8144…`
 (3 optional + 3 allowlist entries enter `computeHash`).
+
+### 30 — quick-bugfix + research: WP-D CROSS-SCENARIO FIX — `standards`/`todos` are GLOBAL emits (#76)
+
+**Corrects note 26.** Note 26 claimed "research gains no predicate" from the WP-D grammar heads. That
+was WRONG: `todos(created)` and `standards(index_read)` are **event-sourced GLOBAL emits** (any run
+whose events carry `session.todos_changed` / an INDEX.md read produces them), not development-only. #79
+modeled them in the `development` reference ONLY, so on any OTHER scenario that reads
+`.maister/docs/INDEX.md` they surfaced as an unmodelled `extra` → CANDIDATE_REGRESSION.
+
+**Caught by the live sweep (2026-08-30):** the first live **quick-bugfix** drive on Copilot 1.0.82
+(`reports/20260830T192629Z`, 1.53 AIU / 8 req) REGRESSED on a single FAIL — `standards(index_read)`
+extra. quick-bugfix's SKILL.md **mandates** the read (`quick-bugfix/SKILL.md:52` Step 2 "Discover
+Standards — Read `.maister/docs/INDEX.md` … this is mandatory"). Replaying the existing research
+bundles (`20260829T235511Z`, `20260830T002503Z`) showed research emits **both** `standards:1` +
+`todos:1` (research/SKILL.md:144 "Discover project documentation: Read `.maister/docs/INDEX.md`";
+research has orchestrator phases with `TaskCreate`), so a live research drive would have regressed on
+BOTH.
+
+**Fix (credit-free, no grammar bump — heads already exist):** add `standards(index_read)` OPTIONAL to
+`quick-bugfix`; add `standards(index_read)` + `todos(created)` OPTIONAL to `research`. Model-grounded
+(SKILL.md citations above), OPTIONAL to match development's treatment. destructive-guard is unaffected
+(guard-fire aborts before any doc read — its live drive `reports/20260830T192611Z` was AS-EXPECTED
+2 PASS / 0 FAIL, 0.84 AIU).
+
+**Credit-free proof:** post-fix replay flips quick-bugfix `20260830T192629Z` **REGRESSED → AS-EXPECTED
+(4 PASS · 0 LIMITATION · 0 FAIL)** and research `20260829T235511Z` stays **AS-EXPECTED (13 PASS · 1
+LIMITATION · 0 FAIL)** now matching standards+todos. Hash re-stamps: quick-bugfix `f063ad0c… →
+1472c423…`, research `2bc10f74… → 6d811965…`. No schema/wm change (v5 / v6 hold).

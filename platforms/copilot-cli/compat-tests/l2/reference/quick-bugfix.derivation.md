@@ -27,12 +27,13 @@ subagents.'"
 | `outcome(bug-fixed)=pass` | required | :171-173 | FUNCTIONAL ORACLE (issue #48, Stage 2). Step 7 verify is a terminal deliverable check — the fix must actually resolve the defect ("Provide completion summary" only after the bug is confirmed fixed); a correct run therefore produces a passing `bug-fixed` functional outcome |
 | `reached_terminal(completion)` | required | :171-173 | Step 7: "Summary" — "Provide completion summary" is the workflow's terminal step |
 
-## Optional (2)
+## Optional (3)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
 | `gate_fired(permission)` | optional | platform divergence (no SKILL.md anchor) | Copilot permission prompts are a harness surface, not model-mandated; may or may not fire depending on session permission mode |
 | `gate_fired(exit_plan_mode)` | optional | :91, :122-124 | Same plan-gate mapping as honesty note 1: whether Copilot's plan-approval surface emits a distinct exit event (in addition to the required `ask`) is platform-dependent, so it cannot be required |
+| `standards(index_read)` | optional | :52 (WP-D fix, #76 / CALIBRATION #30) | Step 2 "Discover Standards": Read `.maister/docs/INDEX.md` (:52, "mandatory"). Conditional on INDEX.md existing (:56), hence optional. Added after the first live 1.0.82 quick-bugfix drive REGRESSED on this global event-sourced emit |
 
 ## Rules (0)
 

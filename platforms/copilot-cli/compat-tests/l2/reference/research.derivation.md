@@ -37,7 +37,7 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 | `precedes(information-gatherer,research-synthesizer)` | required | :170→:184 | The information-gatherer fan-out (:170) precedes the research-synthesizer delegation (:184) — gather precedes synthesize |
 | `state_schema(conformant)` | optional | :107, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema. **NOT hard-required** — the runtime routing/resume readers are model-interpreted/semantic, so an off-schema serialization is behavior-preserving (the first live research run on 1.0.81 emitted `state_schema(off-schema)`; the divergence stays visible as the allowlist LIMITATION 🟢 ADAPTED, tracked in #57 with the normalizer-hook parity option). Research legitimately omits `task_characteristics` (no gap-analyzer) — an ABSENCE (`parseWarnings`), NOT a `schemaDivergences` entry (C1 guard). Model-grounded demotion, NOT fitted to a run |
 
-## Optional (20)
+## Optional (22)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -61,6 +61,8 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 | `gate_fired_at(phase-1)` | optional | :198 | Fireable phase-1 exit gate (see `## Rules`); optional row keeps an observed-but-unpromoted gate from classifying as an unmodeled extra |
 | `gate_fired_at(phase-4)` | optional | :302 | Fireable phase-4 exit gate (brainstorming complete → high-level design) |
 | `gate_fired_at(phase-5)` | optional | :351 | Fireable phase-5 exit gate (design complete → output generation) |
+| `standards(index_read)` | optional | :144 (WP-D fix, #76 / CALIBRATION #30) | Step 7 "Discover project documentation": Read `.maister/docs/INDEX.md`. Global event-sourced emit; added after replay of existing research bundles showed it emitted (would have REGRESSED the live research drive) |
+| `todos(created)` | optional | :144 area, orchestrator-patterns.md § 4 (WP-D fix, #76 / CALIBRATION #30) | Research runs the orchestrator with `TaskCreate` phases; `session.todos_changed` observed in existing research bundles. Optional (mirrors development's treatment) |
 
 ## Rules (5)
 
