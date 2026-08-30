@@ -67,6 +67,12 @@ const GRAMMAR_HEADS = new Set([
   // Stage 6 (issue #48) — live L2 predicate. Value-carrying head with an INSIDE-parens shape
   // (`hook_effect(destructive_guard=ask)`); see the buildToken case + the token-shape note below.
   'hook_effect',
+  // WP-D (issue #76) — cheap, credit-free predicates from evidence the harness already captures.
+  // Both are 1-arg literal heads (mirror task_status): the payload is a fixed enum member, not a
+  // name/count. `todos(created)` <- session.todos_changed; `standards(index_read)` <- a read-tool
+  // read of `.maister/docs/INDEX.md`. Landed OPTIONAL first (promote after >=2 runs).
+  'todos',
+  'standards',
 ]);
 
 function stripPluginPrefix(name) {
@@ -163,6 +169,12 @@ function buildToken(resolved) {
       // task_status(:117). `name ∈ {conformant, off-schema}` (state-sourced by name, but NOT a
       // downgrade-eligible floor predicate — it is a conformance token).
       return `state_schema(${name})`;
+    case 'todos':
+      // WP-D (issue #76). 1-arg literal (mirror task_status:117). `name === 'created'`.
+      return `todos(${name})`;
+    case 'standards':
+      // WP-D (issue #76). 1-arg literal (mirror task_status:117). `name === 'index_read'`.
+      return `standards(${name})`;
     case 'created_artifact':
       return `created_artifact(${collapseArtifactPath(name)})`;
     case 'reached_terminal':

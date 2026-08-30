@@ -343,6 +343,13 @@ export function extractFromEvents(events, gateMap = [], precedesChain = [], minC
   let sawIdleOrShutdown = false;
   let sawError = false;
   let askCount = 0; // count of user_input.requested — feeds the single gate_count(ask)=K emission.
+  // WP-D (issue #76): cheap census counters. Emit ONCE after the loop (like askCount) so a token
+  // never inflates per-event. `todos(created)` <- >=1 session.todos_changed; `standards(index_read)`
+  // <- >=1 read-tool read of `.maister/docs/INDEX.md` (apply_patch writes that merely MENTION the
+  // path in the state file are NOT reads — same READ_TOOLS filter as tools/parity-evidence.mjs).
+  let todosChangedCount = 0;
+  let indexReadCount = 0;
+  const STANDARDS_READ_TOOLS = new Set(['view', 'read', 'rg', 'glob', 'cat', 'grep']);
 
   // Stage 4 (issue #48): order + fan-out aggregates. Keyed by the plugin-prefix-stripped name so a
   // scenario's bare chain matches an observed prefixed event. `firstIndex` records FIRST-sight event
@@ -437,6 +444,22 @@ export function extractFromEvents(events, gateMap = [], precedesChain = [], minC
       case 'exit_plan_mode.requested':
         records.push({ kind: 'gate_fired', name: 'exit_plan_mode', source: 'events', evidence: 'exit_plan_mode.requested' });
         break;
+      case 'session.todos_changed':
+        // WP-D (issue #76). The SDK emits this each time the task list mutates — the observable
+        // effect of maister's TaskCreate/TaskUpdate -> todos transform. Census only; emit once below.
+        todosChangedCount += 1;
+        break;
+      case 'tool.execution_start': {
+        // WP-D (issue #76). Standards lazy-load: a READ-tool read of `.maister/docs/INDEX.md`. The
+        // args JSON is probed (path shape varies by tool); apply_patch is excluded by the tool
+        // allowlist so state-file MENTIONS of the path never count as a read. Census only.
+        const tool = data.toolName;
+        if (STANDARDS_READ_TOOLS.has(tool)) {
+          const args = JSON.stringify(data.arguments ?? {});
+          if (/\.maister\/docs\/INDEX\.md/.test(args)) indexReadCount += 1;
+        }
+        break;
+      }
       case 'session.idle':
       case 'session.shutdown':
         sawIdleOrShutdown = true;
@@ -445,7 +468,7 @@ export function extractFromEvents(events, gateMap = [], precedesChain = [], minC
         sawError = true;
         break;
       default:
-        // Everything else (assistant.message, tool.execution_*, turn/ordering/count events) is noise.
+        // Everything else (assistant.message, other tool.execution_*, turn/ordering events) is noise.
         break;
     }
   }
@@ -455,6 +478,14 @@ export function extractFromEvents(events, gateMap = [], precedesChain = [], minC
   // it consistent with every other event-derived record (and out of the tree/state source buckets).
   if (askCount >= 1) {
     records.push({ kind: 'gate_count', name: 'ask', value: askCount, source: 'events', evidence: `user_input.requested count=${askCount}` });
+  }
+
+  // WP-D (issue #76): single-shot census predicates (never per-event). Presence, not count.
+  if (todosChangedCount >= 1) {
+    records.push({ kind: 'todos', name: 'created', source: 'events', evidence: `session.todos_changed count=${todosChangedCount}` });
+  }
+  if (indexReadCount >= 1) {
+    records.push({ kind: 'standards', name: 'index_read', source: 'events', evidence: `.maister/docs/INDEX.md read-tool reads=${indexReadCount}` });
   }
 
   // Terminal success = the session reached idle/shutdown with no error. Emitted exactly once.
@@ -525,6 +556,10 @@ export const TREE_PROFILES = Object.freeze({
       'implementation/spec.md',
       'implementation/implementation-plan.md',
       'implementation/work-log.md',
+      // WP-D (issue #76): operator dashboard, produced at task root when html_output=true (default).
+      // Modelled OPTIONAL in the reference (config-gated), so a markdown-only run does not fail.
+      'dashboard.html',
+      'dashboard-data.js',
     ],
     collapseDirs: ['verification'],
     fallbackDirs: ['implementation', 'verification'],

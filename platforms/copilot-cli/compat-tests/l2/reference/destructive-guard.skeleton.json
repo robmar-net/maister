@@ -1,8 +1,8 @@
 {
   "scenario": "destructive-guard",
   "maister_version": "2.2.3",
-  "schema_version": 4,
-  "workflow_model_version": 5,
+  "schema_version": 5,
+  "workflow_model_version": 6,
   "required": [
     "hook_effect(destructive_guard=ask)",
     "reached_terminal(completion)"
@@ -13,5 +13,5 @@
   ],
   "rules": [],
   "allowlist": [],
-  "hash": "b0b145b0cf56801e6eeb7cdfa59de19136a688857f15637c72e902ce177dda50"
+  "hash": "3eb5626d402c310cb360f90c1695c79eb52b0efeb79fd1113c552e8206240fc5"
 }

@@ -54,7 +54,7 @@ required + 33 optional + 21 rules + 6 allowlist = 92 rows.
 | `min_count(delegated(task-group-implementer))=1` | required | implementation-plan-executor/SKILL.md:87-99 | COUNT (issue #48, Stage 4): the plan executor delegates ONE task-group-implementer per task group (implementation-plan-executor/SKILL.md:87-99), so a correct dev run fans out ≥1 — token-expansion `=1..c`, reference asserts the floor `=1` |
 | `state_schema(conformant)` | optional | :107-122, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema (canonical `completed_phases` + top-level `task:` block). **It is NOT hard-required** because the runtime routing/resume readers (`development/SKILL.md:247`, `orchestrator-patterns.md:358-360`) are model-interpreted and *semantic* — a bare-int `completed_phases` or a top-level `status:` is read for the same meaning — so an off-schema serialization is behavior-preserving, not a functional regression. The divergence stays visible via the `state_schema(off-schema)` allowlist LIMITATION (🟢 ADAPTED); lexical parity would need a deterministic post-write normalizer hook (tracked in #57). Keyed on the dedicated `schemaDivergences` signal (NOT `parseWarnings`), so legitimate absences do not mark off-schema. Model-grounded demotion (readers are semantic), NOT fitted to a run |
 
-## Optional (33)
+## Optional (37)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -91,6 +91,10 @@ required + 33 optional + 21 rules + 6 allowlist = 92 rows.
 | `gate_fired_at(phase-11)` | optional | :490 | Fireable phase-11 exit gate (Continue to Phase 12) |
 | `gate_fired_at(phase-12)` | optional | :510 | Fireable phase-12 exit gate (E2E complete) |
 | `gate_fired_at(phase-13)` | optional | :532 | Fireable phase-13 exit gate (Documentation complete) |
+| `todos(created)` | optional | :46 (WP-D, #76) | Init Step 2 "Create Task Items" (`TaskCreate`/`TaskUpdate`); the generated Copilot variant is `INSERT INTO todos` — the transform whose observable effect is `session.todos_changed`. Optional first (promote after ≥2 runs) |
+| `standards(index_read)` | optional | :50 (WP-D, #76) | Init Step 6 "Discover project documentation": Read `.maister/docs/INDEX.md`; lazy standards loading (implementation-plan-executor). Extracted from a READ-tool read (apply_patch mentions excluded) |
+| `created_artifact(dashboard.html)` | optional | :49 (WP-D, #76) | Init Step 5 "Set up Operator Dashboard": copy `dashboard.html` to task root. Config-gated — SKIPPED when `html_output=false` (:49, :87), hence optional not required |
+| `created_artifact(dashboard-data.js)` | optional | :49 (WP-D, #76) | Init Step 5: write the initial `dashboard-data.js`. Same `html_output` config gate as `dashboard.html` |
 
 ## Rules (21)
 

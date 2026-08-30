@@ -1,8 +1,8 @@
 {
   "scenario": "quick-bugfix",
   "maister_version": "2.2.3",
-  "schema_version": 4,
-  "workflow_model_version": 5,
+  "schema_version": 5,
+  "workflow_model_version": 6,
   "required": [
     "invoked_skill(quick-bugfix)",
     "gate_fired(ask)",
@@ -15,5 +15,5 @@
   ],
   "rules": [],
   "allowlist": [],
-  "hash": "817a43ee572b7ae910352d78d940b15dfd78d53dc1039513f859674a3ee401c5"
+  "hash": "f063ad0cd35d620633b637e23cdbcbfce1cb58db4c9776a55e1047943619b0d4"
 }

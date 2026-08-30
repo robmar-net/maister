@@ -26,7 +26,7 @@ export const EXIT = Object.freeze({
 // wolf (C2). Bump it only when the maister DEVELOPMENT workflow model itself changes — its phase
 // set, always-on agents/skills, or predicate grammar — i.e. whenever the reference must be
 // re-derived. References predating the stamp fall back to the legacy maister_version comparison.
-export const WORKFLOW_MODEL_VERSION = 5;
+export const WORKFLOW_MODEL_VERSION = 6;
 
 /**
  * Match a single predicate against a reference allowlist.
