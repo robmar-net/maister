@@ -70,7 +70,19 @@ export function canonicalize(text) {
 
 // CLI: `node canonicalize-orchestrator-state.mjs <file>` prints canonical text to stdout (file
 // untouched); with `--in-place` rewrites the file. stdin also accepted when no file arg.
-if (import.meta.url === `file://${process.argv[1]}`) {
+//
+// Main-module detection is realpath-based (NOT `import.meta.url === \`file://${process.argv[1]}\``,
+// which false-negatives when the invoking path crosses a symlink — e.g. macOS /tmp -> /private/tmp,
+// making import.meta.url's resolved path differ from the argv[1] the hook passes, silently skipping
+// this block and emitting nothing).
+const invokedAsCli = await (async () => {
+  try {
+    const { realpathSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch { return false; }
+})();
+if (invokedAsCli) {
   const fs = await import('node:fs');
   const args = process.argv.slice(2);
   const inPlace = args.includes('--in-place');

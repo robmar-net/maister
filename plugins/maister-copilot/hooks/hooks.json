@@ -26,7 +26,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit",
         "hooks": [
           {
             "type": "command",

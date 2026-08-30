@@ -69,10 +69,14 @@ cp "$SCRIPT_DIR/hooks-overrides/normalize-orchestrator-state.sh" "$OUT/hooks/nor
 cp "$SCRIPT_DIR/hooks-overrides/canonicalize-orchestrator-state.mjs" "$OUT/hooks/canonicalize-orchestrator-state.mjs"
 chmod +x "$OUT/hooks/normalize-orchestrator-state.sh"
 
-# WS2f: register the normalizer as a PostToolUse:Edit hook in hooks.json. Guarded: the PreToolUse-closing
-# anchor (end of the hooks object) must match exactly once; inserts a sibling PostToolUse array after it.
+# WS2f: register the normalizer as a PostToolUse hook in hooks.json. CATCH-ALL (no matcher) by design:
+# live testing on Copilot 1.0.82 showed a tool-name matcher (e.g. "Edit") does NOT fire the PostToolUse
+# hook, whereas a no-matcher entry fires on every tool. The hook script itself filters to
+# orchestrator-state.yml, so the catch-all is cheap (a path check per tool call) and RELIABLE. Guarded:
+# the PreToolUse-closing anchor (end of the hooks object) must match exactly once; inserts a sibling
+# PostToolUse array after it.
 perl -0777 -i -pe '
-  $c = s/(        \]\n      \}\n    \])\n  \}\n\}\n?$/$1,\n    "PostToolUse": [\n      {\n        "matcher": "Edit",\n        "hooks": [\n          {\n            "type": "command",\n            "command": "\${CLAUDE_PLUGIN_ROOT}\/hooks\/normalize-orchestrator-state.sh",\n            "timeout": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n/s;
+  $c = s/(        \]\n      \}\n    \])\n  \}\n\}\n?$/$1,\n    "PostToolUse": [\n      {\n        "hooks": [\n          {\n            "type": "command",\n            "command": "\${CLAUDE_PLUGIN_ROOT}\/hooks\/normalize-orchestrator-state.sh",\n            "timeout": 10\n          }\n        ]\n      }\n    ]\n  }\n}\n/s;
   END { exit($c == 1 ? 0 : 1) }
 ' "$OUT/hooks/hooks.json" || { echo "FAIL: WS2f: PreToolUse-closing anchor not found exactly once in \$OUT/hooks/hooks.json (source drift?)" >&2; exit 1; }
 

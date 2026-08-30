@@ -53,6 +53,7 @@ PROBE_AGENT="${COMPAT_PROBE_AGENT:-gap-analyzer}"
 GUARD="$PLUGIN_DIR/hooks/block-destructive-commands.sh"
 PCHOOK="$PLUGIN_DIR/hooks/post-compact-reminder.sh"
 SKILLHOOK="$PLUGIN_DIR/hooks/skill-invocation-reminder.sh"
+NORMHOOK="$PLUGIN_DIR/hooks/normalize-orchestrator-state.sh"   # #57 PostToolUse state normalizer
 
 # ---------------------------------------------------------------------------- args
 NO_LIVE=0
@@ -182,6 +183,37 @@ if printf '%s' "$pc_emit" | grep -q 'additionalContext' && [ -z "$pc_silent" ]; 
 else
   record "L1b.i" "post-compact" "reminder script logic + env-gating" "FAIL" \
     "REGRESSION: expected additionalContext when CLAUDE_PROJECT_DIR set w/ .maister/tasks and silence when unset. emit_has_ctx=$(printf '%s' "$pc_emit" | grep -q additionalContext && echo yes || echo no) unset_out_len=${#pc_silent}."
+fi
+
+# ---- L1d — orchestrator-state normalizer (#57): off-schema Edit -> conformant canonical shadow ----
+# Feed the built PostToolUse hook the Copilot Edit-payload shape (tool_result carries the written path)
+# for an OFF-SCHEMA orchestrator-state.yml, in the shipped default (shadow) mode. Assert it writes a
+# conformant sibling (task: block + phase-N completed_phases) and LEAVES the working file off-schema
+# (drift-safe). This is the deterministic script contract; whether Copilot FIRES it live is a separate
+# live concern (the hook is registered catch-all because a tool-name matcher does not fire — see build.sh WS2f).
+if [ -f "$NORMHOOK" ]; then
+  NORM_TMP="$RUNDIR/norm"; mkdir -p "$NORM_TMP"
+  printf 'orchestrator:\n  status: completed\n  completed_phases: [1, 2]\n' > "$NORM_TMP/orchestrator-state.yml"
+  norm_payload='{"hook_event_name":"PostToolUse","tool_name":"Edit","cwd":"'"$NORM_TMP"'","tool_input":"*** Update File: orchestrator-state.yml","tool_result":{"text_result_for_llm":"Updated 1 file(s): '"$NORM_TMP"'/orchestrator-state.yml"}}'
+  printf '%s' "$norm_payload" | STATE_NORMALIZER_MODE=shadow bash "$NORMHOOK" 2>/dev/null
+  NORM_SHADOW="$NORM_TMP/orchestrator-state.canonical.yml"
+  norm_ok=0
+  if [ -f "$NORM_SHADOW" ] \
+     && grep -q '^task:' "$NORM_SHADOW" \
+     && grep -q 'completed_phases: \["phase-1", "phase-2"\]' "$NORM_SHADOW" \
+     && grep -q 'completed_phases: \[1, 2\]' "$NORM_TMP/orchestrator-state.yml"; then
+    norm_ok=1
+  fi
+  if [ "$norm_ok" = "1" ]; then
+    record "L1d" "state-normalizer" "off-schema Edit -> conformant canonical shadow (working file untouched)" "PASS" \
+      "Fed the Copilot Edit-payload shape for an off-schema orchestrator-state.yml (bare-int completed_phases, orchestrator.status, no task: block). The hook wrote orchestrator-state.canonical.yml with a top-level task: block + phase-N completed_phases, and left the working file off-schema (shadow mode, drift-safe). Normalizer script EFFECT confirmed."
+  else
+    record "L1d" "state-normalizer" "off-schema Edit -> conformant canonical shadow (working file untouched)" "FAIL" \
+      "expected orchestrator-state.canonical.yml with 'task:' block + phase-N completed_phases, working file left off-schema. shadow_exists=$([ -f "$NORM_SHADOW" ] && echo yes || echo no). Is build.sh WS2e overlaying the normalizer + canonicalizer? Is node available for the canonicalizer?"
+  fi
+else
+  record "L1d" "state-normalizer" "off-schema Edit -> conformant canonical shadow (working file untouched)" "FAIL" \
+    "normalize-orchestrator-state.sh not found in the built plugin ($NORMHOOK). Is build.sh WS2e overlaying it?"
 fi
 
 # ============================================================================
