@@ -86,8 +86,8 @@ test('pipeline: extract -> normalize -> compare over committed fixtures yields t
   // completed∩ruled phase (dev {2,5,6,7,8,10,11} = 7). The 9 Stage-4 witness rules promote tokens
   // ALREADY in required[] (guarded by !effectiveRequired.includes → no new matched). Effective
   // required = 32 base + 7 promoted gates = 39.
-  const EXPECTED_MATCHED = golden.required.length + 7; // 31 + 7 = 38 (state_schema(conformant) demoted to optional, #57)
-  assert.equal(EXPECTED_MATCHED, 38, 'dev effective-required count sanity (31 base + 7 promoted gates; conformant now optional, #57)');
+  const EXPECTED_MATCHED = golden.required.length + 7; // 30 + 7 = 37 (task_status(completed) demoted to optional, #63 item 2; conformant already optional, #57)
+  assert.equal(EXPECTED_MATCHED, 37, 'dev effective-required count sanity (30 base + 7 promoted gates; task_status + conformant now optional)');
   assert.equal(
     result.matched.length,
     EXPECTED_MATCHED,

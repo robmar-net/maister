@@ -45,7 +45,7 @@ required + 33 optional + 21 rules + 6 allowlist = 92 rows.
 | `task_characteristic(involves_data_operations)=false` | required | :149 | One of the 5 gap-analyzer characteristics (:149, default :583); scenario-fixed by the pinned task input (no data operations) |
 | `gate_fired(ask)` | required | :176-180 | P2 exit gate always invokes AskUserQuestion — "There is no path through Phase 2 that bypasses `AskUserQuestion`" (:180) |
 | `outcome(tests-pass)=pass` | required | :441, :359 | FUNCTIONAL ORACLE (issue #48, Stage 2). P11 verification (:441) produces `verification/implementation-verification.md` — a correct run's implemented code (P8, :359) passes its test suite, so the functional `tests-pass` outcome is a passing deliverable check, not merely a modeled delegation |
-| `task_status(completed)` | required | :545 | P14 State: "Set `task.status: completed`" |
+| `task_status(completed)` | optional | :545 | P14 State: "Set `task.status: completed`". **Demoted required→optional in [#63](https://github.com/robmar-net/maister/issues/63) item 2 (hash-neutral):** lexical STATE self-report (the class #48 Stage 4 moved away from); terminal semantics carried by the functional `outcome(...)=pass` + event-witnessed `reached_terminal(completion)`. Model-grounded, NOT fitted |
 | `reached_terminal(completion)` | required | :553 | P14: "→ End of workflow" |
 | `precedes(gap-analyzer,specification-creator)` | required | :147→:285 | ORDER (issue #48, Stage 4): the P2 gap-analyzer delegation (:147) fans out before the P5 specification-creator delegation (:285) — analyse precedes spec |
 | `precedes(specification-creator,implementation-planner)` | required | :285→:332 | P5 specification-creator (:285) precedes P7 implementation-planner (:332) — spec precedes plan |

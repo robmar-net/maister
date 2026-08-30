@@ -12,7 +12,6 @@
     "created_artifact(outputs/research-report.md)",
     "gate_fired(ask)",
     "outcome(report-produced)=pass",
-    "task_status(completed)",
     "reached_terminal(completion)",
     "precedes(research-planner,information-gatherer)",
     "precedes(information-gatherer,research-synthesizer)"
@@ -38,7 +37,8 @@
     "gate_fired_at(phase-1)",
     "gate_fired_at(phase-4)",
     "gate_fired_at(phase-5)",
-    "state_schema(conformant)"
+    "state_schema(conformant)",
+    "task_status(completed)"
   ],
   "rules": [
     {

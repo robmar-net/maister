@@ -50,7 +50,6 @@ test('research structural invariants: Phase-1 foundation required; root skill + 
     'created_artifact(outputs/research-report.md)',
     'gate_fired(ask)',
     'reached_terminal(completion)',
-    'task_status(completed)',
   ]) {
     assert.ok(required.has(p), `${p} must be required`);
   }
@@ -60,11 +59,14 @@ test('research structural invariants: Phase-1 foundation required; root skill + 
   assert.ok(optional.has('invoked_skill(research)'), 'invoked_skill(research) must be optional');
 
   // Brainstorming/design are gate-conditional -> their phases + delegations are optional.
+  // task_status(completed) is lexical state self-report -> optional (#63 item 2 / #57): terminal
+  // semantics are carried by outcome(report-produced)=pass + reached_terminal(completion).
   for (const p of [
     'phase_completed(3)',
     'phase_completed(5)',
     'delegated(solution-brainstormer)',
     'delegated(solution-designer)',
+    'task_status(completed)',
   ]) {
     assert.ok(optional.has(p), `${p} must be optional`);
   }
