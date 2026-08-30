@@ -211,6 +211,30 @@ sqlite3 ~/.copilot/session-store.db \
    FROM assistant_usage_events WHERE created_at >= '<ISO-start>';"
 ```
 - L2 reports say "AIU: unknown" because 1.0.75+ SDK sessions carry no `session.shutdown` usage — read the DB instead.
+
+**Scope by `session_id`, not the window alone (#63 item 5).** A both-ends `created_at` window still
+**double-counts** when other Copilot activity (a concurrent CLI, or the overlapping windows of an N>1
+sweep) falls inside it. `assistant_usage_events` carries a per-request `session_id`; `readCost` now scopes
+the SUM to the run's session **when a `sessionId` is supplied and the column exists**, else it falls back
+to the window-only SUM (unchanged). It also does `GROUP BY model` to fill the run's *actual* model from
+the **billing record** (more reliable than the often-empty `session.shutdown` usage). The `run.mjs`
+side captures the SDK `ctx.sessionId` best-effort from the input handler (a run that fires no gate has no
+session id → window-only).
+```bash
+# session-scoped, per-model (the precise read):
+sqlite3 ~/.copilot/session-store.db \
+  "SELECT model, printf('%.1f',SUM(total_nano_aiu)/1e9) AIU, printf('%.1f',SUM(request_multiplier)) req \
+   FROM assistant_usage_events \
+   WHERE created_at >= '<ISO-start>' AND created_at <= '<ISO-end>' AND session_id = '<session-id>' \
+   GROUP BY model;"
+```
+> ⚠️ **UNVERIFIED LIVE SCHEMA (tracked — issue #63 item 9).** The column names `session_id` and `model`,
+> and whether the SDK's `ctx.sessionId` equals `assistant_usage_events.session_id`, are proven against the
+> **committed fixture DB only** — they have **not** been confirmed against a real `session-store.db`. The
+> `readCost` schema-probe (`pragma_table_info`) makes a name mismatch **degrade safely** (window-only /
+> `models:null`), never crash — but a silent fallback is still a gap, so the **item-9 live sweep must
+> confirm the real column names** and re-scope this query if they differ. Not a silent green: this box is
+> the visible, tracked record of the gap.
 - Rough guide: `research` L2 ≈ tens of AIU; `development` L2 ≈ a few hundred AIU (~1-2 dev runs can dent a monthly quota). Prefer credit-free checks; run live only when you must.
   **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81; AIU weighting and request
   multipliers change across CLI versions, and per-run vs per-arc figures are NOT directly
@@ -236,8 +260,20 @@ sqlite3 ~/.copilot/session-store.db \
   `opts.model ?? COMPAT_L2_MODEL ?? scenario.model` (scenario default is `null` = account/SDK default).
   There is **no `--model=` CLI flag** this stage; the env var is the only override. A requested model
   that the runtime-resolved SDK does not recognise may be silently ignored; the report degrades the
-  *actual* model to `unknown` when `modelMetrics` is absent, and requested-vs-actual divergence is
-  surfaced rather than asserted.
+  *actual* model to `unknown` when `modelMetrics` is absent (now back-filled from the `GROUP BY model`
+  billing read when available — #63 item 5), and requested-vs-actual divergence is surfaced rather than
+  asserted.
+- **Default model pin — DECISION (#63 item 5): keep the harness default UNPINNED (`null` = account/SDK
+  default).** Rationale: (1) a hard-pinned model the seat lacks would **fail closed** and make every live
+  run INCOMPLETE — worse than recording whatever the account serves; (2) the served model is a distinct
+  **matrix cell** (cost and behaviour are not comparable across models), so the source of truth is the
+  *actual* model **recorded per run** (now read from the billing record), not a repo-side pin; (3) the
+  workflow-model references/hashes are model-independent, so a pin would add a failure mode without adding
+  conformance signal. **For cross-run comparability**, an operator SHOULD pin explicitly via
+  `COMPAT_L2_MODEL=<model>` for a given sweep (the latest-generation Claude, e.g. `claude-opus-4-8`, is the
+  sensible choice when the seat has it) and record that value alongside the actual served model in the
+  matrix row. The default staying unpinned is the safe, honest baseline; the explicit pin is the operator's
+  comparability lever.
 - **DEFERRED paid live confirmation (operator-gated).** Two things remain **unconfirmed credit-free** and
   are the single seat-consuming follow-up, gated behind explicit operator approval (no spend without it):
   (1) does `createSession({model})` actually **pin the served model** (vs the SDK ignoring an unknown

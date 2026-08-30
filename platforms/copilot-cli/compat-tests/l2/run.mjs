@@ -835,6 +835,7 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
   const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
   const recorded = [];
   const gateLog = []; // per-run deterministic-responder log -> report `## Gates` section
+  let sessionId = null; // #63 item 5: SDK session id (captured from the input-handler ctx, best-effort)
   let client = null;
   let session = null;
   try {
@@ -859,7 +860,11 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
       onEvent: (e) => { recorded.push(e); },
       // Gates FIRE and are ANSWERED (never suppressed via --no-ask-user; AC8) by the DETERMINISTIC
       // responder (scenario answerMap); each answered gate is logged for the report `## Gates` section.
-      onUserInputRequest: (req) => {
+      onUserInputRequest: (req, ctx) => {
+        // #63 item 5: capture the SDK session id (best-effort, first non-null wins) so the N=1 readCost
+        // can scope its SUM to THIS session (double-count avoidance). Absent (a run that fires no gate) →
+        // sessionId stays null → readCost falls back to the window-only SUM (Stage-5 behavior).
+        if (ctx?.sessionId != null && sessionId == null) sessionId = ctx.sessionId;
         const res = chooseAnswer(req, sc.answerMap);
         gateLog.push({
           question: req.question,
@@ -906,7 +911,8 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
       const modelActual = modelActualFromUsage(usage);
       // M-3: a timed-out N=1 drive STILL spent a seat and its window is known, so its real cost is read
       // here too (NOT gated on a successful verdict). N>1 (readCostHere false) skips — runLive reads once.
-      const cost = readCostHere ? await readCost({ startIso, endIso }) : null;
+      // #63 item 5: scope to this run's session (best-effort; null → window-only).
+      const cost = readCostHere ? await readCost({ startIso, endIso, sessionId }) : null;
       return {
         status: 'incomplete',
         reason: `sendAndWait did not complete (timeout or session error): ${timeoutErr?.message ?? timeoutErr}`,
@@ -930,7 +936,12 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
     // Stage-5 (M-3): read the REAL cost over [startIso..endIso] for the N=1 case (window known here);
     // N>1 (readCostHere false) leaves cost null and runLive reads the whole-run window once. The read
     // is best-effort — a failure yields the `unavailable` sentinel, never throws.
-    const cost = readCostHere ? await readCost({ startIso, endIso }) : null;
+    // #63 item 5: scope to this run's session (best-effort; null → window-only).
+    const cost = readCostHere ? await readCost({ startIso, endIso, sessionId }) : null;
+    // #63 item 5: prefer the session.shutdown-derived actual model; when it is 'unknown' (common on
+    // 1.0.8x), fall back to the BILLING-record model(s) from GROUP BY model — a more reliable source.
+    const modelActualResolved =
+      modelActual && modelActual !== 'unknown' ? modelActual : (cost?.modelActual || modelActual);
 
     // Assemble the pipeline. taskDirRoot = rundir (contains .maister/tasks/<taskType>/*); the scenario's
     // taskType selects both the state subtree and the extractor's tree profile.
@@ -971,7 +982,7 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
           // Stage-5: persist the requested + actual model and the run's real cost so a --replay renders
           // the SAME model/cost the live run showed (replay's res.usage is null — cost comes from meta).
           model: persistMeta?.model ?? null,
-          modelActual: modelActual ?? 'unknown',
+          modelActual: modelActualResolved ?? 'unknown',
           cost: cost ?? null,
           // hook_effect(destructive_guard=ask) is NOT persisted as a sink — it replays directly from
           // events.json (the persisted permission.requested carries kind:"hook" + the guard hookMessage),
@@ -986,9 +997,9 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
-    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost };
+    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual: modelActualResolved, startIso, endIso, cost };
 
-    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual, startIso, endIso, cost };
+    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual: modelActualResolved, startIso, endIso, cost };
   } finally {
     // Bounded per-run teardown: disconnect the session, THEN stop + forceStop THIS run's OWN client
     // (the SDK client spawned an app.js runtime subprocess whose IPC handles keep the event loop alive —
