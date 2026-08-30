@@ -10,6 +10,7 @@
     "delegated(gap-analyzer)",
     "delegated(implementation-completeness-checker)",
     "delegated(implementation-planner)",
+    "delegated(spec-auditor)",
     "delegated(specification-creator)",
     "delegated(task-group-implementer)",
     "delegated(test-suite-runner)",

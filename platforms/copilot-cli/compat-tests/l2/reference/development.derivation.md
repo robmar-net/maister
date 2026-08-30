@@ -10,7 +10,7 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Source (read-only citation source) | `plugins/maister/skills/development/SKILL.md` |
 | maister_version | `2.2.2` |
 | workflow_model_version | `5` |
-| Sibling JSON hash | `9f431947b38a08dd892dd0c0f233595200ff772ea5c794ceb2740b170b54b830` |
+| Sibling JSON hash | `77b935c141d259b366b73c29126ae0584b34738529125e3591742a2b597f8907` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
@@ -103,26 +103,36 @@ REGRESSED-vs-INCOMPLETE for a missing `phase_completed(N)`.
 
 ### Gate-placement rules (Stage 3, 12)
 
-Each rule promotes its `require` predicate to *required* ONLY when
-its `when` predicate (`phase_completed(N)`) is observed — a gate whose phase never completed cannot
-false-alarm. Derived EXACTLY from the mandatory-gate exit markers in the source SKILL.md (phases 2–13;
-phases 1 & 14 have no exit gate), never fitted to a run. Every `require` row is also modelled in
-`## Optional` above so an observed-but-unpromoted gate is not an unmodeled extra.
+Each rule promotes its `require` predicate to *required* ONLY when its `when` predicate is observed —
+a gate whose phase never ran cannot false-alarm. Derived EXACTLY from the mandatory-gate exit markers
+in the source SKILL.md (phases 2–13; phases 1 & 14 have no exit gate), never fitted to a run. Every
+`require` row is also modelled in `## Optional` above so an observed-but-unpromoted gate is not an
+unmodeled extra.
+
+**#63 item 1 (#59): CONDITIONAL-phase gates are keyed on the phase's EXECUTION WITNESS, not
+`phase_completed(N)`** — same fix as research. Always-executed phases (2, 5, 7, 8, 10, 11) keep
+`phase_completed(N)`. Skippable phases (3/9 TDD — skip-if no `has_reproducible_defect` `:202`/`:385`;
+4 UI mockups — skip-if not `ui_heavy` `:221-222`; 6 spec-audit — skippable `:305`/`:309`; 12/13 E2E &
+user-docs — `:503`/`:525`) are keyed on the witness that only appears when the phase runs, so a
+skip-marked `phase_completed(N)` no longer false-REGRESSes on the exit gate (the same #59 class the N=3
+run surfaced for research). The `task_characteristic(...)=true` `when` is dormant in this reference
+scenario (which pins `=false`) and only promotes when the characteristic is genuinely true — the one
+deliberate state-file exception (documented).
 
 | when | require | citation |
 |---|---|---|
-| `phase_completed(2)` | `gate_fired_at(phase-2)` | :174 ("Continue to Phase 3/4/5: `<title>`?", :186-189) |
-| `phase_completed(3)` | `gate_fired_at(phase-3)` | :206 ("TDD red gate complete. Continue to Phase 4?", :208) |
-| `phase_completed(4)` | `gate_fired_at(phase-4)` | :237 ("UI mockups complete … Continue to Phase 5?", :239) |
-| `phase_completed(5)` | `gate_fired_at(phase-5)` | :294 ("… Continue to specification audit?", :296) |
-| `phase_completed(6)` | `gate_fired_at(phase-6)` | :313 ("… Continue to implementation planning?", :315) |
-| `phase_completed(7)` | `gate_fired_at(phase-7)` | :340 ("… Continue to implementation?", :342) |
-| `phase_completed(8)` | `gate_fired_at(phase-8)` | :370 ("… Continue to verification?", :372) |
-| `phase_completed(9)` | `gate_fired_at(phase-9)` | :389 ("TDD gate passed. Continue to Phase 10?", :391) |
-| `phase_completed(10)` | `gate_fired_at(phase-10)` | :432 ("Which standard verifications to run?" / "Enable E2E…" / "Generate user documentation?", :425-430) |
-| `phase_completed(11)` | `gate_fired_at(phase-11)` | :490 ("… Continue to Phase 12?", :492) |
-| `phase_completed(12)` | `gate_fired_at(phase-12)` | :510 ("E2E complete. Continue to Phase 13?", :512) |
-| `phase_completed(13)` | `gate_fired_at(phase-13)` | :532 ("Documentation complete. Continue to Phase 14?", :534) |
+| `phase_completed(2)` | `gate_fired_at(phase-2)` | :174 ("Continue to Phase 3/4/5: `<title>`?", :186-189) — always-run |
+| `task_characteristic(has_reproducible_defect)=true` | `gate_fired_at(phase-3)` | TDD-red runs only with a reproducible defect (:202 "Skip if `has_reproducible_defect` is false"); exit gate :206 ("TDD red gate complete. Continue to Phase 4?", :208) |
+| `task_characteristic(ui_heavy)=true` | `gate_fired_at(phase-4)` | UI mockups run only when `ui_heavy` (:221-222 skip-if); exit gate :237 ("UI mockups complete … Continue to Phase 5?", :239) |
+| `phase_completed(5)` | `gate_fired_at(phase-5)` | :294 ("… Continue to specification audit?", :296) — always-run |
+| `delegated(spec-auditor)` | `gate_fired_at(phase-6)` | spec-auditor delegated ⇒ spec-audit RAN (:305/:309 skippable); exit gate :313 ("… Continue to implementation planning?", :315) |
+| `phase_completed(7)` | `gate_fired_at(phase-7)` | :340 ("… Continue to implementation?", :342) — always-run |
+| `phase_completed(8)` | `gate_fired_at(phase-8)` | :370 ("… Continue to verification?", :372) — always-run |
+| `task_characteristic(has_reproducible_defect)=true` | `gate_fired_at(phase-9)` | TDD-green runs only with a reproducible defect (:385 skip-if); exit gate :389 ("TDD gate passed. Continue to Phase 10?", :391) |
+| `phase_completed(10)` | `gate_fired_at(phase-10)` | :432 ("Which standard verifications to run?" / "Enable E2E…" / "Generate user documentation?", :425-430) — always-run |
+| `phase_completed(11)` | `gate_fired_at(phase-11)` | :490 ("… Continue to Phase 12?", :492) — always-run |
+| `delegated(e2e-test-verifier)` | `gate_fired_at(phase-12)` | e2e-test-verifier delegated ⇒ E2E RAN (:503 skip-if `e2e_enabled=false`); exit gate :510 ("E2E complete. Continue to Phase 13?", :512) |
+| `delegated(user-docs-generator)` | `gate_fired_at(phase-13)` | user-docs-generator delegated ⇒ user-docs RAN (:525 skip-if); exit gate :532 ("Documentation complete. Continue to Phase 14?", :534) |
 
 ### Witness relations (Stage 4, 9)
 
