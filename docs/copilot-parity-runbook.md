@@ -232,10 +232,13 @@ sqlite3 ~/.copilot/session-store.db \
 > and `model` **are present on a real `session-store.db`** — verified **credit-free** by pointing `readCost`
 > at the operator's own DB: the `pragma_table_info` probe activated both refinements, the session filter
 > scoped correctly (a real busy session read 160 AIU vs 292 AIU window-only), and `GROUP BY model` returned
-> a real per-model split (`claude-sonnet-4.6` 232 AIU + `gpt-5.6-luna` 60 AIU). **The only residual
-> unverified point** (tracked to [issue #63 item 9](https://github.com/robmar-net/maister/issues/63)) is
-> whether the SDK's `ctx.sessionId` captured in `run.mjs` **equals** the DB's `session_id` value — that
-> needs a live L2 drive to correlate. The schema-probe still degrades safely on any future name change.
+> a real per-model split (`claude-sonnet-4.6` 232 AIU + `gpt-5.6-luna` 60 AIU). ✅ **`ctx.sessionId` ↔ DB
+> `session_id` CORRELATION CONFIRMED** by the item-9 development drive (1.0.82, run `20260830T155522Z`):
+> the run captured `ctx.sessionId` and its session-scoped `readCost` returned **47.49 AIU** — the real
+> non-zero total of DB session `9489d88c…` (a non-matching id would have summed to ~0), proving the SDK id
+> is a valid `assistant_usage_events.session_id` key. The double-count-avoidance *value* is shown
+> separately by the multi-session read above (160 vs 292 AIU). The item-5 gap is now fully closed; the
+> schema-probe still degrades safely on any future name change.
 - Rough guide: `research` L2 ≈ tens of AIU; `development` L2 ≈ a few hundred AIU (~1-2 dev runs can dent a monthly quota). Prefer credit-free checks; run live only when you must.
   **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81; AIU weighting and request
   multipliers change across CLI versions, and per-run vs per-arc figures are NOT directly
@@ -301,15 +304,16 @@ sqlite3 ~/.copilot/session-store.db \
 predate the **#63 gate-witness recalibration** (why the current credit-free *effective-required* counts
 differ: development 37, research 15 effective). What is **CURRENT** today is the credit-free conformance:
 `--check-reference` **×4** (development / research / quick-bugfix / **destructive-guard**) + the full
-pipeline / replay / cost unit suite, all green (workflow-model v5). A **full live matrix refresh at the
-current CLI (1.0.82) across all four scenarios — including a first recorded `destructive-guard` live
-verdict — is tracked to [issue #63 item 9](https://github.com/robmar-net/maister/issues/63)** (spend-gated).
+pipeline / replay / cost unit suite, all green (workflow-model v5). **Item-9 sweep progress (1.0.82):**
+`development` refreshed live (AS-EXPECTED, 47.49 AIU — see the row + the gateMap-fix note below) and
+`research` ran an `--runs=3` calibration; `quick-bugfix` and a first `destructive-guard` live verdict
+at 1.0.82 remain for a later dedicated run (the credit-free conformance for both is CURRENT).
 
 | Layer / scenario | Copilot CLI | Verdict |
 |---|---|---|
 | L0 / WS7 (7 contracts) | 1.0.76 & 1.0.81 | ✅ 7/7 (live) |
 | L2 research | 1.0.81 · N=3 re-run 1.0.82 | ✅ AS-EXPECTED (9/9, diff NONE) live; 1.0.82 `--runs=3` noise-cal 275.14 AIU (see Cost) |
-| L2 development | 1.0.81 | ✅ AS-EXPECTED (25/25, diff NONE) live — post-#46 parser fix |
+| L2 development | **1.0.82** (item-9 sweep) | ✅ AS-EXPECTED (37 PASS · 6 LIMITATION · 0 FAIL) — **47.49 AIU**. Raw drive was REGRESSED on one false FAIL (`gate_fired_at(phase-11)`): the Phase-11 exit gate fired as *"Continue to Phase 14 finalization?"* (12/13 skipped) but the gateMap hard-coded "phase 12". Fixed the gateMap regex; **replay of the persisted 1.0.82 bundle flipped REGRESSED→AS-EXPECTED credit-free**. 1.0.81: 25/25 diff NONE (post-#46). |
 | L2 quick-bugfix | 1.0.81 | ✅ AS-EXPECTED (2/2 vs pre-calibration partition, diff NONE — see CALIBRATION-LOG note 4) live |
 | L2 destructive-guard | — | credit-free CURRENT (`--check-reference` + scenario/replay tests); **live verdict pending the item-9 sweep** |
 

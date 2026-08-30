@@ -94,7 +94,16 @@ const gateMap = [
   { phase: 8, re: /continue to verification/i },
   { phase: 9, re: /tdd gate passed/i },
   { phase: 10, re: /which standard verifications|enable e2e|generate user documentation/i },
-  { phase: 11, re: /continue to phase 12/i },
+  // Phase 11 (Verification & Issue Resolution) exit gate. SKILL.md:436 makes it "Continue to Phase 12?"
+  // AND instructs the model to "Display executive summary: total issues found, issues fixed, issues
+  // remaining" first. BUT phases 12 (E2E) + 13 (user-docs) are CONDITIONAL (SKILL.md:120-122 "When
+  // e2e_enabled / user_docs_enabled"); when BOTH are skipped the orchestrator faithfully points the gate
+  // at the next ACTIVE phase — 14 — so the question becomes "Continue to Phase 14 finalization?" (observed
+  // live on 1.0.82, run 20260830T155522Z). Either phrasing IS the Phase-11 mandatory exit gate, so match
+  // BOTH: the literal "phase 12", OR a verification/issues executive-summary that continues to phase 14 /
+  // finalization. The verification anchor keeps this from stealing phase-13's own →14 gate, which is
+  // "documentation complete" (its own regex below) and carries no verification-summary text.
+  { phase: 11, re: /continue to phase 12|(re-?verification|verification (passed|results|found|complete)|issues? (found|fixed|remaining)).{0,200}continue to (phase 14|finaliz)/is },
   { phase: 12, re: /e2e complete/i },
   { phase: 13, re: /documentation complete/i },
 ];
