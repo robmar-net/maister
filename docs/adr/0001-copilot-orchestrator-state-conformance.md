@@ -51,9 +51,25 @@ touches the working file. For the shadow to affect the verdict, the harness's st
 (reformats `completed_phases`, relocates `status` into a `task:` block — invents no phases, changes no
 status), so it cannot fabricate conformance or mask a semantic regression; and the source is always visible.
 
-### Layer 3 — In-place (DEFERRED): only if drift-safe
-Rewrite the working file in place **only** if a live drive proves the workflow re-reads state before each
-`*** Update File:` patch (else the shadow stays the safe default). Gated on that test.
+### Layer 3 — In-place: DRIFT-TESTED — survivable but not clean
+Live drift probe (2026-08-30, Copilot 1.0.82, 2 runs / ~2.3 AIU; also flushed out two hook-firing bugs —
+a tool-name `matcher` does NOT fire PostToolUse, only a catch-all does; and the canonicalizer's CLI
+self-detection false-negated across a symlink). Result with in-place forced:
+
+- The hook **does** rewrite the working file → it ends **canonicalized** (real parity on the working file).
+- **But** it induces apply-patch failures: `Failed to apply patch: Error: Failed to find expected lines in …
+  completed_phases: [1, 2]` — the model's next `*** Update File:` patch expected the pre-rewrite bytes.
+- Copilot's model **recovers**: it detects the drift, re-reads the file, and re-edits (`File drift detected
+  during ordered updates; restoring exact requested YAML state`). Final state was correct.
+
+So in-place is **functionally survivable but not clean**: every state update becomes a patch-fail →
+re-read → re-edit cycle (extra model turns, AIU, latency, and a "file drift detected" signal to the
+model). Over a real run's 6–18 state updates that is fragile and wasteful — and **full structural scope
+(more rewritten lines) would make the drift worse**. Conclusion: neither mode is a clean ship —
+in-place buys working-file parity at a per-update churn cost; shadow is drift-safe but only the L2
+harness reads it. The honest shipped handling remains **Layer 1** (documented LIMITATION); Layers 2–3
+stand as the prototype that documents *why* clean lexical parity fights Copilot's incremental apply-patch
+model (the missing mechanism is not `PostToolUse` — it exists — but a non-diff whole-file write path).
 
 ## Consequences
 
