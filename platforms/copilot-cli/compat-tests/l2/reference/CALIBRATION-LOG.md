@@ -665,3 +665,37 @@ in-family planning aid, not a mis-route. dev-only re-stamp `19df242f… → 6ba2
 the frobnicate-triggered fix cycle) — vs 24.75 in WP-D; the sandbox split should reduce future dev cost.
 **Deferred:** a 2nd clean live dev + research run (next sweep) to promote `outcome(greet-edges)=pass` /
 `outcome(research-answer)=pass` from optional to required.
+
+### 35 — #88 Product-correct: first live upstream-vs-fork sweep (1.0.82) — identical on both builds
+
+Filled the **Product correct** comparison line. Same harness (our #88 scenarios + oracles), fork build vs
+the untouched upstream `plugins/maister-copilot` (`SkillPanel/maister` @ `f75ef4f`, v2.2.3) via
+`COMPAT_PLUGIN_DIR` (the documented control procedure, Why-This-Fork "How to repeat"). Credit-free code;
+the drives spent real AIU (operator-approved).
+
+| oracle | fork | upstream |
+|---|---|---|
+| `outcome(research-answer)` | ✅ =pass (`20260831T123056Z`, 13.34 AIU) | ✅ =pass (`20260831T131021Z`, 17.04 AIU) |
+| `outcome(greet-edges)` | ✅ =pass (`20260831T123617Z`) | ✅ =pass (`20260831T131702Z`, 39.86 AIU) |
+
+**Net: Product correct is IDENTICAL on both builds — the predicted, honest result** (product-correctness
+is model×workflow, ~not the generator translation). Both upstream research/dev models named the planted
+`frobnicate` + concluded unreachable, and implemented the hardened `--greet` edges correctly.
+
+**The upstream dev run also demonstrates the fork's actual value in one shot:** it was product-correct
+(`greet-edges=pass`) **while its WORKFLOW SHAPE regressed 27·3·10** — the entire maister subagent chain
+(gap-analyzer / specification-creator / implementation-planner / task-group-implementer + their
+precedes/min_count edges) MISSING, replaced by Copilot's generic `delegated(general-purpose)`. Upstream
+produced a correct deliverable by BYPASSING the orchestration; the fork's generator makes the model run
+the documented workflow (fork dev AS-EXPECTED 37·4·0 after PR #90). Product-correctness identical;
+structure is where the builds diverge (consistent with the L2-development control-experiment row).
+
+**Also confirmed:** the #88-follow-up sandbox split (PR #90) works in practice — the upstream research run
+used `sample-cli-research` and its report cites "run-tests.sh checks only hello, upper, version" (no
+`--greet` noise), so `frobnicate` was the sole, unambiguous discrepancy.
+
+**Promotion status:** `=pass` stays OPTIONAL — the FORK has 1 clean live run each; the upstream runs are
+the informational control, not counted toward promotion. A 2nd clean fork run (next sweep) promotes
+`outcome(research-answer)=pass` / `outcome(greet-edges)=pass` to required. No reference/hash change (this
+is an evidence entry, not a grammar edit). Sweep cost: ~57 AIU upstream (17.04 + 39.86) on top of the
+~137 AIU fork validation.
