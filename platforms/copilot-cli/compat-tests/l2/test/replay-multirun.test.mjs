@@ -40,6 +40,7 @@ const GOOD_REPORT = [
   'An N>1 live run now persists one replay bundle per drive under reports/<ts>/run-<i>/, INCOMPLETE',
   'drives included. `--replay` accepts a run-<i>/ bundle exactly like a flat reports/<ts>/ one and',
   'reproduces the recorded verdict without importing the SDK, so the whole round-trip spends no seat.',
+  'The sample CLI implements `frobnicate` but leaves it unreachable from the dispatcher (dead code).',
   '',
   '## Conclusion',
   'Per-run persistence is deterministic and credit-free.',

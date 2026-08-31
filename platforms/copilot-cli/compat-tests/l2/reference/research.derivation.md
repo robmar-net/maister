@@ -10,18 +10,18 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Source (read-only citation source) | `plugins/maister/skills/research/SKILL.md` |
 | maister_version | `2.2.2` |
 | workflow_model_version | `6` |
-| Sibling JSON hash | `0b07558d5d375302906c9fee9b3918f06fff30223557b2757eee91b39679e284` |
+| Sibling JSON hash | `e24648154676b6b618830b27547a4bc7274359d4b49229a62438f5808e28f077` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
 `plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes (derivation
-sections): 13 required + 23 optional + 5 rules + 2 allowlist = 43 rows (the Required section keeps the
+sections): 14 required + 22 optional + 5 rules + 1 allowlist = 42 rows (the Required section keeps the
 two demoted-but-documented rows `task_status`/`state_schema`, so it exceeds the skeleton `required`
-array of 11). Partition rationale (genesis `db26a46`,
+array of 12). Partition rationale (genesis `db26a46`,
 [CALIBRATION-LOG.md](CALIBRATION-LOG.md) entry 2): the Phase-1 research foundation is required;
 conditional brainstorming/design phases, their artifacts, and the root skill are optional.
 
-## Required (13)
+## Required (14)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -37,13 +37,13 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 | `reached_terminal(completion)` | required | :377 | P6: "→ End of workflow" |
 | `precedes(research-planner,information-gatherer)` | required | :153→:170 | ORDER (issue #48, Stage 4): the P1 research-planner delegation (:153) precedes the parallel information-gatherer fan-out (:170) — plan precedes gather |
 | `precedes(information-gatherer,research-synthesizer)` | required | :170→:184 | The information-gatherer fan-out (:170) precedes the research-synthesizer delegation (:184) — gather precedes synthesize |
+| `outcome(research-answer)=pass` | required | :181 (report artifact) + planted sandbox truth | PRODUCT-CORRECTNESS oracle (issue #88). The report must NAME the planted unreachable command `frobnicate` AND draw the unreachable/dead-code conclusion (`assert:'report-contains'` grader; deterministic offline grep, no LLM judge). Ground truth is planted in `sandbox/sample-cli-research` (`cmd_frobnicate` defined + documented but absent from the dispatcher `case`; sole discrepancy after the #90 split), NOT web-sourced. **PROMOTED optional→required (CALIBRATION #36) after 2 clean live runs — fork `20260831T123056Z` + `20260831T142630Z`, both `=pass`; upstream control also `=pass`.** A one-token grep can false-pass — a cheap FLOOR, not a rubric (see Honesty notes). Backwards-incomparable: bundles predating the plant cannot pass |
 | `state_schema(conformant)` | optional | :107, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema. **NOT hard-required** — the runtime routing/resume readers are model-interpreted/semantic, so an off-schema serialization is behavior-preserving (the first live research run on 1.0.81 emitted `state_schema(off-schema)`; the divergence stays visible as the allowlist LIMITATION 🟢 ADAPTED, tracked in #57 with the normalizer-hook parity option). Research legitimately omits `task_characteristics` (no gap-analyzer) — an ABSENCE (`parseWarnings`), NOT a `schemaDivergences` entry (C1 guard). Model-grounded demotion, NOT fitted to a run |
 
-## Optional (23)
+## Optional (22)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `outcome(research-answer)=pass` | optional | :181 (report artifact) + planted sandbox truth | PRODUCT-CORRECTNESS oracle (issue #88). The report must NAME the planted unreachable command `frobnicate` AND draw the unreachable/dead-code conclusion (`assert:'report-contains'` grader; deterministic offline grep, no LLM judge). Ground truth is planted in `sandbox/sample-cli` (`cmd_frobnicate` defined + documented but absent from the dispatcher `case`), NOT web-sourced. Lands OPTIONAL; the matching `=fail` is allowlisted (promote to required after >=2 clean runs). A one-token grep can false-pass — a cheap FLOOR, not a rubric (see Honesty notes) |
 | `phase_completed(2)` | optional | :103, :233-235 | Beyond-foundation continuation; P2 routing (:233-235) decides whether 3/5/6 run — only the foundation is required by the model |
 | `phase_completed(3)` | optional | :104, :246 | Skip-if `brainstorming_enabled = false` (user choice in P2, or `--no-brainstorm` flag) |
 | `phase_completed(4)` | optional | :105, :274 | Skip-if `brainstorming_enabled = false` |
@@ -106,12 +106,11 @@ for the intended knockout).
 | `phase_completed(1)` | `delegated(research-planner)` | P1 witness | :153 (P1 Step 2: "Use Task tool with `subagent_type: maister:research-planner`") |
 | `phase_completed(1)` | `min_count(delegated(information-gatherer))=2` | count rule ([OQ-1]) | :164-170 (P1 gather: default-4 / cap-8 parallel gatherer fan-out) — conditional on P1 completing; honesty note below |
 
-## Allowlist (2)
+## Allowlist (1)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
 | `state_schema(off-schema)` | allowlist | :100-107 (parser tolerance) | LIMITATION (issue #48, Stage 4) — the tolerant state parser accepts documented off-schema orchestrator-state serializations (bare-int `completed_phases`, `phase[-_]` tolerance, `phase_summaries` as phase source, `phases:` sequence with `id|number|phase` key, top-level `status:` without a `task:` block, floating `task_characteristics`); a research run whose state diverges is allowlisted, not REGRESSED |
-| `outcome(research-answer)=fail` | allowlist | issue #88 (CALIBRATION #32) | LIMITATION — the report did not name the planted `frobnicate` / draw the unreachable conclusion. Tracked (not REGRESSED) while `=pass` is optional; promote `=pass` to required and retire this row after >=2 clean runs. Backwards-incomparable: bundles predating the sandbox plant cannot pass this grader |
 
 ## Honesty notes
 

@@ -10,16 +10,16 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Source (read-only citation source) | `plugins/maister/skills/development/SKILL.md` |
 | maister_version | `2.2.2` |
 | workflow_model_version | `6` |
-| Sibling JSON hash | `6ba234a71d5caf791429ba865defa698ecb597dd1c81906f95ccac7d763158da` |
+| Sibling JSON hash | `574a23d4ddc1dab78c2f601ccd5673eeb96b7e362a24b78690115eba9341ffb4` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
 `plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes (derivation
-sections): 32 required + 43 optional + 21 rules + 11 allowlist = 107 rows (the Required section keeps
+sections): 33 required + 42 optional + 21 rules + 10 allowlist = 106 rows (the Required section keeps
 the two demoted-but-documented rows `task_status`/`state_schema`, so it exceeds the skeleton `required`
-array of 30).
+array of 31).
 
-## Required (32)
+## Required (33)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -54,9 +54,10 @@ array of 30).
 | `precedes(implementation-planner,task-group-implementer)` | required | :332→implementation-plan-executor/SKILL.md:96 | P7 implementation-planner (:332) precedes the P8 executor's per-group task-group-implementer fan-out (implementation-plan-executor/SKILL.md:96) — plan precedes implement |
 | `precedes(task-group-implementer,implementation-verifier)` | required | implementation-plan-executor/SKILL.md:96→:446 | The P8 task-group-implementer fan-out (implementation-plan-executor/SKILL.md:96) precedes the P11 implementation-verifier invocation (:446) — implement precedes verify |
 | `min_count(delegated(task-group-implementer))=1` | required | implementation-plan-executor/SKILL.md:87-99 | COUNT (issue #48, Stage 4): the plan executor delegates ONE task-group-implementer per task group (implementation-plan-executor/SKILL.md:87-99), so a correct dev run fans out ≥1 — token-expansion `=1..c`, reference asserts the floor `=1` |
+| `outcome(greet-edges)=pass` | required | prompt-pinned edges + `run-edge-tests.sh` (issue #88) | PRODUCT-CORRECTNESS oracle: the `--greet` deliverable preserves a multi-word name verbatim AND fails a bare `--greet` with a non-zero exit + `usage` on stderr (restaged 2-check runner). SEPARATE from `outcome(tests-pass)` (which stays the feature check). **PROMOTED optional→required (CALIBRATION #36) after 2 clean runs — fork `20260831T123617Z` (AS-EXPECTED after #90) + `20260831T143100Z`, both `=pass`; upstream control also `=pass`.** Backwards-incomparable: a bundle whose bare `--greet` prints `Hello, !` exit 0 cannot pass |
 | `state_schema(conformant)` | optional | :107-122, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema (canonical `completed_phases` + top-level `task:` block). **It is NOT hard-required** because the runtime routing/resume readers (`development/SKILL.md:247`, `orchestrator-patterns.md:358-360`) are model-interpreted and *semantic* — a bare-int `completed_phases` or a top-level `status:` is read for the same meaning — so an off-schema serialization is behavior-preserving, not a functional regression. The divergence stays visible via the `state_schema(off-schema)` allowlist LIMITATION (🟢 ADAPTED); lexical parity would need a deterministic post-write normalizer hook (tracked in #57). Keyed on the dedicated `schemaDivergences` signal (NOT `parseWarnings`), so legitimate absences do not mark off-schema. Model-grounded demotion (readers are semantic), NOT fitted to a run |
 
-## Optional (43)
+## Optional (42)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -102,7 +103,6 @@ array of 30).
 | `outcome(spec-structure)=pass` | optional | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | Structure oracle: `implementation/spec.md` opens with the § 7 Artifact Summary Contract `## TL;DR` (specification-creator.md:114). Body headings NOT asserted (wording varies per task — see CALIBRATION #29). Optional; `=fail` allowlisted |
 | `outcome(plan-structure)=pass` | optional | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | Structure oracle: `implementation/implementation-plan.md` opens with `## TL;DR` (implementation-planner.md:193). Optional; `=fail` allowlisted |
 | `outcome(verification-structure)=pass` | optional | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | Structure oracle: `verification/implementation-verification.md` opens with `## TL;DR` (implementation-verifier/SKILL.md Phase 3 report structure). Optional; `=fail` allowlisted |
-| `outcome(greet-edges)=pass` | optional | prompt-pinned edges + `run-edge-tests.sh` (issue #88) | PRODUCT-CORRECTNESS oracle: the `--greet` deliverable preserves a multi-word name verbatim AND fails a bare `--greet` with a non-zero exit + `usage` on stderr (restaged 2-check runner). SEPARATE from required `outcome(tests-pass)` on purpose (a pre-hardening bundle is a tracked LIMITATION, not a false REGRESSED — CALIBRATION #33). Optional; `=fail` allowlisted; promote to required after >=2 clean runs |
 
 ## Rules (21)
 
@@ -166,7 +166,7 @@ dev profile does NOT emit `created_artifact(analysis/gap-analysis.md)`, so it mu
 | `phase_completed(11)` | `invoked_skill(implementation-verifier)` | P11 | :446 (P11 Step 1: "Invoke Skill tool - `maister:implementation-verifier`") |
 | `phase_completed(11)` | `created_artifact(verification/*)` | P11 | :441 (P11 Output: `verification/implementation-verification.md`) |
 
-## Allowlist (11)
+## Allowlist (10)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -179,7 +179,6 @@ dev profile does NOT emit `created_artifact(analysis/gap-analysis.md)`, so it mu
 | `outcome(spec-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — a spec.md that does not open with the § 7 `## TL;DR` contract is surfaced VISIBLY, not REGRESSED, while `=pass` is optional. Retire + promote `=pass` to required after ≥2 runs confirm the structure on Copilot (CALIBRATION #29) |
 | `outcome(plan-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — same as `outcome(spec-structure)=fail` for `implementation/implementation-plan.md` |
 | `outcome(verification-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — same for `verification/implementation-verification.md` |
-| `outcome(greet-edges)=fail` | allowlist | issue #88 (CALIBRATION #33) | LIMITATION — the `--greet` deliverable did not satisfy both hardened edges (multi-word preserved; bare `--greet` fails with usage on stderr). Tracked (not REGRESSED) while `=pass` is optional; promote after >=2 clean runs. Backwards-incomparable: a bundle whose bare `--greet` prints `Hello, !` exit 0 cannot pass |
 | `invoked_skill(quick-plan)` | allowlist | #88 follow-up (CALIBRATION #34) | LIMITATION — platform/model divergence: the dev model additionally invoked the maister `quick-plan` skill (Plan Mode) during planning, ALONGSIDE `implementation-planner` (still delegated; precedes chain intact). No development/SKILL.md anchor → allowlisted (not silently optional), a benign in-family planning aid, not a mis-route out of maister. Observed live 1.0.82 `20260831T123617Z` |
 
 ## Honesty notes

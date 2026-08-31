@@ -366,6 +366,7 @@ test('runReplay: renders the PERSISTED model + cost from replay-meta.json (round
     'The --replay path reconstructs extract() inputs from a persisted bundle and re-runs the outcome',
     'oracle against the persisted rundir copy, reusing finalizeSingleRun so the verdict and report match',
     'a live N=1 run. The model and cost render from replay-meta.json, never from a live readCost.',
+    'The sample CLI implements `frobnicate` but leaves it unreachable from the dispatcher (dead code).',
     '',
     '## Conclusion',
     'A persisted bundle reproduces its recorded model + real cost deterministically and credit-free.',

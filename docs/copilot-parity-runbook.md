@@ -329,8 +329,8 @@ oracles (no network ground truth, no LLM judge):
 
 | Scenario | Oracle | What it checks | Status |
 |---|---|---|---|
-| research | `outcome(research-answer)` (`report-contains`) | the report names the planted unreachable command `frobnicate` AND draws the unreachable/dead-code conclusion (ground truth planted in `sandbox/sample-cli-research`: `cmd_frobnicate` defined + documented but absent from the dispatcher `case`) | ✅ **live `=pass`** 1.0.82 — fork `20260831T123056Z` + upstream `20260831T131021Z`; OPTIONAL until a 2nd clean fork run |
-| development | `outcome(greet-edges)` (restaged `run-edge-tests.sh`) | the `--greet` deliverable preserves a multi-word name verbatim AND fails a bare `--greet` with non-zero exit + `usage` on stderr | ✅ **live `=pass`** 1.0.82 — fork `20260831T123617Z` + upstream `20260831T131702Z`; OPTIONAL until a 2nd clean fork run |
+| research | `outcome(research-answer)` (`report-contains`) | the report names the planted unreachable command `frobnicate` AND draws the unreachable/dead-code conclusion (ground truth planted in `sandbox/sample-cli-research`: `cmd_frobnicate` defined + documented but absent from the dispatcher `case`) | ✅ **live `=pass`** 1.0.82 — fork `20260831T123056Z` + upstream `20260831T131021Z`; **REQUIRED** (promoted, CALIBRATION #36) |
+| development | `outcome(greet-edges)` (restaged `run-edge-tests.sh`) | the `--greet` deliverable preserves a multi-word name verbatim AND fails a bare `--greet` with non-zero exit + `usage` on stderr | ✅ **live `=pass`** 1.0.82 — fork `20260831T123617Z` + upstream `20260831T131702Z`; **REQUIRED** (promoted, CALIBRATION #36) |
 
 **What this measures — honestly:** model × workflow, almost not the generator translation (the prose is
 ~100% upstream's). In the upstream-vs-fork comparison the **Product correct** line is *expected to come
@@ -343,9 +343,11 @@ code anymore" becomes a red verdict instead of a vibe. The grep graders are a ch
 `SkillPanel/maister` @ `f75ef4f`). The canary reads green, as predicted. The same upstream `development`
 drive was product-correct (`greet-edges=pass`) **while its workflow shape REGRESSED 27·3·10** (the maister
 subagent chain replaced by Copilot's generic `general-purpose`) — a correct deliverable produced by
-bypassing the orchestration, exactly the structure the fork enforces. Both `=pass` verdicts stay OPTIONAL
-until a 2nd clean **fork** run promotes them to required (the upstream runs are the informational control,
-not counted toward promotion). See CALIBRATION #35 + [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
+bypassing the orchestration, exactly the structure the fork enforces. Both `=pass` verdicts were **PROMOTED to
+required** (CALIBRATION #36) after a 2nd clean fork run each (research `20260831T142630Z`, development
+`20260831T143100Z`) — a future `=fail` is now a genuine regression (the canary fires). The upstream runs
+are the informational control, not counted toward promotion. See CALIBRATION #35/#36 +
+[Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
 
 To reproduce the upstream side: `git archive` the upstream `plugins/maister-copilot` and drive with
 `COMPAT_PLUGIN_DIR` (procedure in the wiki's "How to repeat").
