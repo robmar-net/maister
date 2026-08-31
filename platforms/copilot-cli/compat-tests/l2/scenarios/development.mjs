@@ -59,9 +59,12 @@
 const prompt =
   'Run the maister development workflow to add a small `--greet <name>` ' +
   'subcommand to the sample CLI in this project. The subcommand should print ' +
-  '`Hello, <name>!`. Use the full development workflow end to end — analyse the ' +
-  'codebase, write a specification, plan the work, implement it, and verify it — ' +
-  'and include a test for the new subcommand.';
+  '`Hello, <name>!`. Handle these edge cases exactly: a multi-word name ' +
+  '(`--greet "Ada Lovelace"` must print `Hello, Ada Lovelace!`), and a missing ' +
+  'name (bare `--greet` with no argument must exit non-zero AND print usage to ' +
+  'stderr). Use the full development workflow end to end — analyse the codebase, ' +
+  'write a specification, plan the work, implement it, and verify it — and include ' +
+  'tests for the new subcommand covering those edge cases.';
 
 /**
  * Fallback prompt (MEDIUM-3) — a stronger restatement the OPERATOR re-drives with by hand
@@ -72,7 +75,9 @@ const fallbackPrompt =
   'Use the maister `development` skill to run the full development workflow ' +
   '(codebase analysis, gap analysis, specification, planning, implementation, and ' +
   'verification) for adding a `--greet <name>` subcommand that prints ' +
-  '`Hello, <name>!` to the sample CLI in this project, including a test. Do NOT use ' +
+  '`Hello, <name>!` to the sample CLI in this project — handling a multi-word name ' +
+  '(`--greet "Ada Lovelace"` -> `Hello, Ada Lovelace!`) and a missing name (bare ' +
+  '`--greet` -> non-zero exit + usage on stderr) — including tests. Do NOT use ' +
   'quick-dev or quick-bugfix — use the development workflow orchestrator.';
 
 /**
@@ -150,8 +155,15 @@ export const scenario = {
   // (`## TL;DR` first) on the three core development deliverables — content/structure, beyond the
   // created_artifact existence records. `=pass` lands OPTIONAL; the matching `=fail` is allowlisted
   // as a tracked LIMITATION (promote `=pass` to required after >=2 runs confirm structure on Copilot).
+  // `greet-edges` (issue #88 product-correctness) is a SEPARATE restaged command oracle over the SAME
+  // deliverable: multi-word name preserved + bare `--greet` fails with usage on stderr. Kept separate
+  // from `tests-pass` (which stays the required, backwards-comparable feature check) so a bundle
+  // predating the hardened edges is a tracked LIMITATION, not a false REGRESSED: `=pass` lands OPTIONAL
+  // (+ `=fail` allowlisted), promoted to required after >=2 clean runs (WP-D2 rule). This is the
+  // ticket's explicitly-sanctioned "separate line" alternative to folding the edges into `tests-pass`.
   outcome: [
     { id: 'tests-pass', command: 'sh run-tests.sh', restage: ['run-tests.sh'] },
+    { id: 'greet-edges', command: 'sh run-edge-tests.sh', restage: ['run-edge-tests.sh'] },
     { id: 'spec-structure', assert: 'artifact-headings', params: { file: 'implementation/spec.md', minBytes: 200 } },
     { id: 'plan-structure', assert: 'artifact-headings', params: { file: 'implementation/implementation-plan.md', minBytes: 200 } },
     { id: 'verification-structure', assert: 'artifact-headings', params: { file: 'verification/implementation-verification.md', minBytes: 200 } },

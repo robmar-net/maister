@@ -584,3 +584,45 @@ surfaced as a tracked LIMITATION, NOT a false REGRESSED. Grader mechanics proven
 allowlist = 39 rows"). Refreshed to the current skeleton: wm 6, hash `0b07558d…`, section totals 13 + 23
 + 5 + 2 = 43. Cosmetic (the machine verdict keys on the SKELETON's hash/wm via `--check-reference`, not
 the derivation header), corrected here rather than left knowingly stale while editing the file.
+
+### 33 — development: PRODUCT-CORRECTNESS oracle `outcome(greet-edges)` (issue #88, B)
+
+Adds parity layer (c) — deliverable is *materially correct* — to development, pinning the `--greet`
+deliverable's edge behaviors as CHECKABLE surface (the run-shape and deliverable-works layers already
+existed via `phase_*` / `outcome(tests-pass)`).
+
+**Hardened edges (pinned in the development prompt):** `--greet "Ada Lovelace"` must print
+`Hello, Ada Lovelace!` (multi-word preserved verbatim); bare `--greet` (no name) must exit non-zero AND
+print `usage` to stderr. Existing behaviors (hello / upper / version / single-word greet) must not
+regress — they remain in `run-tests.sh` behind the unchanged required `outcome(tests-pass)`.
+
+**Oracle = new restaged command `sh run-edge-tests.sh`** (2 checks; POSIX sh; MEDIUM-5 restage so the
+model cannot neuter it) → `outcome(greet-edges)=pass` iff both edges hold.
+
+**DESIGN DECISION — separate optional oracle, NOT folded into required `outcome(tests-pass)`.** The
+ticket's primary sketch was "+2 checks in run-tests.sh; tests-pass stops being 1-bit". Folding the
+hardened bare-`--greet` edge into the REQUIRED `tests-pass` would make the KNOWN-GOOD 1.0.82 dev bundle
+(`20260830T195810Z`, whose `--greet` prints `Hello, !` exit 0 — correct for the ORIGINAL task) fail a
+required predicate → a **false REGRESSED** on credit-free replay, violating the binding "never a false
+red" + "promote to required only after >=2 clean runs" rules (restated as binding in #88). So the edges
+land as a SEPARATE `outcome(greet-edges)` — the ticket's explicitly-sanctioned "separate line"
+alternative — OPTIONAL with `=fail` allowlisted, promoted after >=2 clean runs. `tests-pass` stays the
+required, backwards-comparable feature check; it also now reports an informational k/N tally in its
+evidence (the ticket's per-check-tally ask), which never changes its exit-code verdict.
+
+**Governance:** reuses the existing `outcome` head → NO schema/wm bump (v5 / v6 hold). dev-only re-stamp
+`16f49e32… → 19df242f…`. Derivation Optional/Allowlist rows added.
+
+**Backwards-incomparable (matrix note):** bundles predating the hardened edges cannot pass `greet-edges`.
+
+**Credit-free proof:** replaying `20260830T195810Z` after the change → **AS-EXPECTED — 37 PASS · 4
+LIMITATION · 0 FAIL** (was 37 · 3 · 0). The +1 LIMITATION is exactly `outcome(greet-edges)=fail`
+(evidence `1/2 checks` — multi-word ok, bare `--greet` broken), surfaced as tracked, NOT a false
+REGRESSED; `outcome(tests-pass)=pass` (evidence `4/4 checks`) held. Live `=pass` validation deferred to
+the next operator-approved sweep.
+
+**Housekeeping (this entry):** `development.derivation.md`'s header block carried the same pre-existing
+drift as research's (#79/#80/#82 never refreshed it): it read `workflow_model_version 5` / an old
+sibling hash / "32 req + 33 opt + 21 rules + 6 allow = 92 rows". Refreshed to the current skeleton: wm 6,
+hash `19df242f…`, section totals 32 + 43 + 21 + 10 = 106. Cosmetic (the verdict keys on the skeleton
+hash/wm), corrected rather than left knowingly stale while editing the file.

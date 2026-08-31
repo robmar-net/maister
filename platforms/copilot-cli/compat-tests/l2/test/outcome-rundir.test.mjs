@@ -236,3 +236,49 @@ test('rundir dev-oracle (HIGH-3): pristine sample-cli (no --greet) -> fail; cli.
     fs.rmSync(rundir, { recursive: true, force: true });
   }
 });
+
+// =========================================================================
+// 6. #88 product-correctness: outcome(greet-edges) both directions
+//    A restaged edge oracle (run-edge-tests.sh) over the SAME --greet deliverable:
+//    multi-word preserved + bare --greet fails with usage. Correct impl -> pass (2/2);
+//    a bare-broken impl ("Hello, !" exit 0) -> fail (1/2). Kept separate from tests-pass.
+// =========================================================================
+
+const greetRec = (ex) => ex.records.find((r) => r.kind === 'outcome' && r.name === 'greet-edges');
+const GREET_SPEC = [{ id: 'greet-edges', command: 'sh run-edge-tests.sh', restage: ['run-edge-tests.sh'] }];
+
+test('#88 greet-edges: correct --greet (errors on missing name) -> pass (2/2), tally in evidence', () => {
+  const rundir = mkRundir();
+  try {
+    fs.cpSync(CLI_OK, rundir, { recursive: true });
+    const cliPath = path.join(rundir, 'cli.sh');
+    const cli = fs.readFileSync(cliPath, 'utf8');
+    // A CORRECT impl: preserve the whole name; bare --greet -> usage on stderr + non-zero exit.
+    const good = "cmd_greet() {\n  if [ \"$#\" -eq 0 ] || [ -z \"${1-}\" ]; then\n    printf 'usage: cli.sh --greet <name>\\n' >&2\n    return 2\n  fi\n  printf 'Hello, %s!\\n' \"$1\"\n}\n\ncmd_hello() {";
+    const withGreet = cli
+      .replace('cmd_hello() {', good)
+      .replace('  case "$command" in', '  case "$command" in\n    --greet)           cmd_greet "${1-}" ;;');
+    fs.writeFileSync(cliPath, withGreet);
+    const ex = extract({ taskDirRoot: rundir, outcome: GREET_SPEC, sandboxTemplateDir: CLI_OK });
+    assert.equal(greetRec(ex).value, 'pass', `correct impl must pass (${greetRec(ex).evidence})`);
+    assert.match(greetRec(ex).evidence, /2\/2 checks/, 'evidence carries the k/N tally');
+  } finally { fs.rmSync(rundir, { recursive: true, force: true }); }
+});
+
+test('#88 greet-edges: bare-broken --greet ("Hello, !" exit 0) -> fail (1/2), NOT via tests-pass', () => {
+  const rundir = mkRundir();
+  try {
+    fs.cpSync(CLI_OK, rundir, { recursive: true });
+    const cliPath = path.join(rundir, 'cli.sh');
+    const cli = fs.readFileSync(cliPath, 'utf8');
+    // A BARE-BROKEN impl: multi-word ok, but bare --greet prints "Hello, !" and exits 0 (no usage).
+    const broken = "cmd_greet() {\n  printf 'Hello, %s!\\n' \"${1-}\"\n}\n\ncmd_hello() {";
+    const withGreet = cli
+      .replace('cmd_hello() {', broken)
+      .replace('  case "$command" in', '  case "$command" in\n    --greet)           cmd_greet "${1-}" ;;');
+    fs.writeFileSync(cliPath, withGreet);
+    const ex = extract({ taskDirRoot: rundir, outcome: GREET_SPEC, sandboxTemplateDir: CLI_OK });
+    assert.equal(greetRec(ex).value, 'fail', `bare-broken impl must fail (${greetRec(ex).evidence})`);
+    assert.match(greetRec(ex).evidence, /1\/2 checks/, 'evidence shows 1/2 (multi-word ok, bare broken)');
+  } finally { fs.rmSync(rundir, { recursive: true, force: true }); }
+});

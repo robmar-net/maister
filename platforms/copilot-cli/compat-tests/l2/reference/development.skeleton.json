@@ -79,7 +79,8 @@
     "created_artifact(dashboard-data.js)",
     "outcome(spec-structure)=pass",
     "outcome(plan-structure)=pass",
-    "outcome(verification-structure)=pass"
+    "outcome(verification-structure)=pass",
+    "outcome(greet-edges)=pass"
   ],
   "rules": [
     {
@@ -212,7 +213,12 @@
       "predicate": "outcome(verification-structure)=fail",
       "classification": "LIMITATION",
       "reason": "WP-D2 (issue #76) structure oracle: verification/implementation-verification.md did not open with the § 7 Artifact Summary Contract '## TL;DR'. Tracked LIMITATION while outcome(verification-structure)=pass is optional; same promotion path."
+    },
+    {
+      "predicate": "outcome(greet-edges)=fail",
+      "classification": "LIMITATION",
+      "reason": "issue #88 product-correctness oracle (run-edge-tests.sh): the --greet deliverable did not satisfy both hardened edges (multi-word name preserved verbatim; bare --greet exits non-zero AND prints usage to stderr). Surfaced as a tracked LIMITATION (not REGRESSED) while outcome(greet-edges)=pass is optional; promote =pass to required and retire this entry after >=2 clean runs. Backwards-incomparable: bundles predating the hardened edges (e.g. a bare --greet that prints 'Hello, !' exit 0) cannot pass this oracle."
     }
   ],
-  "hash": "16f49e328351b5bc5ee6c7578a56b007d83e1674053c91832b618bd0464ed618"
+  "hash": "19df242f9949265a8fd17893cd1ef9472251186372f8d8816325fd2a956fc008"
 }

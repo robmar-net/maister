@@ -732,13 +732,18 @@ function runCommandOutcome(spec, rundir, sandboxTemplateDir) {
 
   const code = res.status; // null on signal/timeout
   const stdout = String(res.stdout ?? '');
+  // Informational per-check tally (issue #88): the sample-cli runners print "<k> passed, <m> failed";
+  // surface k/N in the evidence so a multi-check oracle is not reported as a single opaque bit. The
+  // pass/fail VERDICT is still exit-code only — the tally never changes it.
+  const tallyMatch = stdout.match(/(\d+)\s+passed,\s+(\d+)\s+failed/);
+  const tally = tallyMatch ? ` (${Number(tallyMatch[1])}/${Number(tallyMatch[1]) + Number(tallyMatch[2])} checks)` : '';
   if (typeof spec.expect === 'string') {
     const ok = code === 0 && stdout.trim() === spec.expect;
     return mk(ok ? 'pass' : 'fail',
-      `${spec.command} exited ${code}; stdout ${ok ? 'matched' : 'did not match'} expect`);
+      `${spec.command} exited ${code}; stdout ${ok ? 'matched' : 'did not match'} expect${tally}`);
   }
   const ok = code === 0;
-  return mk(ok ? 'pass' : 'fail', `${spec.command} exited ${code}`);
+  return mk(ok ? 'pass' : 'fail', `${spec.command} exited ${code}${tally}`);
 }
 
 // assertion-type ('research-deliverables'): a content assertion over the newest research task dir. Any
