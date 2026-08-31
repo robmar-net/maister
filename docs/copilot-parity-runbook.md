@@ -319,3 +319,25 @@ each caught a real harness modeling gap (fixed credit-free, PRs #81/#82) then re
 | L2 destructive-guard | **1.0.82** (WP-D sweep) | ✅ AS-EXPECTED (**2 PASS · 0 LIMITATION · 0 FAIL**, **0.84 AIU**, `20260830T192611Z`) live — first 1.0.82 verdict; live guard-fire `hook_effect(destructive_guard=ask)` confirmed. |
 
 _(Record each new live run in the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix).)_
+
+### Product correctness — the **Product correct** line (issue #88)
+
+Parity has three layers: **(a)** the workflow ran to shape (`phase_*`, `delegated`, `precedes`), **(b)**
+the deliverable *works* (`outcome(tests-pass)`), and **(c)** the deliverable is *materially correct* —
+it did the thing it was supposed to do. Layer (c) is measured by deterministic, **offline**, planted-fact
+oracles (no network ground truth, no LLM judge):
+
+| Scenario | Oracle | What it checks | Status |
+|---|---|---|---|
+| research | `outcome(research-answer)` (`report-contains`) | the report names the planted unreachable command `frobnicate` AND draws the unreachable/dead-code conclusion (ground truth planted in `sandbox/sample-cli`: `cmd_frobnicate` defined + documented but absent from the dispatcher `case`) | oracle landed (credit-free, replay-proven `=fail` on pre-plant bundles); **live `=pass` pending next sweep** — OPTIONAL until ≥2 clean runs |
+| development | `outcome(greet-edges)` (restaged `run-edge-tests.sh`) | the `--greet` deliverable preserves a multi-word name verbatim AND fails a bare `--greet` with non-zero exit + `usage` on stderr | oracle landed (credit-free, replay-proven); **live `=pass` pending next sweep** — OPTIONAL until ≥2 clean runs |
+
+**What this measures — honestly:** model × workflow, almost not the generator translation (the prose is
+~100% upstream's). In the upstream-vs-fork comparison the **Product correct** line is *expected to come
+out identical on both builds* — a legitimate result to publish. Its real value is a **quality canary**
+for model rotations / CLI releases: the layer where "the new default model can't draw a conclusion from
+code anymore" becomes a red verdict instead of a vibe. The grep graders are a cheap, unambiguous FLOOR
+(a one-token match can false-pass), **not** a rubric — documented as such in the reference derivations.
+**Prediction to publish after the first live pass: identical on both builds.** Not yet claimed — the
+`=pass` verdicts are OPTIONAL and awaiting live validation at the next operator-approved sweep
+(~13 AIU research + the development sweep).
