@@ -148,3 +148,55 @@ test('WP-D2 oracle: normalize emits outcome(...)=pass|fail tokens (existing outc
   assert.ok(toks.has('outcome(spec-structure)=pass'));
   assert.ok(toks.has('outcome(plan-structure)=fail'));
 });
+
+// --------------------------------------------------------- #88: report-contains product-correctness oracle
+// Stages a research task dir with outputs/research-report.md and runs extractFromOutcome with a
+// report-contains spec. Asserts the grader keys on ALL tokens present AND >=1 anyOf conclusion pattern —
+// the planted-fact answer check (research must name `frobnicate` AND conclude it is unreachable).
+function stageResearchTask(root, reportText) {
+  const taskDir = path.join(root, '.maister', 'tasks', 'research', '2026-08-31-x');
+  const f = path.join(taskDir, 'outputs', 'research-report.md');
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, reportText);
+  return root;
+}
+const RA_SPEC = [{
+  id: 'research-answer',
+  assert: 'report-contains',
+  params: {
+    file: 'outputs/research-report.md',
+    tokens: ['frobnicate'],
+    anyOf: ['unreachable', 'dead code', 'never (dispatched|called|reached)', 'not (wired|reachable|dispatched)'],
+  },
+}];
+
+test('#88 report-contains: token present + a conclusion pattern -> pass', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), '88-ra-ok-'));
+  try {
+    stageResearchTask(root, '# Report\n\nThe `frobnicate` command is implemented but **unreachable** from the dispatcher.\n');
+    assert.deepEqual(outVal(extractFromOutcome(RA_SPEC, root, null)), ['research-answer=pass']);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('#88 report-contains: token present but NO conclusion pattern -> fail (one-token grep floor is honest)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), '88-ra-noconcl-'));
+  try {
+    // Mentions frobnicate but only as a working command — no unreachable/dead-code conclusion.
+    stageResearchTask(root, '# Report\n\nThe CLI supports hello, upper, and frobnicate for text transforms.\n');
+    assert.deepEqual(outVal(extractFromOutcome(RA_SPEC, root, null)), ['research-answer=fail']);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('#88 report-contains: token absent -> fail; report missing -> fail', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), '88-ra-miss-'));
+  try {
+    stageResearchTask(root, '# Report\n\nThe dispatcher has a dead code branch somewhere, unreachable.\n');
+    assert.deepEqual(outVal(extractFromOutcome(RA_SPEC, root, null)), ['research-answer=fail'], 'no frobnicate token -> fail even with conclusion words');
+    fs.rmSync(path.join(root, '.maister', 'tasks', 'research'), { recursive: true, force: true });
+    assert.deepEqual(outVal(extractFromOutcome(RA_SPEC, root, null)), ['research-answer=fail'], 'no research task dir -> fail (fail-closed)');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('#88 report-contains: unknown assert kind still throws (shape guard intact)', () => {
+  assert.throws(() => extractFromOutcome([{ id: 'x', assert: 'no-such-kind' }], '/tmp', null), /unknown assert kind/);
+});
