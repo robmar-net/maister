@@ -10,6 +10,7 @@
 # Commands:
 #   hello              Print a fixed greeting ("Hello, world!").
 #   upper <text>       Print <text> converted to upper case.
+#   frobnicate <text>  Print <text> rot13-transformed.
 #   version            Print the CLI version.
 #   help               Show this help text.
 #
@@ -44,6 +45,11 @@ cmd_hello() {
 cmd_upper() {
   # Upper-case the first argument.
   printf '%s\n' "${1-}" | tr '[:lower:]' '[:upper:]'
+}
+
+cmd_frobnicate() {
+  # Rot13-transform the first argument.
+  printf '%s\n' "${1-}" | tr 'A-Za-z' 'N-ZA-Mn-za-m'
 }
 
 dispatch() {

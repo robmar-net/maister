@@ -543,3 +543,86 @@ required (the ≥2-clean-runs criterion is not met — DEV82 passed, this run fa
 **Credit-free proof:** replaying `20260830T195810Z` after the fix flips **REGRESSED → AS-EXPECTED
 (37 PASS · 3 LIMITATION · 0 FAIL)** (the 3 LIMITATIONs: `reviews-spec-audit` fan-out,
 `outcome(spec-structure)=fail`, `state_schema(off-schema)` — all pre-modeled/tracked).
+
+### 32 — research: PRODUCT-CORRECTNESS oracle `outcome(research-answer)` (issue #88, A)
+
+Issue #88 adds a **product-correctness** layer (c) on top of run-shape (a) and deliverable-works (b):
+does the deliverable do the thing it was supposed to do — *correctly*. For research this is the first
+such evidence (quick-bugfix already proves "found & fixed the planted defect"; research had none).
+
+**Ground truth is planted OFFLINE in the sandbox — no network, no LLM judge** (binding anti-flake /
+anti-fit rules, #88). `sample-cli` now carries ONE unreachable-but-implemented command: `cmd_frobnicate`
+is defined in `cli.sh` and documented in the header + `README.md`, but has **no branch in the dispatcher
+`case`** — so `sh cli.sh frobnicate x` prints `unknown command` (exit 2). The research prompt gains one
+sentence: "determine whether any command that is implemented in the code is unreachable from the
+dispatcher — if so, name it in the report." Answerable in the cheap codebase-only skip path (no web).
+
+**Grader = new `assert:'report-contains'` extractor kind** (symmetric with `research-deliverables` /
+`artifact-headings`; deterministic Node grep, no spend, no model). `outcome(research-answer)=pass` iff
+`outputs/research-report.md` mentions token `frobnicate` **AND** matches >=1 of
+`(unreachable|dead code|never (dispatched|called|reached)|not (wired|reachable|dispatched))`
+(case-insensitive). Authored from the TASK SPEC before the first live run. A one-token grep can
+false-pass (report names the token without concluding) — accepted as a cheap unambiguous FLOOR, not a
+rubric; documented in the derivation.
+
+**Governance:** reuses the existing `outcome` grammar head (like WP-D2 CALIBRATION #29) → **NO
+schema/wm bump** (v5 / v6 hold). `outcome(research-answer)=pass` lands **OPTIONAL**; the matching
+`=fail` is allowlisted as a tracked **LIMITATION** (promote `=pass` to required after >=2 clean runs).
+research-only re-stamp `6d811965… → 0b07558d…`.
+
+**Backwards-incomparable (matrix note):** bundles predating the `frobnicate` plant cannot pass this
+grader — results are not comparable across the sandbox change.
+
+**Credit-free proof:** replaying the pre-plant live research bundle `20260830T195404Z` (was 13 PASS · 0
+LIMITATION · 0 FAIL) after the change flips to **AS-EXPECTED — 13 PASS · 1 LIMITATION · 0 FAIL**, the +1
+LIMITATION being exactly `outcome(research-answer)=fail` (old report never mentioned `frobnicate`) —
+surfaced as a tracked LIMITATION, NOT a false REGRESSED. Grader mechanics proven without spend. Live
+`=pass` validation deferred to the next operator-approved sweep (~13 AIU).
+
+**Housekeeping (this entry):** `research.derivation.md`'s header block carried pre-existing drift from
+#79/#81 (it still read `workflow_model_version 5` / an even older sibling hash / "20 optional + 1
+allowlist = 39 rows"). Refreshed to the current skeleton: wm 6, hash `0b07558d…`, section totals 13 + 23
++ 5 + 2 = 43. Cosmetic (the machine verdict keys on the SKELETON's hash/wm via `--check-reference`, not
+the derivation header), corrected here rather than left knowingly stale while editing the file.
+
+### 33 — development: PRODUCT-CORRECTNESS oracle `outcome(greet-edges)` (issue #88, B)
+
+Adds parity layer (c) — deliverable is *materially correct* — to development, pinning the `--greet`
+deliverable's edge behaviors as CHECKABLE surface (the run-shape and deliverable-works layers already
+existed via `phase_*` / `outcome(tests-pass)`).
+
+**Hardened edges (pinned in the development prompt):** `--greet "Ada Lovelace"` must print
+`Hello, Ada Lovelace!` (multi-word preserved verbatim); bare `--greet` (no name) must exit non-zero AND
+print `usage` to stderr. Existing behaviors (hello / upper / version / single-word greet) must not
+regress — they remain in `run-tests.sh` behind the unchanged required `outcome(tests-pass)`.
+
+**Oracle = new restaged command `sh run-edge-tests.sh`** (2 checks; POSIX sh; MEDIUM-5 restage so the
+model cannot neuter it) → `outcome(greet-edges)=pass` iff both edges hold.
+
+**DESIGN DECISION — separate optional oracle, NOT folded into required `outcome(tests-pass)`.** The
+ticket's primary sketch was "+2 checks in run-tests.sh; tests-pass stops being 1-bit". Folding the
+hardened bare-`--greet` edge into the REQUIRED `tests-pass` would make the KNOWN-GOOD 1.0.82 dev bundle
+(`20260830T195810Z`, whose `--greet` prints `Hello, !` exit 0 — correct for the ORIGINAL task) fail a
+required predicate → a **false REGRESSED** on credit-free replay, violating the binding "never a false
+red" + "promote to required only after >=2 clean runs" rules (restated as binding in #88). So the edges
+land as a SEPARATE `outcome(greet-edges)` — the ticket's explicitly-sanctioned "separate line"
+alternative — OPTIONAL with `=fail` allowlisted, promoted after >=2 clean runs. `tests-pass` stays the
+required, backwards-comparable feature check; it also now reports an informational k/N tally in its
+evidence (the ticket's per-check-tally ask), which never changes its exit-code verdict.
+
+**Governance:** reuses the existing `outcome` head → NO schema/wm bump (v5 / v6 hold). dev-only re-stamp
+`16f49e32… → 19df242f…`. Derivation Optional/Allowlist rows added.
+
+**Backwards-incomparable (matrix note):** bundles predating the hardened edges cannot pass `greet-edges`.
+
+**Credit-free proof:** replaying `20260830T195810Z` after the change → **AS-EXPECTED — 37 PASS · 4
+LIMITATION · 0 FAIL** (was 37 · 3 · 0). The +1 LIMITATION is exactly `outcome(greet-edges)=fail`
+(evidence `1/2 checks` — multi-word ok, bare `--greet` broken), surfaced as tracked, NOT a false
+REGRESSED; `outcome(tests-pass)=pass` (evidence `4/4 checks`) held. Live `=pass` validation deferred to
+the next operator-approved sweep.
+
+**Housekeeping (this entry):** `development.derivation.md`'s header block carried the same pre-existing
+drift as research's (#79/#80/#82 never refreshed it): it read `workflow_model_version 5` / an old
+sibling hash / "32 req + 33 opt + 21 rules + 6 allow = 92 rows". Refreshed to the current skeleton: wm 6,
+hash `19df242f…`, section totals 32 + 43 + 21 + 10 = 106. Cosmetic (the verdict keys on the skeleton
+hash/wm), corrected rather than left knowingly stale while editing the file.

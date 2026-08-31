@@ -50,10 +50,12 @@
  */
 const prompt =
   'Run the maister research workflow to investigate how the sample CLI in this project parses ' +
-  'command-line arguments and dispatches its subcommands. Use the full research workflow end to end ' +
-  '— plan the research, gather information from the codebase and its documentation, and synthesize a ' +
-  'research report with evidence-based findings and citations. This is an investigation to document ' +
-  'how the existing code works, not a change to it.';
+  'command-line arguments and dispatches its subcommands. As part of the investigation, determine ' +
+  'whether any command that is implemented in the code is unreachable from the dispatcher — if so, ' +
+  'name it in the report. Use the full research workflow end to end — plan the research, gather ' +
+  'information from the codebase and its documentation, and synthesize a research report with ' +
+  'evidence-based findings and citations. This is an investigation to document how the existing code ' +
+  'works, not a change to it.';
 
 /**
  * Fallback prompt — a stronger restatement the OPERATOR re-drives with by hand (a runbook step;
@@ -63,6 +65,7 @@ const prompt =
 const fallbackPrompt =
   'Use the maister `research` skill to run the full research workflow (plan, gather from the codebase ' +
   'and docs, synthesize) investigating how the sample CLI parses arguments and dispatches subcommands, ' +
+  'including whether any implemented command is unreachable from the dispatcher (name it in the report), ' +
   'and produce a research report with findings and citations. Do NOT modify any code and do NOT use ' +
   'the development workflow — this is research only.';
 
@@ -119,7 +122,25 @@ export const scenario = {
   // research report must be a non-trivial deliverable — `outputs/research-report.md`
   // >= 200 bytes AND >= 5 non-blank lines (plus >=1 markdown heading and a present
   // `analysis/synthesis.md`, enforced by the extractor) — so an empty/one-line stub fails.
-  outcome: [{ id: 'report-produced', assert: 'research-deliverables', params: { minBytes: 200, minNonBlankLines: 5 } }],
+  // `report-produced` (Stage 2) checks the deliverable EXISTS + is non-trivial. `research-answer`
+  // (issue #88 product-correctness) checks it ANSWERED the planted question: the sandbox plants
+  // ONE unreachable-but-implemented command (`cmd_frobnicate` — defined + documented in README/header,
+  // absent from the dispatcher `case`), so the report must name `frobnicate` AND draw the
+  // unreachable/dead-code conclusion. Deterministic offline grep floor (no network, no LLM judge);
+  // authored from the task spec before the first live run. `=pass` lands OPTIONAL (+ `=fail` allowlist
+  // LIMITATION); promote to required after >=2 clean runs.
+  outcome: [
+    { id: 'report-produced', assert: 'research-deliverables', params: { minBytes: 200, minNonBlankLines: 5 } },
+    {
+      id: 'research-answer',
+      assert: 'report-contains',
+      params: {
+        file: 'outputs/research-report.md',
+        tokens: ['frobnicate'],
+        anyOf: ['unreachable', 'dead code', 'never (dispatched|called|reached)', 'not (wired|reachable|dispatched)'],
+      },
+    },
+  ],
   // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
   gateMap,
   answerMap,

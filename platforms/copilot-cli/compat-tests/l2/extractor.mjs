@@ -691,7 +691,10 @@ function assertValidOutcomeSpec(spec) {
   if (!hasCommand && !hasAssert) {
     throw new Error(`outcome spec "${spec.id}" has neither a \`command\` nor an \`assert\``);
   }
-  if (hasAssert && spec.assert !== 'research-deliverables' && spec.assert !== 'artifact-headings') {
+  if (hasAssert
+    && spec.assert !== 'research-deliverables'
+    && spec.assert !== 'artifact-headings'
+    && spec.assert !== 'report-contains') {
     throw new Error(`outcome spec "${spec.id}" has an unknown assert kind: ${spec.assert}`);
   }
 }
@@ -729,13 +732,18 @@ function runCommandOutcome(spec, rundir, sandboxTemplateDir) {
 
   const code = res.status; // null on signal/timeout
   const stdout = String(res.stdout ?? '');
+  // Informational per-check tally (issue #88): the sample-cli runners print "<k> passed, <m> failed";
+  // surface k/N in the evidence so a multi-check oracle is not reported as a single opaque bit. The
+  // pass/fail VERDICT is still exit-code only — the tally never changes it.
+  const tallyMatch = stdout.match(/(\d+)\s+passed,\s+(\d+)\s+failed/);
+  const tally = tallyMatch ? ` (${Number(tallyMatch[1])}/${Number(tallyMatch[1]) + Number(tallyMatch[2])} checks)` : '';
   if (typeof spec.expect === 'string') {
     const ok = code === 0 && stdout.trim() === spec.expect;
     return mk(ok ? 'pass' : 'fail',
-      `${spec.command} exited ${code}; stdout ${ok ? 'matched' : 'did not match'} expect`);
+      `${spec.command} exited ${code}; stdout ${ok ? 'matched' : 'did not match'} expect${tally}`);
   }
   const ok = code === 0;
-  return mk(ok ? 'pass' : 'fail', `${spec.command} exited ${code}`);
+  return mk(ok ? 'pass' : 'fail', `${spec.command} exited ${code}${tally}`);
 }
 
 // assertion-type ('research-deliverables'): a content assertion over the newest research task dir. Any
@@ -821,6 +829,53 @@ function runArtifactHeadingsOutcome(spec, rundir) {
   return mk('pass', `${rel} opens with "${requiredHeading}" (§ 7 Artifact Summary Contract), ${bytes}B`);
 }
 
+// assertion-type ('report-contains'): a PRODUCT-CORRECTNESS oracle (issue #88) over ONE produced
+// artifact. Unlike 'artifact-headings' (form) and 'research-deliverables' (existence + size), this
+// asserts the deliverable ANSWERED the planted question: the report must mention EVERY token in
+// params.tokens (case-insensitive substring) AND match at least ONE of params.anyOf (regex sources,
+// case-insensitive). Ground truth is planted OFFLINE in the sandbox (no network, no LLM judge), and the
+// token/anyOf grader is authored from the TASK SPEC before the first live run — a cheap, deterministic
+// FLOOR (a one-token grep can false-pass; documented as such in the derivation), never a rubric.
+// params: { file (task-dir-relative, default 'outputs/research-report.md'), taskType (default
+// 'research'), tokens (string[], ALL required), anyOf (string[] regex sources, >=1 required) }.
+// Any unmet condition -> fail naming it (surfaced VISIBLY; the reference allowlists the matching
+// `=fail` as a tracked LIMITATION until >=2 runs promote `=pass`).
+function runReportContainsOutcome(spec, rundir) {
+  const id = spec.id;
+  const mk = (value, evidence) => ({ kind: 'outcome', name: id, value, source: 'outcome', evidence });
+  const params = spec.params || {};
+  const rel = String(params.file ?? 'outputs/research-report.md');
+  const taskType = String(params.taskType ?? 'research');
+  const tokens = Array.isArray(params.tokens) ? params.tokens.map(String) : [];
+  const anyOf = Array.isArray(params.anyOf) ? params.anyOf.map(String) : [];
+
+  // Newest task dir under rundir/.maister/tasks/<taskType>/*.
+  const typeRoot = path.join(String(rundir ?? ''), '.maister', 'tasks', taskType);
+  let taskDir = null;
+  try {
+    const dirs = fs.readdirSync(typeRoot, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => path.join(typeRoot, e.name));
+    taskDir = dirs.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] || null;
+  } catch { taskDir = null; }
+  if (!taskDir) return mk('fail', `no ${taskType} task dir under .maister/tasks/${taskType}/*`);
+
+  const file = path.join(taskDir, rel);
+  if (!isFile(file)) return mk('fail', `${rel} missing`);
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch (err) { return mk('fail', `${rel} unreadable: ${err.message}`); }
+  const hay = text.toLowerCase();
+
+  const missingToken = tokens.find((t) => !hay.includes(t.toLowerCase()));
+  if (missingToken != null) return mk('fail', `${rel} does not mention required token "${missingToken}"`);
+
+  if (anyOf.length > 0) {
+    const matched = anyOf.some((src) => { try { return new RegExp(src, 'i').test(text); } catch { return false; } });
+    if (!matched) return mk('fail', `${rel} mentions ${tokens.map((t) => `"${t}"`).join('+')} but matches none of the required conclusion patterns`);
+  }
+  return mk('pass', `${rel} mentions ${tokens.map((t) => `"${t}"`).join('+')}${anyOf.length ? ' + a conclusion pattern' : ''}`);
+}
+
 // Run each outcome spec (array) against the live rundir, returning one record per entry in array order.
 // `outcome == null` (no spec) yields []. A bad-SHAPE spec throws; a bad-RESULT yields a fail record.
 export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = null) {
@@ -836,7 +891,9 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
         ? runCommandOutcome(spec, rundir, sandboxTemplateDir)
         : spec.assert === 'artifact-headings'
           ? runArtifactHeadingsOutcome(spec, rundir)
-          : runAssertionOutcome(spec, rundir),
+          : spec.assert === 'report-contains'
+            ? runReportContainsOutcome(spec, rundir)
+            : runAssertionOutcome(spec, rundir),
     );
   }
   return records;
