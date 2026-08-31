@@ -33,7 +33,8 @@
     "precedes(specification-creator,implementation-planner)",
     "precedes(implementation-planner,task-group-implementer)",
     "precedes(task-group-implementer,implementation-verifier)",
-    "min_count(delegated(task-group-implementer))=1"
+    "min_count(delegated(task-group-implementer))=1",
+    "outcome(greet-edges)=pass"
   ],
   "optional": [
     "phase_completed(3)",
@@ -79,8 +80,7 @@
     "created_artifact(dashboard-data.js)",
     "outcome(spec-structure)=pass",
     "outcome(plan-structure)=pass",
-    "outcome(verification-structure)=pass",
-    "outcome(greet-edges)=pass"
+    "outcome(verification-structure)=pass"
   ],
   "rules": [
     {
@@ -215,15 +215,10 @@
       "reason": "WP-D2 (issue #76) structure oracle: verification/implementation-verification.md did not open with the § 7 Artifact Summary Contract '## TL;DR'. Tracked LIMITATION while outcome(verification-structure)=pass is optional; same promotion path."
     },
     {
-      "predicate": "outcome(greet-edges)=fail",
-      "classification": "LIMITATION",
-      "reason": "issue #88 product-correctness oracle (run-edge-tests.sh): the --greet deliverable did not satisfy both hardened edges (multi-word name preserved verbatim; bare --greet exits non-zero AND prints usage to stderr). Surfaced as a tracked LIMITATION (not REGRESSED) while outcome(greet-edges)=pass is optional; promote =pass to required and retire this entry after >=2 clean runs. Backwards-incomparable: bundles predating the hardened edges (e.g. a bare --greet that prints 'Hello, !' exit 0) cannot pass this oracle."
-    },
-    {
       "predicate": "invoked_skill(quick-plan)",
       "classification": "LIMITATION",
       "reason": "Platform/model divergence (#88 follow-up, observed live 1.0.82 20260831T123617Z): the development model additionally invoked the maister `quick-plan` skill (Plan Mode) during the planning phase. NOT mandated by development/SKILL.md — Phase 7 delegates planning to implementation-planner, which STILL ran (delegated(implementation-planner) + precedes chain intact) — so this is a benign in-family planning aid, not a mis-route out of maister. Allowlisted as a tracked LIMITATION (no SKILL.md anchor → not silently promoted to optional)."
     }
   ],
-  "hash": "6ba234a71d5caf791429ba865defa698ecb597dd1c81906f95ccac7d763158da"
+  "hash": "574a23d4ddc1dab78c2f601ccd5673eeb96b7e362a24b78690115eba9341ffb4"
 }

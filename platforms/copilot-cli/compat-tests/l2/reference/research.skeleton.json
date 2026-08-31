@@ -14,7 +14,8 @@
     "outcome(report-produced)=pass",
     "reached_terminal(completion)",
     "precedes(research-planner,information-gatherer)",
-    "precedes(information-gatherer,research-synthesizer)"
+    "precedes(information-gatherer,research-synthesizer)",
+    "outcome(research-answer)=pass"
   ],
   "optional": [
     "phase_completed(2)",
@@ -40,8 +41,7 @@
     "state_schema(conformant)",
     "task_status(completed)",
     "standards(index_read)",
-    "todos(created)",
-    "outcome(research-answer)=pass"
+    "todos(created)"
   ],
   "rules": [
     {
@@ -70,12 +70,7 @@
       "predicate": "state_schema(off-schema)",
       "classification": "LIMITATION",
       "reason": "tolerant parser accepts documented off-schema orchestrator-state shapes (parseWarnings): bare-int completed_phases, phase[-_] tolerance, phase_summaries as phase source, phases: sequence with id|number|phase key, top-level status: without task: block, floating task_characteristics"
-    },
-    {
-      "predicate": "outcome(research-answer)=fail",
-      "classification": "LIMITATION",
-      "reason": "issue #88 product-correctness oracle: outputs/research-report.md did not name the planted unreachable command `frobnicate` and draw the unreachable/dead-code conclusion. Surfaced as a tracked LIMITATION (not REGRESSED) while outcome(research-answer)=pass is optional; promote =pass to required and retire this entry after >=2 runs confirm the answer on Copilot. Backwards-incomparable: bundles predating the sandbox plant (frobnicate) cannot pass this grader."
     }
   ],
-  "hash": "0b07558d5d375302906c9fee9b3918f06fff30223557b2757eee91b39679e284"
+  "hash": "e24648154676b6b618830b27547a4bc7274359d4b49229a62438f5808e28f077"
 }

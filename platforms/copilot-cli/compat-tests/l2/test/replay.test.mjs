@@ -44,6 +44,8 @@ const FIX = path.join(__dirname, 'fixtures', 'research');
 
 // A substantial research report the RE-RUN oracle accepts: >=200 bytes, >=5 non-blank lines, a heading,
 // and (alongside the fixture's committed analysis/synthesis.md) the synthesis corroboration it demands.
+// It also names the planted `frobnicate` and concludes it is unreachable, so the now-REQUIRED
+// outcome(research-answer)=pass lands (#88 promotion).
 const GOOD_REPORT = [
   '# Research Report: L2 Replay Round-Trip',
   '',
@@ -52,6 +54,7 @@ const GOOD_REPORT = [
   'outcome oracle against the persisted rundir copy, then reuses finalizeSingleRun so the verdict,',
   'exit code, and report are byte-identical to a live N=1 run. It dispatches before any SDK import,',
   'so the whole round-trip spends no Copilot seat and no AI credit.',
+  'The sample CLI also implements `frobnicate` but leaves it unreachable from the dispatcher (dead code).',
   '',
   '## Conclusion',
   'A persisted bundle reproduces its recorded verdict deterministically and credit-free.',

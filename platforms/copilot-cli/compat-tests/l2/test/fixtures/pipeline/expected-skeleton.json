@@ -30,6 +30,7 @@
     "invoked_skill(implementation-plan-executor)",
     "invoked_skill(implementation-verifier)",
     "min_count(delegated(task-group-implementer))=1",
+    "outcome(greet-edges)=pass",
     "outcome(tests-pass)=pass",
     "phase_completed(1)",
     "phase_completed(10)",

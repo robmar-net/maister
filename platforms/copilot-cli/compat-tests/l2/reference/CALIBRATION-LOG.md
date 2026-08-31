@@ -699,3 +699,31 @@ the informational control, not counted toward promotion. A 2nd clean fork run (n
 `outcome(research-answer)=pass` / `outcome(greet-edges)=pass` to required. No reference/hash change (this
 is an evidence entry, not a grammar edit). Sweep cost: ~57 AIU upstream (17.04 + 39.86) on top of the
 ~137 AIU fork validation.
+
+### 36 — #88 PROMOTION: `outcome(research-answer)` + `outcome(greet-edges)` optional → REQUIRED (2 clean runs)
+
+The WP-D2 promotion rule met: each product-correctness oracle passed on ≥2 clean live fork runs on
+Copilot 1.0.82, so both `=pass` predicates are promoted from optional to REQUIRED and their `=fail`
+allowlist LIMITATION entries retired. A future `=fail` (or absent `=pass`) is now a genuine
+CANDIDATE_REGRESSION — the quality canary fires instead of being tracked silently.
+
+| oracle | run 1 | run 2 | upstream control |
+|---|---|---|---|
+| `outcome(research-answer)=pass` | `20260831T123056Z` AS-EXPECTED (13.34 AIU) | `20260831T142630Z` AS-EXPECTED 13·1·0 (12.45 AIU) | `20260831T131021Z` =pass |
+| `outcome(greet-edges)=pass` | `20260831T123617Z` (AS-EXPECTED 37·4·0 after the #90 harness fixes) | `20260831T143100Z` AS-EXPECTED 37·2·0 (74.09 AIU) | `20260831T131702Z` =pass |
+
+**Governance:** reuses the `outcome` head → NO schema/wm bump (v5 / v6 hold). research re-stamp
+`0b07558d… → e2464815…`; development re-stamp `574a23d4…` (was `6ba234a7…`). Derivations: rows moved
+Optional→Required, allowlist rows removed, section counts + header hashes refreshed. Fixture updates
+(the promoted required predicates must be present in the committed fixtures): pipeline snapshots
+regenerated (`fixtures/{research,pipeline}/expected-skeleton.json` gain the `=pass` token); the
+`pipeline`/`pipeline-research` tests inject `greet-edges`/`research-answer` `=pass` (EXPECTED_MATCHED
+37→38 / 15→16); the three replay `GOOD_REPORT` fixtures (`replay`, `replay-multirun`, `run.test.mjs`)
+now name `frobnicate`+unreachable so the RE-RUN oracle lands `research-answer=pass`.
+
+**Credit-free proof:** suite 166 pass / 0 fail / 2 skip; `--check-reference ×4` CURRENT v6; make build
+byte-identical. Post-change bundles replay AS-EXPECTED (research `20260831T142630Z` 14·1·0; development
+`20260831T143100Z` 38·2·0 — the promoted predicate now a matched REQUIRED). **Backwards-incomparable:**
+bundles predating the plant/hardening (e.g. research `20260830T195404Z`, pre-#88 dev bundles) now REGRESS
+on the promoted required predicate — expected, they predate the workflow-model change and are not
+re-judged.

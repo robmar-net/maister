@@ -58,6 +58,9 @@ test('pipeline: extract -> normalize -> compare over committed fixtures yields t
   // committed reference now models. Real runs source this from the sandbox oracle; the fixture
   // pipeline injects it directly.
   ex.records.push({ kind: 'outcome', name: 'tests-pass', value: 'pass', source: 'outcome', evidence: 'fixture' });
+  // #88 promotion: outcome(greet-edges)=pass is now a REQUIRED product-correctness predicate; the fixture
+  // pipeline injects it directly (real runs source it from the restaged run-edge-tests.sh oracle).
+  ex.records.push({ kind: 'outcome', name: 'greet-edges', value: 'pass', source: 'outcome', evidence: 'fixture' });
 
   // --- normalize (raw records -> sorted, de-duplicated Set<string>) ----------------------
   const observed = normalize(ex.records);
@@ -86,8 +89,8 @@ test('pipeline: extract -> normalize -> compare over committed fixtures yields t
   // completed∩ruled phase (dev {2,5,6,7,8,10,11} = 7). The 9 Stage-4 witness rules promote tokens
   // ALREADY in required[] (guarded by !effectiveRequired.includes → no new matched). Effective
   // required = 32 base + 7 promoted gates = 39.
-  const EXPECTED_MATCHED = golden.required.length + 7; // 30 + 7 = 37 (task_status(completed) demoted to optional, #63 item 2; conformant already optional, #57)
-  assert.equal(EXPECTED_MATCHED, 37, 'dev effective-required count sanity (30 base + 7 promoted gates; task_status + conformant now optional)');
+  const EXPECTED_MATCHED = golden.required.length + 7; // 31 + 7 = 38 (task_status(completed) demoted to optional, #63 item 2; conformant already optional, #57; +1 required outcome(greet-edges)=pass, #88 promotion)
+  assert.equal(EXPECTED_MATCHED, 38, 'dev effective-required count sanity (31 base + 7 promoted gates; task_status + conformant optional; greet-edges promoted to required #88)');
   assert.equal(
     result.matched.length,
     EXPECTED_MATCHED,

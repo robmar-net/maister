@@ -61,6 +61,9 @@ test('pipeline (research): extract(taskType:research) -> normalize -> compare yi
   // committed research reference now models. Real runs source this from the oracle; the fixture
   // pipeline injects it directly.
   ex.records.push({ kind: 'outcome', name: 'report-produced', value: 'pass', source: 'outcome', evidence: 'fixture' });
+  // #88 promotion: outcome(research-answer)=pass is now a REQUIRED product-correctness predicate; the
+  // fixture pipeline injects it directly (real runs source it from the report-contains oracle).
+  ex.records.push({ kind: 'outcome', name: 'research-answer', value: 'pass', source: 'outcome', evidence: 'fixture' });
 
   // --- normalize (raw records -> sorted, de-duplicated Set<string>) ----------------------
   const observed = normalize(ex.records);
@@ -93,8 +96,8 @@ test('pipeline (research): extract(taskType:research) -> normalize -> compare yi
   // {when:phase_completed(1), require:min_count(delegated(information-gatherer))=2} promotes a token
   // NOT in required[] but PRESENT in observed (the fixture has 2 gatherers → =2 emitted), so it
   // counts as +1 matched. Effective required = 13 base + 3 promoted gates + 1 min_count rule = 17.
-  const EXPECTED_MATCHED = golden.required.length + 3 + 1; // 11 + 3 gates + 1 min_count rule = 15 (task_status(completed) demoted to optional, #63 item 2; conformant already optional, #57)
-  assert.equal(EXPECTED_MATCHED, 15, 'research effective-required count sanity (11 base + 3 promoted gates + 1 min_count rule; task_status + conformant now optional)');
+  const EXPECTED_MATCHED = golden.required.length + 3 + 1; // 12 + 3 gates + 1 min_count rule = 16 (task_status(completed) demoted to optional, #63 item 2; conformant already optional, #57; +1 required outcome(research-answer)=pass, #88 promotion)
+  assert.equal(EXPECTED_MATCHED, 16, 'research effective-required count sanity (12 base + 3 promoted gates + 1 min_count rule; task_status + conformant optional; research-answer promoted to required #88)');
   assert.equal(
     result.matched.length,
     EXPECTED_MATCHED,
