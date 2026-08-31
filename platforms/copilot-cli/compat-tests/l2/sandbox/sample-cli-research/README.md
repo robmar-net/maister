@@ -10,12 +10,13 @@ drives a development-shaped workflow against it (add a small feature + a test).
 
 ## Commands
 
-| Command        | Behaviour                        |
-|----------------|----------------------------------|
-| `hello`        | Prints `Hello, world!`           |
-| `upper <text>` | Prints `<text>` in upper case    |
-| `version`      | Prints the CLI version (`0.1.0`) |
-| `help`         | Prints usage                     |
+| Command             | Behaviour                          |
+|---------------------|------------------------------------|
+| `hello`             | Prints `Hello, world!`             |
+| `upper <text>`      | Prints `<text>` in upper case      |
+| `frobnicate <text>` | Prints `<text>` rot13-transformed  |
+| `version`           | Prints the CLI version (`0.1.0`)   |
+| `help`              | Prints usage                       |
 
 Run a command:
 

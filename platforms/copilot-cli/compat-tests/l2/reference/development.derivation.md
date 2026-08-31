@@ -10,12 +10,12 @@ model it is derived from. Edits to the sibling JSON are governed by the audit tr
 | Source (read-only citation source) | `plugins/maister/skills/development/SKILL.md` |
 | maister_version | `2.2.2` |
 | workflow_model_version | `6` |
-| Sibling JSON hash | `19df242f9949265a8fd17893cd1ef9472251186372f8d8816325fd2a956fc008` |
+| Sibling JSON hash | `6ba234a71d5caf791429ba865defa698ecb597dd1c81906f95ccac7d763158da` |
 | Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) |
 
 Bare `:N` anchors cite the source SKILL.md above; other sources carry an explicit path (all under
 `plugins/maister/skills/`, read-only). Rows follow on-disk array order. Partition sizes (derivation
-sections): 32 required + 43 optional + 21 rules + 10 allowlist = 106 rows (the Required section keeps
+sections): 32 required + 43 optional + 21 rules + 11 allowlist = 107 rows (the Required section keeps
 the two demoted-but-documented rows `task_status`/`state_schema`, so it exceeds the skeleton `required`
 array of 30).
 
@@ -166,7 +166,7 @@ dev profile does NOT emit `created_artifact(analysis/gap-analysis.md)`, so it mu
 | `phase_completed(11)` | `invoked_skill(implementation-verifier)` | P11 | :446 (P11 Step 1: "Invoke Skill tool - `maister:implementation-verifier`") |
 | `phase_completed(11)` | `created_artifact(verification/*)` | P11 | :441 (P11 Output: `verification/implementation-verification.md`) |
 
-## Allowlist (10)
+## Allowlist (11)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
@@ -180,6 +180,7 @@ dev profile does NOT emit `created_artifact(analysis/gap-analysis.md)`, so it mu
 | `outcome(plan-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — same as `outcome(spec-structure)=fail` for `implementation/implementation-plan.md` |
 | `outcome(verification-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — same for `verification/implementation-verification.md` |
 | `outcome(greet-edges)=fail` | allowlist | issue #88 (CALIBRATION #33) | LIMITATION — the `--greet` deliverable did not satisfy both hardened edges (multi-word preserved; bare `--greet` fails with usage on stderr). Tracked (not REGRESSED) while `=pass` is optional; promote after >=2 clean runs. Backwards-incomparable: a bundle whose bare `--greet` prints `Hello, !` exit 0 cannot pass |
+| `invoked_skill(quick-plan)` | allowlist | #88 follow-up (CALIBRATION #34) | LIMITATION — platform/model divergence: the dev model additionally invoked the maister `quick-plan` skill (Plan Mode) during planning, ALONGSIDE `implementation-planner` (still delegated; precedes chain intact). No development/SKILL.md anchor → allowlisted (not silently optional), a benign in-family planning aid, not a mis-route out of maister. Observed live 1.0.82 `20260831T123617Z` |
 
 ## Honesty notes
 

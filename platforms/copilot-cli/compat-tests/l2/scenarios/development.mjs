@@ -108,7 +108,10 @@ const gateMap = [
   // BOTH: the literal "phase 12", OR a verification/issues executive-summary that continues to phase 14 /
   // finalization. The verification anchor keeps this from stealing phase-13's own →14 gate, which is
   // "documentation complete" (its own regex below) and carries no verification-summary text.
-  { phase: 11, re: /continue to phase 12|(re-?verification|verification (passed|results|found|complete)|issues? (found|fixed|remaining)).{0,200}continue to (phase 14|finaliz)/is },
+  // "recheck" / "re-check" added (#88 follow-up): a Phase-11 fix→re-verify cycle can phrase the exit gate
+  // "Verification recheck: … Continue to Phase 14 finalization?" (observed 1.0.82 `20260831T123617Z`),
+  // which the passed|results|found|complete anchors miss.
+  { phase: 11, re: /continue to phase 12|(re-?verification|verification (passed|results|found|complete|recheck|re-?checked?)|issues? (found|fixed|remaining)).{0,200}continue to (phase 14|finaliz)/is },
   { phase: 12, re: /e2e complete/i },
   { phase: 13, re: /documentation complete/i },
 ];
