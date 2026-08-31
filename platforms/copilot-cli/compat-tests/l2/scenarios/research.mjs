@@ -102,10 +102,13 @@ const answerMap = [
 
 export const scenario = {
   id: 'research',
-  // Reuses the development sandbox: research only needs a small codebase + docs to investigate
-  // (read-only), so no seeded state is required. Directory under `l2/sandbox/`; copied into the
-  // mktemp rundir per run.
-  sandboxTemplate: 'sample-cli',
+  // Dedicated research sandbox (issue #88): a small codebase + docs to investigate (read-only), with
+  // EXACTLY ONE planted discrepancy — `cmd_frobnicate` implemented + documented but absent from the
+  // dispatcher `case` (unreachable). Split from the development `sample-cli` so the frobnicate plant
+  // never pollutes the development drive (on the shared sandbox the dev verifier flagged it as a
+  // warning and ran an extra fix/re-verify cycle — 20260831T123617Z). Directory under `l2/sandbox/`;
+  // copied into the mktemp rundir per run.
+  sandboxTemplate: 'sample-cli-research',
   prompt,
   expectedShape: 'research',
   // Selects the extractor's research TREE_PROFILE + the findStateYaml `.maister/tasks/research/` subtree.

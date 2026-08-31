@@ -626,3 +626,42 @@ drift as research's (#79/#80/#82 never refreshed it): it read `workflow_model_ve
 sibling hash / "32 req + 33 opt + 21 rules + 6 allow = 92 rows". Refreshed to the current skeleton: wm 6,
 hash `19df242f…`, section totals 32 + 43 + 21 + 10 = 106. Cosmetic (the verdict keys on the skeleton
 hash/wm), corrected rather than left knowingly stale while editing the file.
+
+### 34 — #88 FOLLOW-UP: research sandbox split + two harness-modeling gaps (first live #88 dev drive)
+
+The first live #88 validation sweep on Copilot 1.0.82: **research** `20260831T123056Z` **AS-EXPECTED
+13·1·0** (13.34 AIU) with **`outcome(research-answer)=pass`** — the model named the planted `frobnicate`
+(cited `cli.sh:50-53` ROT13 vs dispatcher `cli.sh:58-68`, confirmed `frobnicate` → status 2) and
+concluded "implemented but unreachable / dead". **development** `20260831T123617Z` produced
+**`outcome(greet-edges)=pass`** (both hardened edges) + `tests-pass=pass` + all structure oracles — the
+#88 dev oracle VALIDATED — but the run REGRESSED **36·3·2** on TWO gaps UNRELATED to #88 (each a
+model-latitude / gate-phrasing surface, same class as WP-D #81/#82), plus revealed a sandbox-design issue
+#88 introduced. All three addressed credit-free here; live `=pass` promotion still needs a 2nd clean run.
+
+**(1) Sandbox split — the `frobnicate` plant leaked into development.** `sample-cli` was SHARED by
+research + development; on the dev drive the implementation-verifier flagged `frobnicate` ("documented but
+not dispatched") as a warning and ran an extra fix→re-verify cycle ("help now lists frobnicate"). Fix:
+a DEDICATED `sandbox/sample-cli-research/` carries the plant (with exactly ONE discrepancy — the
+dev-specific `--greet` test scaffolding + `run-edge-tests.sh` removed so `frobnicate` is unambiguous);
+`sample-cli` reverted byte-identical to its pre-#88 (plant-free) state; `research.mjs`
+`sandboxTemplate → sample-cli-research`. No reference/hash impact (sandbox name is not hashed);
+research replay unaffected (assertion-type outcomes use no restage).
+
+**(2) `gate_fired_at(phase-11)` missing → widen gateMap.** The Phase-11 fix→re-verify cycle phrased the
+exit gate "**Verification recheck**: … Continue to Phase 14 finalization?", which the existing
+`verification (passed|results|found|complete)` anchors miss. Added `recheck|re-?checked?` to the
+alternation (development.mjs gateMap phase-11). Scenario-only (no reference/hash change).
+
+**(3) `invoked_skill(quick-plan)` extra → allowlist LIMITATION.** The dev model additionally invoked the
+maister `quick-plan` skill (Plan Mode) during planning — ALONGSIDE, not instead of, `implementation-planner`
+(still delegated; precedes chain intact). NOT anchored in development/SKILL.md, so per the standing rule
+(no SKILL.md citation → allowlist LIMITATION, never silently optional) it is allowlisted as a benign
+in-family planning aid, not a mis-route. dev-only re-stamp `19df242f… → 6ba234a7…`.
+
+**Credit-free proof:** replaying `20260831T123617Z` after (2)+(3) flips **REGRESSED 36·3·2 → AS-EXPECTED
+37 PASS · 4 LIMITATION · 0 FAIL** (gate-11 now detected; quick-plan now a tracked LIMITATION;
+`greet-edges=pass` held). check-reference ×4 CURRENT v6; suite green; make build byte-identical.
+**Cost note:** the dev drive was 124 AIU / 187 req (premium `claude-sonnet-4.6` routing + review fan-out +
+the frobnicate-triggered fix cycle) — vs 24.75 in WP-D; the sandbox split should reduce future dev cost.
+**Deferred:** a 2nd clean live dev + research run (next sweep) to promote `outcome(greet-edges)=pass` /
+`outcome(research-answer)=pass` from optional to required.
