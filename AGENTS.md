@@ -73,6 +73,44 @@ delete the old ADR — the superseded reasoning is exactly the record we want to
 The point is the same as the parity principle above: never quietly erase a decision or the context that
 produced it. The trail of *why we thought X, then learned Y, then chose Z* is the asset.
 
+## Versioning — downstream `+fork.N` suffix (BINDING)
+
+We are a permanent fork whose *content* diverges from upstream while the version *number* is upstream's
+(it is set by upstream's own "Bump version" commits, which we inherit by merging). Two artifacts labeled
+`2.2.3` — upstream's and ours, ~130 commits richer — would otherwise be indistinguishable. So **every
+shipped version string in this fork carries a SemVer 2.0.0 build-metadata suffix:**
+
+    <upstream-base>+fork.<N>          e.g.  2.2.3+fork.1
+
+- **`<upstream-base>`** — copied **verbatim** from the upstream commit we last merged (the value
+  upstream's "Bump version" commit set). We never invent or bump this ourselves; it changes **only** by
+  merging upstream.
+- **`+fork.<N>`** — build metadata. It is ignored by SemVer *precedence*, so `2.2.3+fork.1` sorts equal
+  to upstream `2.2.3` — which is exactly right: same upstream base, extra downstream content, not
+  "newer" or "older". `N` is a monotonic integer counting downstream builds atop this base.
+
+**Three files carry the version — keep them identical:** `.claude-plugin/marketplace.json` and
+`plugins/maister/.claude-plugin/plugin.json` are **source** (edit by hand); `plugins/maister-copilot/.claude-plugin/plugin.json`
+is **generated** — do **not** hand-edit it. It inherits the version from the source `plugin.json` via
+`cp` in `build.sh`, so bump the source and run `make build`.
+
+**When to bump `N`:**
+- **+1** on each PR to `master` that changes what an installer receives — `plugins/**`,
+  `platforms/copilot-cli/**` (build.sh / hooks-overrides), or the manifests. Docs-only, wiki-only,
+  `compat-tests/`-only, or AGENTS.md-only PRs do **not** bump `N`.
+- **reset to 1** whenever an upstream merge moves `<upstream-base>` (new base ⇒ `…+fork.1`).
+
+**After merging upstream — the re-application step, do NOT skip:**
+1. The merge overwrites our suffixed version with upstream's bare one, so `make validate` (**WS5.16**)
+   fails loudly with "no `+fork.`". That failure is the reminder — it is working as designed.
+2. Set all three manifests to `<new-upstream-base>+fork.1` (base moved ⇒ reset `N`). If the merge did
+   **not** move the base, keep the base and only bump `N` when you actually ship a downstream change.
+3. `make build` (propagates the version to the generated plugin) → `make validate` → commit.
+
+`make validate` (**WS5.16**) enforces the `X.Y.Z+fork.N` shape on all three manifests, so a dropped
+suffix can never ship silently. Distinguishing fork builds by version does **not** change our identity:
+the marketplace stays `maister-plugins` and we still never push upstream (see Direction).
+
 ## Remotes — identify by repo SLUG, not by remote name
 
 Remote *names* differ between clones (`origin`/`upstream`/`fork` are used inconsistently across
