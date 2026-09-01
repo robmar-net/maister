@@ -41,6 +41,10 @@ validate:
 	@! grep -q '"matcher": "compact"' plugins/maister-copilot/hooks/hooks.json || (echo "FAIL: hooks.json still has a SessionStart 'compact' matcher; Copilot ignores it and over-fires. build.sh WS2d must remove it" && exit 1)
 	@echo "Checking hooks carry no source nomenclature in injected context (AskUserQuestion / maister:) (WS5.15, #95)..."
 	@! grep -nE 'AskUserQuestion|maister:' plugins/maister-copilot/hooks/*.sh 2>/dev/null || (echo "FAIL: source nomenclature (AskUserQuestion or maister:) found in generated hooks above; the injected additionalContext must read ask_user / /* — build.sh WS2e rewrites it, regenerate with make build" && exit 1)
+	@echo "Checking all manifests carry the downstream <upstream-base>+fork.N version suffix (WS5.16)..."
+	@for f in .claude-plugin/marketplace.json plugins/maister/.claude-plugin/plugin.json plugins/maister-copilot/.claude-plugin/plugin.json; do \
+	  grep -qE '"version":[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+[+]fork\.[0-9]+"' "$$f" || { echo "FAIL: $$f version must be <upstream-base>+fork.<N> (e.g. 2.2.3+fork.1). An upstream merge resets it to the bare upstream number — re-apply the suffix per AGENTS.md 'Versioning', then make build" && exit 1; }; \
+	done
 	@echo "All checks passed"
 
 # WS5.7: determinism guard, kept OUT of `validate` (double-build) so validate stays fast.
