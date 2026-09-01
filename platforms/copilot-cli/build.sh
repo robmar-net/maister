@@ -56,6 +56,20 @@ perl -0777 -i -pe '
   END { exit($c == 1 ? 0 : 1) }
 ' "$OUT/hooks/hooks.json" || { echo "FAIL: WS2d: SessionStart compact block not found exactly once in \$OUT/hooks/hooks.json (source drift?)" >&2; exit 1; }
 
+# WS2e (#95): normalize the model-facing nomenclature inside the SessionStart hooks' injected
+# `additionalContext` to Copilot terms — the SAME two rewrites the *.md pipeline applies
+# (AskUserQuestion -> ask_user, step 7; /maister:* -> /*, step 4e). The hooks are the only
+# plugin->model channel not otherwise transformed (they are copied verbatim above), so without
+# this the injected reminder shipped in Claude source nomenclature (`AskUserQuestion`, `/maister:*`)
+# while the rest of the variant said `ask_user` / `/*` — a silent source-vs-generated drift, and
+# the "no maister: in output" guards were *.md-scoped so they never caught it (issue #95).
+# SAFE as a file-level sed: these two tokens appear ONLY in the injected additionalContext string,
+# never in the maintainer comments (which intentionally contrast Claude vs Copilot and must stay).
+# Guarded by `make validate` (WS5.15). Claude source hooks are untouched (only $OUT is edited).
+for f in "$OUT"/hooks/*.sh; do
+  sedi -e 's/AskUserQuestion/ask_user/g' -e 's|/maister:\*|/*|g' "$f"
+done
+
 # 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
 #    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
 sedi -e 's/"name": "maister"/"name": "maister-copilot"/' \

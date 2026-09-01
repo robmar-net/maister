@@ -39,6 +39,8 @@ validate:
 	@grep -q 'permissionDecision": "ask"' plugins/maister-copilot/hooks/block-destructive-commands.sh || (echo "FAIL: output destructive-command guard is not the Copilot 'ask' override (build.sh WS2b overlay missing?)" && exit 1)
 	@echo "Checking the SessionStart 'compact' matcher is de-registered (WS5.14)..."
 	@! grep -q '"matcher": "compact"' plugins/maister-copilot/hooks/hooks.json || (echo "FAIL: hooks.json still has a SessionStart 'compact' matcher; Copilot ignores it and over-fires. build.sh WS2d must remove it" && exit 1)
+	@echo "Checking hooks carry no source nomenclature in injected context (AskUserQuestion / maister:) (WS5.15, #95)..."
+	@! grep -nE 'AskUserQuestion|maister:' plugins/maister-copilot/hooks/*.sh 2>/dev/null || (echo "FAIL: source nomenclature (AskUserQuestion or maister:) found in generated hooks above; the injected additionalContext must read ask_user / /* — build.sh WS2e rewrites it, regenerate with make build" && exit 1)
 	@echo "All checks passed"
 
 # WS5.7: determinism guard, kept OUT of `validate` (double-build) so validate stays fast.
