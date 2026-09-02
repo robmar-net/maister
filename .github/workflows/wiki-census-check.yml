@@ -1,0 +1,37 @@
+name: Wiki census check (Parity-Map header)
+
+# The Parity-Map header census ("✅ N verified · 🟢 N adapted · …") is GENERATED from the page's
+# own tables by l2/tools/parity-header.mjs (#92 Stage 6; unit = one table row). A hand edit to the
+# wiki can silently drift the counters away from the tables, so this workflow re-checks the live
+# wiki page whenever the wiki changes (`gollum` fires on wiki page create/update and runs from the
+# default branch) and on demand. Read-only, credit-free, no Copilot seat involved.
+
+on:
+  gollum:
+  workflow_dispatch:
+
+# Least privilege: reads the repo for the tool, clones the public wiki — no writes.
+permissions:
+  contents: read
+
+jobs:
+  census:
+    name: Parity-Map header matches its tables
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Node 24 for parity with l2-check.yml (the tool itself is node:builtins-only).
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      # The wiki is a separate public repo; a shallow anonymous clone is enough (read-only).
+      - name: Clone the wiki
+        run: git clone --depth 1 "https://github.com/${GITHUB_REPOSITORY}.wiki.git" /tmp/wiki
+
+      # exit non-zero when the "Header counters:" line disagrees with the row census of the tables.
+      - name: parity-header.mjs --check
+        run: |
+          node platforms/copilot-cli/compat-tests/l2/tools/parity-header.mjs /tmp/wiki/Parity-Map.md --check \
+            || { echo "::error::Parity-Map header census drifted from its tables — regenerate the line with 'node platforms/copilot-cli/compat-tests/l2/tools/parity-header.mjs <wiki-clone>/Parity-Map.md' and paste it into the page's Header counters line"; exit 1; }
