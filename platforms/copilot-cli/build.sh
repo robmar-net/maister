@@ -99,6 +99,28 @@ find "$OUT/skills" -name "*.md" | while read f; do
   sedi 's/^name: maister:/name: /' "$f"
 done
 
+# 3b. (#86 T2) Map agent-level `model:` frontmatter aliases to Copilot catalog ids. Copilot HONORS
+#     agent-level `model:` (probe #86 T1 on 1.0.82: an agent with `model: gpt-5.4` ran on gpt-5.4, not
+#     the orchestrator default). But a Claude alias that is NOT a Copilot catalog id (e.g. `haiku`)
+#     ERRORS at delegation time ("Model 'haiku' is not available") and the agent silently falls back to
+#     the default model — a hidden quality regression. So rewrite the known Claude aliases to the live
+#     Copilot catalog (ids verified from the 1.0.82 model list in the probe); leave `inherit` (a
+#     recognized keyword that resolves to the session/default and ships working today); FAIL LOUD on any
+#     other value so a new upstream alias forces a map update instead of shipping a runtime error.
+#     Claude source agents (`plugins/maister/agents/**`) stay untouched — only $OUT is edited.
+#     Guarded by `make validate` (WS5.17). See docs/adr/0002-copilot-agent-model-mapping.md.
+for f in "$OUT"/agents/*.md; do
+  mv=$(grep -m1 '^model:' "$f" | sed 's/^model:[[:space:]]*//' | tr -d '[:space:]')
+  [ -z "$mv" ] && continue
+  case "$mv" in
+    inherit) : ;;                                                                            # keyword — leave
+    haiku)  sedi 's/^model:[[:space:]]*haiku[[:space:]]*$/model: claude-haiku-4.5/'  "$f" ;;
+    sonnet) sedi 's/^model:[[:space:]]*sonnet[[:space:]]*$/model: claude-sonnet-5/'  "$f" ;;
+    opus)   sedi 's/^model:[[:space:]]*opus[[:space:]]*$/model: claude-opus-5/'      "$f" ;;
+    *) echo "FAIL: unknown agent model alias '$mv' in $f — extend the #86 T2 map in build.sh with a Copilot catalog id (or map it to 'inherit')" >&2; exit 1 ;;
+  esac
+done
+
 # 4. Kind-aware reference rewrite (registry-driven prose classification).
 #    Replaces the former flat `s/maister:/maister-/g`, which mangled all three
 #    entity kinds. Runs AFTER the name-strip steps (2-3) so `name:` frontmatter
