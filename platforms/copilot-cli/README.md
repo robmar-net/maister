@@ -52,3 +52,20 @@ skills, `AskUserQuestion`→`ask_user`, a branding scrub, the review-workflows-a
 rewrite, removal of the (Claude-oriented) documentation-URLs section, the appended
 `## Platform: Copilot CLI` note, and the top-of-file "not loaded" banner on `CLAUDE.md`.
 See the numbered step comments in `build.sh`.
+
+### Agent `model:` mapping (step 3b, #86)
+
+Copilot **honors** agent-level `model:` frontmatter, but a Claude alias that is not a Copilot
+catalog id errors at delegation (`"Model 'haiku' is not available"`) and the agent falls back to
+the default model. `build.sh` maps the aliases to live Copilot catalog ids (verified on 1.0.82):
+
+| Claude `model:` | Copilot output |
+|---|---|
+| `inherit` | left as-is (keyword → session/default) |
+| `haiku` | `claude-haiku-4.5` |
+| `sonnet` | `claude-sonnet-5` |
+| `opus` | `claude-opus-5` |
+| anything else | **build fails** — extend the map |
+
+`make validate` (WS5.17) also fails on any bare Claude alias left in a generated agent. Rationale and
+the probe that established the failure mode: [`docs/adr/0002`](../../docs/adr/0002-copilot-agent-model-mapping.md).
