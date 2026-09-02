@@ -117,21 +117,20 @@ Some incoming upstream changes need a Copilot-side adaptation to land *before* t
 introduce a silent parity gap. Treat each tripwire below as a **STOP** during a sync: if the incoming
 merge carries the trigger, pause, finish the linked adaptation, then merge.
 
-### `model:` per-agent tiering — issue #86 (OPEN)
+### `model:` per-agent tiering — issue #86 (RESOLVED — block lifted, residual guard stays)
 
 Upstream carries a live `feat/model-tiering` branch that sets **per-agent `model:` frontmatter**
-(`inherit` / `haiku` / `sonnet`). But Copilot's handling of agent-level `model:` is **unverified**, and
-`build.sh` does **not** transform `model:` today. So if that branch reaches upstream `master` and we
-sync, the tiering either silently no-ops on Copilot or breaks agent loading — **unknown which**, and a
-hidden parity gap either way.
+(`inherit` / `haiku` / `sonnet`). The probe (#86 T1, Copilot 1.0.82) established that Copilot **honors**
+agent-level `model:`, but a Claude alias that is not a Copilot catalog id **errors at delegation** and
+falls back to the default model. `build.sh` (step 3b) now **maps** the aliases to catalog ids
+(`haiku→claude-haiku-4.5`, `sonnet→claude-sonnet-5`, `opus→claude-opus-5`; `inherit` left; unknown →
+**build fails**), guarded by `make validate` (WS5.17). See
+[ADR 0002](docs/adr/0002-copilot-agent-model-mapping.md).
 
-- **Do NOT merge upstream `feat/model-tiering` (or an upstream `master` that contains it) until the
-  `model:` mapping lands** — the probe (#86 T1: is agent-level `model:` honored, and what is the
-  failure mode for an unknown value) **and** the `build.sh` alias→Copilot-catalog mapping (#86 T2).
-- A `model:`-bearing agent in an incoming merge is the trigger. One instance **already ships**:
-  `plugins/maister/agents/project-analyzer.md` carries `model: haiku` on master, passed through
-  untransformed — the first case the mapping must cover (and a possible live agent-load risk until the
-  probe clears it).
+- **`feat/model-tiering` is now safe to merge** — its `inherit`/`haiku`/`sonnet` values are all covered.
+- **Residual guard (keep):** a `model:` value the map does not know **fails the build** on purpose. If
+  an upstream merge introduces a *new* alias, the build stops — add it to the step-3b map (a Copilot
+  catalog id) before completing the merge. That build-fail is the tripwire now, not a manual STOP.
 
 ## Remotes — identify by repo SLUG, not by remote name
 
