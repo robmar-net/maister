@@ -111,6 +111,28 @@ is **generated** — do **not** hand-edit it. It inherits the version from the s
 suffix can never ship silently. Distinguishing fork builds by version does **not** change our identity:
 the marketplace stays `maister-plugins` and we still never push upstream (see Direction).
 
+## Upstream-merge tripwires
+
+Some incoming upstream changes need a Copilot-side adaptation to land *before* the merge, or they
+introduce a silent parity gap. Treat each tripwire below as a **STOP** during a sync: if the incoming
+merge carries the trigger, pause, finish the linked adaptation, then merge.
+
+### `model:` per-agent tiering — issue #86 (OPEN)
+
+Upstream carries a live `feat/model-tiering` branch that sets **per-agent `model:` frontmatter**
+(`inherit` / `haiku` / `sonnet`). But Copilot's handling of agent-level `model:` is **unverified**, and
+`build.sh` does **not** transform `model:` today. So if that branch reaches upstream `master` and we
+sync, the tiering either silently no-ops on Copilot or breaks agent loading — **unknown which**, and a
+hidden parity gap either way.
+
+- **Do NOT merge upstream `feat/model-tiering` (or an upstream `master` that contains it) until the
+  `model:` mapping lands** — the probe (#86 T1: is agent-level `model:` honored, and what is the
+  failure mode for an unknown value) **and** the `build.sh` alias→Copilot-catalog mapping (#86 T2).
+- A `model:`-bearing agent in an incoming merge is the trigger. One instance **already ships**:
+  `plugins/maister/agents/project-analyzer.md` carries `model: haiku` on master, passed through
+  untransformed — the first case the mapping must cover (and a possible live agent-load risk until the
+  probe clears it).
+
 ## Remotes — identify by repo SLUG, not by remote name
 
 Remote *names* differ between clones (`origin`/`upstream`/`fork` are used inconsistently across
