@@ -11,6 +11,22 @@
   ],
   "optional": [
     "invoked_skill(quick-bugfix)",
+    "invoked_skill(development)",
+    "invoked_skill(codebase-analyzer)",
+    "invoked_skill(implementation-plan-executor)",
+    "invoked_skill(implementation-verifier)",
+    "invoked_skill(reviews-code)",
+    "invoked_skill(reviews-spec-audit)",
+    "delegated(explore)",
+    "delegated(codebase-analysis-reporter)",
+    "delegated(gap-analyzer)",
+    "delegated(specification-creator)",
+    "delegated(spec-auditor)",
+    "delegated(implementation-planner)",
+    "delegated(task-group-implementer)",
+    "delegated(implementation-completeness-checker)",
+    "delegated(code-reviewer)",
+    "todos(created)",
     "gate_fired(ask)",
     "gate_fired(permission)",
     "gate_fired(exit_plan_mode)",
@@ -18,5 +34,5 @@
   ],
   "rules": [],
   "allowlist": [],
-  "hash": "b7f60681eb1679c995a09e5740c856948bdde5ed52568a522e3c8ea27d5c827d"
+  "hash": "59659cc3984ccbbda9624881eacbcb1044d28137ee8aaca14939041570619293"
 }

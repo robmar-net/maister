@@ -752,8 +752,16 @@ classifier may pick `development` — both fix it), plus `gate_fired(ask|permiss
 workflow owns its tree; unmodelled here). Wiring: `run.mjs` SCENARIOS + `run.sh` scenario→sandbox
 (`sample-cli-bug`) + `l2-check.yml` `--check-reference`. Sandbox reused (`sample-cli-bug`).
 
-**PROVISIONAL — live calibration pending (spend-gated).** The optional/allowlist partition is the
-model-derived expectation; the N=1 live drive (`run.sh --scenario=work --yes`) calibrates it — any
-route-specific predicate the model legitimately emits (e.g. a `development` orchestrator's
-`delegated(...)`/`created_artifact(...)`) is added to `optional`/`allowlist` from that run, and the
-AS-EXPECTED verdict + AIU figure recorded — the quick-bugfix-genesis pattern (note 4). `∅ → b7f60681…` | PR (#85)
+**Live calibration (N=1, Copilot 1.0.82, bundle `20260903T003148Z`, 18.92 AIU).** The classifier routed
+this "upper prints lowercase" bug to the FULL `development` workflow (a documented route, not the quick
+path) and fixed it. All 4 route-invariant REQUIRED predicates matched — `invoked_skill(work)`,
+`delegated(task-classifier)`, `outcome(bug-fixed)=pass`, `reached_terminal(completion)` — proving the
+front door routes + the routed workflow produces the correct deliverable. The 16 development-route
+predicates the run emitted (`invoked_skill(development|codebase-analyzer|implementation-plan-executor|
+implementation-verifier|reviews-code|reviews-spec-audit)`, `delegated(explore|codebase-analysis-reporter|
+gap-analyzer|specification-creator|spec-auditor|implementation-planner|task-group-implementer|
+implementation-completeness-checker|code-reviewer)`, `todos(created)`) were moved required-side-untouched
+into `optional` — model-grounded (each is a documented `development` marker, present in that scenario's own
+reference), NOT fitted: they are optional because the route is task-dependent, so a future quick route
+simply leaves them unobserved. Re-hash `b7f60681… → 59659cc3…`; the bundle now replays **AS-EXPECTED
+4·0·0**. `∅ → b7f60681… → 59659cc3…` | PR (#85)

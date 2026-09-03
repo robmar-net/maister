@@ -20,9 +20,10 @@
  * ── Sandbox ────────────────────────────────────────────────────────────────
  * Reuses `l2/sandbox/sample-cli-bug/` (the quick-bugfix sandbox): the sample-cli with ONE seeded defect —
  * `cmd_upper` lower-cases instead of upper-casing (`upper hello` prints `hello`, must print `HELLO`) — and
- * a committed `run-tests.sh` whose `upper` check fails until the bug is fixed. A small, scoped bug, so the
- * classifier should route to the QUICK path; the rundir is a throwaway copy so the fix never touches the
- * committed sandbox.
+ * a committed `run-tests.sh` whose `upper` check fails until the bug is fixed. The rundir is a throwaway
+ * copy so the fix never touches the committed sandbox. (In the N=1 live drive the classifier actually
+ * routed this bug to the FULL `development` workflow, not the quick path — a documented, valid route; the
+ * reference's required set is route-invariant, so the verdict holds either way. See CALIBRATION note 37.)
  *
  * ── Routing ─────────────────────────────────────────────────────────────────
  * The prompt names the maister `work` ENTRY POINT (not a workflow) so the model invokes `skill("work")`,
