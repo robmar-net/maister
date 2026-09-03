@@ -243,9 +243,16 @@ done
 #    mapped before the bare `TaskUpdate` (a row status update → todos); the leftover standalone
 #    `addBlockedBy` (the two-span `` `TaskUpdate` with `addBlockedBy` `` form) then maps to the
 #    `todo_deps` table. All rules are fixed strings → order-independent output, determinism holds.
-#    NOTE (documented residual): Claude's status value `completed` differs from Copilot's `done`;
-#    that enum is NOT rewritten here (too many unrelated "completed" tokens) — the plugin CLAUDE.md
-#    platform note calls it out, and the model maps it at runtime.
+#    NOTE (documented residual — #114): Claude's status value `completed` differs from Copilot's
+#    `done`; that enum is NOT rewritten here (too many unrelated "completed" tokens). The channel
+#    that actually carries the rule is **Copilot's own `sql` tool**, which exposes the pre-seeded
+#    `todos` schema (`status` ∈ pending|in_progress|done) to the model at call time — NOT the plugin
+#    root CLAUDE.md, which Copilot never loads (see WS2c above and step 10; its platform note is
+#    maintainer-facing only and must never be cited as a runtime channel). Measured on six persisted
+#    L2 bundles (`compat-tests/reports/2026*/events.json`): 202 `UPDATE todos SET status='done'`
+#    writes, **0** `status='completed'` — the model gets the enum right from the schema, unprompted.
+#    The residual is therefore self-correcting at runtime, and WS5.20 guards against a future
+#    transform emitting the Claude enum into a generated SQL instruction.
 find "$OUT" -name "*.md" | while read f; do
   sedi \
     -e 's/TaskUpdate addBlockedBy/INSERT INTO todo_deps/g' \
@@ -386,6 +393,11 @@ done
 # 9. Add platform note to plugin's CLAUDE.md — appended LAST, after the ask_user (step 7) and
 #    branding (step 8) global passes, so its literal `AskUserQuestion` and its "Key differences
 #    from Claude Code" comparison are authored final and not clobbered.
+#    SCOPE (#114): steps 8b-10 groom a file Copilot never loads (WS2c / step 10). That is
+#    deliberate and MAINTAINER-FACING ONLY — a human reading the installed plugin. Nothing in the
+#    runtime may depend on it: every rule the MODEL needs must ride a channel it demonstrably
+#    receives (a SKILL.md, an agent front-matter, the SessionStart hook, or a Copilot-native
+#    surface such as the `sql` tool's own schema). Never cite this note as a delivery channel.
 cat >> "$OUT/CLAUDE.md" << 'EOF'
 
 ## Platform: Copilot CLI
