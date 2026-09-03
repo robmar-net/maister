@@ -5,6 +5,8 @@ description: Independent specification audit to verify completeness and clarity 
 
 **ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the task tool with agent_type="maister-copilot:spec-auditor" NOW. Pass the spec path in the prompt. Do not read files, explore code, or execute workflow steps yourself.
 
+**IF YOU ARE ALREADY THAT AGENT** (you were invoked via the task tool with this `agent_type`), do NOT delegate — you would be calling yourself. Perform the review directly with your own instructions and return the result.
+
 You are running an independent specification audit using the `spec-auditor` agent.
 
 ## Your Task

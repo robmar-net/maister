@@ -43,6 +43,9 @@ validate:
 	@! grep -nE 'AskUserQuestion|maister:' plugins/maister-copilot/hooks/*.sh 2>/dev/null || (echo "FAIL: source nomenclature (AskUserQuestion or maister:) found in generated hooks above; the injected additionalContext must read ask_user / /* — build.sh WS2e rewrites it, regenerate with make build" && exit 1)
 	@echo "Checking generated agent model: values are Copilot catalog ids or inherit, not bare Claude aliases (WS5.17, #86)..."
 	@! grep -rnE '^model:[[:space:]]*(haiku|sonnet|opus)[[:space:]]*$$' plugins/maister-copilot/agents/*.md 2>/dev/null || (echo "FAIL: bare Claude model alias in a generated agent above; it errors at delegation on Copilot ('Model X is not available'). build.sh (#86 T2) must map it to a Copilot catalog id — regenerate with make build" && exit 1)
+	@echo "Checking every generated reviews-* command carries the agent re-entry guard (WS5.18, #113)..."
+	@n=$$(grep -l 'IF YOU ARE ALREADY THAT AGENT' plugins/maister-copilot/commands/reviews-*.md 2>/dev/null | wc -l | tr -d ' '); \
+	  [ "$$n" = "5" ] || { echo "FAIL: only $$n/5 generated reviews-* commands carry the re-entry guard; without it an agent that invokes its own reviews-* skill re-delegates to itself (measured: 19-24% of subagent tokens burned on re-entrant runs, ADR 0006). build.sh step 8e must insert it - regenerate with make build" && exit 1; }
 	@echo "Checking all manifests carry the downstream <upstream-base>+fork.N version suffix (WS5.16)..."
 	@for f in .claude-plugin/marketplace.json plugins/maister/.claude-plugin/plugin.json plugins/maister-copilot/.claude-plugin/plugin.json; do \
 	  grep -qE '"version":[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+[+]fork\.[0-9]+"' "$$f" || { echo "FAIL: $$f version must be <upstream-base>+fork.<N> (e.g. 2.2.3+fork.1). An upstream merge resets it to the bare upstream number — re-apply the suffix per AGENTS.md 'Versioning', then make build" && exit 1; }; \
