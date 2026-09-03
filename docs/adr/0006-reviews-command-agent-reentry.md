@@ -3,7 +3,7 @@
 - **Status:** Accepted — 2026-09-03
 - **Deciders:** robmar (operator) + agent
 - **Tracking:** [robmar-net/maister#76](https://github.com/robmar-net/maister/issues/76) (WP-C1), [#106](https://github.com/robmar-net/maister/issues/106) (group A), [#110](https://github.com/robmar-net/maister/issues/110) (cost)
-- **Related:** [#16](https://github.com/robmar-net/maister/issues/16)/[#17](https://github.com/robmar-net/maister/issues/17) (commands surface as skills), [ADR 0003](0003-copilot-parallel-fan-out-measurement.md) (the "measured ≠ true" precedent), `platforms/copilot-cli/build.sh` step 8e, `make validate` WS5.18
+- **Related:** [#16](https://github.com/robmar-net/maister/issues/16)/[#17](https://github.com/robmar-net/maister/issues/17) (commands surface as skills), [ADR 0003](0003-copilot-parallel-fan-out-measurement.md) (the "measured ≠ true" precedent), `platforms/copilot-cli/build.sh` step 8e, `make validate` WS5.18 (delivered in PR #115)
 
 ## Context
 
@@ -67,6 +67,12 @@ whose session cost 36.99 AIU.
 
 ## Honest limits of this finding
 
+- **The reinforcement question is open.** The fork's SessionStart reminder tells every session to
+  route through maister skills, which would encourage exactly this self-invocation — but the
+  reminder text appears **nowhere** in the persisted bundle's events, so whether it reaches a
+  subagent context (or the model at all) is unknown. That is now tracked separately as
+  [#113](https://github.com/robmar-net/maister/issues/113); if the reminder turns out not to reach
+  the model, it is not a contributing cause here.
 - **Not proven Copilot-only.** The obvious framing is "commands become model-invocable skills on
   Copilot, so this cannot happen on Claude". Not asserted here: a Claude Code session with this
   plugin loaded also lists `maister:reviews-*` in its Skill tool namespace, so the surface plausibly

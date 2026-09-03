@@ -331,7 +331,7 @@ perl -0777 -i -pe '
   END { exit($c == 1 ? 0 : 1) }
 ' "$OUT/CLAUDE.md" || { echo "FAIL: step 8d: 'GitHub Copilot CLI Documentation' section not found exactly once in \$OUT/CLAUDE.md (source drift?)" >&2; exit 1; }
 
-# 8e. (#113 / ADR 0006) RE-ENTRY GUARD for the reviews-* command bodies.
+# 8e. (#76 WP-C1 / ADR 0006) RE-ENTRY GUARD for the reviews-* command bodies.
 #     Copilot surfaces `commands/*.md` as MODEL-INVOCABLE skills (step 8b). Each reviews-* body
 #     opens with an **ACTION REQUIRED** imperative to delegate to its agent NOW, which is correct
 #     when a USER invokes the skill — and a self-call loop when the agent itself invokes it. Measured
