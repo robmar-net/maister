@@ -22,10 +22,18 @@ function stageBundle(root) {
   fs.mkdirSync(path.join(taskDir, 'verification'), { recursive: true });
   // Planted signals: two review-agent delegations + two reviews-* skills, a todos_changed, an INDEX.md
   // read via a read-like tool, a dashboard + an html companion.
+  // Mirrors the REAL 1.0.82 event shape (issue #84): subagent.started has NO timestamp/parentId;
+  // delegation is a tool.execution_start(toolName:'task', turnId, toolCallId). Two review agents are
+  // delegated in ONE assistant turn (turn 4) and the runtime opens both task executions before either
+  // completes (out-of-order complete) → a parallel wave of 2 with peak concurrency 2.
   const events = [
-    { type: 'subagent.started', timestamp: '2026-01-01T00:00:01Z', parentId: 'p', data: { toolCallId: 'c1', agentName: 'maister-copilot:code-reviewer', model: 'gpt-x' } },
+    { type: 'subagent.started', data: { toolCallId: 'c1', agentName: 'maister-copilot:code-reviewer', model: 'gpt-x' } },
+    { type: 'subagent.started', data: { toolCallId: 'c2', agentName: 'maister-copilot:reality-assessor', model: 'gpt-x' } },
+    { type: 'tool.execution_start', data: { toolName: 'task', turnId: 4, toolCallId: 'c1', arguments: {} } },
+    { type: 'tool.execution_start', data: { toolName: 'task', turnId: 4, toolCallId: 'c2', arguments: {} } },
+    { type: 'tool.execution_complete', data: { toolCallId: 'c2', success: true } },
+    { type: 'tool.execution_complete', data: { toolCallId: 'c1', success: true } },
     { type: 'subagent.completed', data: { toolCallId: 'c1', durationMs: 1000, model: 'gpt-x' } },
-    { type: 'subagent.started', timestamp: '2026-01-01T00:00:01Z', parentId: 'p', data: { toolCallId: 'c2', agentName: 'maister-copilot:reality-assessor', model: 'gpt-x' } },
     { type: 'subagent.completed', data: { toolCallId: 'c2', durationMs: 1000, model: 'gpt-x' } },
     { type: 'skill.invoked', data: { name: 'reviews-code' } },
     { type: 'skill.invoked', data: { name: 'reviews-reality-check' } },
@@ -56,8 +64,8 @@ test('parity-evidence: classifies planted signals (todos ✅, standards read cou
     assert.match(out, /Standards lazy-load.*✅ 1 read\(s\)/, 'apply_patch mention must not inflate the read count');
     assert.match(out, /reviews-code, reviews-reality-check/, 'reviews-* skills listed');
     assert.match(out, /🟡 agents run \(isolation kept\) VIA the skill hop/, 'fan-out classified 🟡 (agents + skills both present)');
-    // Two siblings under one parent with overlapping 1s windows → peak concurrency 2.
-    assert.match(out, /Parallel waves.*2× of 2/, 'overlapping siblings → peak concurrency 2');
+    // Two same-turn task calls, interleaved (both open before either completes) → peak concurrency 2.
+    assert.match(out, /Parallel fan-out.*✅ 2× peak/, 'two same-turn task calls, interleaved → peak concurrency 2');
     assert.match(out, /dashboard\.html ✅ · dashboard-data\.js ✅/, 'dashboard artifacts found');
     assert.match(out, /implementation-verification\.html/, 'html companion found');
     assert.match(out, /not observed — no session\.compaction/, 'no compaction → honest not-observed');
