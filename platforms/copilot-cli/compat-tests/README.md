@@ -88,24 +88,49 @@ Most checks are **deterministic** (pipe payloads straight into the real built ho
 credits); a single **live** Copilot session covers the rest. Full findings:
 [`L1-FINDINGS.md`](./L1-FINDINGS.md).
 
-| ID | Hook | Check | Kind | 1.0.73 |
-|----|------|-------|------|--------|
-| L1a.i | `block-destructive-commands.sh` | Copilot override: `rm -rf` / `git reset --hard` → `permissionDecision:"ask"`; safe `echo hi` → allow | deterministic | PASS |
-| L1a.ii | `block-destructive-commands.sh` | live subagent runs `rm -rf <marker>` → held by the ask-gate, marker **survives** | live | PASS |
-| L1b.i | `post-compact-reminder.sh` | emits `additionalContext` iff `$CLAUDE_PROJECT_DIR/.maister/tasks` exists | deterministic | PASS |
-| L1b.ii | `post-compact-reminder.sh` | is `$CLAUDE_PROJECT_DIR` set on Copilot? (measured in a **sanitized** env) | live | PASS¹ |
-| L1c | `skill-invocation-reminder.sh` | reminder text injected into the session's SessionStart `additionalContext` | live | PASS |
+| ID | Hook | Check | Kind | 1.0.73 | 1.0.82 |
+|----|------|-------|------|--------|--------|
+| L1a.i | `block-destructive-commands.sh` | Copilot override: `rm -rf` / `git reset --hard` → `permissionDecision:"ask"`; safe `echo hi` → allow | deterministic | PASS | PASS |
+| L1a.ii | `block-destructive-commands.sh` | live subagent runs `rm -rf <marker>` → held by the ask-gate, marker **survives** | live | PASS | PASS² |
+| L1b.i | `post-compact-reminder.sh` | emits `additionalContext` iff `$CLAUDE_PROJECT_DIR/.maister/tasks` exists | deterministic | PASS | PASS |
+| L1b.ii | `post-compact-reminder.sh` | is `$CLAUDE_PROJECT_DIR` set on Copilot? (measured in a **sanitized** env) | live | PASS¹ | — |
+| L1c.i | `skill-invocation-reminder.sh` | built hook emits a **top-level** `additionalContext` (the only envelope Copilot's `sessionStart` reads) | deterministic | — | PASS³ |
+| L1c | `skill-invocation-reminder.sh` | reminder text reaches the **model** (ground truth: `model.messages_snapshot`) | live | PASS⁴ | **FAIL → fixed** ³ |
 
 **Headline:** the **destructive-command guard is fixed** for Copilot — since the payload omits
 `agent_type` (agent-scoped gating is impossible), the generator overlays a Copilot variant that
 emits `permissionDecision:"ask"` on destructive patterns. Copilot honors `ask`, does not bypass it
 under `--allow-all-tools`, and holds it **fail-closed** in headless (`Denied by preToolUse hook
-(unable to ask user for confirmation)`) — a subagent's `rm -rf` was held live, marker intact. The
-**skill-invocation reminder works**.
+(unable to ask user for confirmation)`) — a subagent's `rm -rf` was held live, marker intact.
+The **skill-invocation reminder was silently dead on 1.0.82 until [#113](https://github.com/robmar-net/maister/issues/113)** — see ³.
+
 ¹ The `post-compact` reminder's env dependency **is** satisfied — Copilot sets `$CLAUDE_PROJECT_DIR`
 (this overturned the going-in "probably unset" assumption; verified after stripping the harness's
 own leaked `CLAUDE*` vars). Its one remaining unknown is whether Copilot honors the
 `SessionStart:compact` matcher on a real compaction (out of scope).
+
+² Re-verified live on **1.0.82** during the [#113](https://github.com/robmar-net/maister/issues/113)
+canary run: a `rm -rf` was denied with the guard's own reason echoed back verbatim (`Denied by
+preToolUse hook (unable to ask user for confirmation): Maister guard: destructive command — …`) and
+the victim directory survived. Copilot's **`preToolUse`** parser *does* honor Claude's
+`hookSpecificOutput` wrapper, so this hook keeps its nesting.
+
+³ **Envelope, not delivery** ([#113](https://github.com/robmar-net/maister/issues/113)). Copilot's
+**`sessionStart`** parser reads only a **top-level** `additionalContext` (`copilot-sdk/types.d.ts`
+`SessionStartHookOutput`, the `onSessionStart` table in `copilot-sdk/docs/agent-author.md`,
+changelog 1.0.11); the `hookSpecificOutput` wrapper we inherited from Claude is **silently
+dropped** there. A two-envelope canary on 1.0.82 settled it: the flat token landed in
+`model.messages_snapshot` and was echoed by the model, the nested token appeared **only** in the CLI
+debug log and nowhere in the model's context. The Copilot override now emits the flat shape;
+`make validate` **WS5.21** and the deterministic **L1c.i** contract keep it that way.
+
+⁴ **The 1.0.73 PASS was over-stated.** L1c established it by grepping the *session debug log* for
+the reminder text — but the CLI logs the hook's raw stdout, so that grep cannot distinguish
+"Copilot injected it into model context" from "Copilot logged what the hook printed". The 1.0.82
+canary demonstrated the failure mode directly: the nested token is present in the debug log and
+absent from the model. Whether 1.0.73 truly delivered is now unknowable from that evidence; the
+verdict there should be read as *"the hook ran and printed the text"*. Ground truth for delivery is
+`model.messages_snapshot`, never a log grep.
 
 A **LIMITATION** (none currently) would not fail the run — it is the correct detection of a
 platform divergence; only an **unexpected FAIL** (a hook script's own logic regressing) exits
