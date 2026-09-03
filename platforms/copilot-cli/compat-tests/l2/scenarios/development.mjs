@@ -89,6 +89,39 @@ const fallbackPrompt =
  * on its phase. ORDER: phase-6 (`implementation planning`) precedes phase-7 (`implementation?`)
  * so the longer phrase is never shadowed by the shorter `implementation?` regex.
  */
+/**
+ * phaseWitnesses (issue #71) — the WITNESS relation that emits `phase_completed(N)`.
+ *
+ * `orchestrator-state.yml` is off-schema and non-deterministic on Copilot (ADR 0001, #57), so no
+ * required predicate may be sourced from it. Each phase below is emitted when its own DOCUMENTED
+ * footprint is observed in the events/tree, never from the state file. Citations are to
+ * plugins/maister/skills/development/SKILL.md (read-only); `all` must ALL be present.
+ *
+ * Two witnesses are deliberately weaker than the rest and are recorded as such in ADR 0004:
+ *   - phase 10 (:395) has no artifact and no delegation — its documented Execute IS the
+ *     AskUserQuestion prompt, so the gate placement is its only footprint. Independent, but it
+ *     inherits gateMap wording sensitivity (cf. #75).
+ *   - phase 14 (:538) writes no artifact either; `reached_terminal(completion)` is its only
+ *     footprint, which is already required — so this token is CORROBORATIVE: it cannot fail while
+ *     the terminal predicate passes. Kept for map continuity, not for detection power.
+ */
+const phaseWitnesses = [
+  { phase: 1, all: ['invoked_skill(codebase-analyzer)'] },                                         // :128 Execute 1
+  { phase: 2, all: ['delegated(gap-analyzer)'] },                                                  // :143
+  { phase: 3, all: ['gate_fired_at(phase-3)'] },                                                   // :193 conditional TDD Red gate
+  { phase: 4, all: ['invoked_skill(mockup-studio)'] },                                             // :212 conditional
+  { phase: 5, all: ['delegated(specification-creator)', 'created_artifact(implementation/spec.md)'] },        // :243 Output
+  { phase: 6, all: ['delegated(spec-auditor)'] },                                                  // :300 recommended
+  { phase: 7, all: ['delegated(implementation-planner)', 'created_artifact(implementation/implementation-plan.md)'] }, // :319 Output
+  { phase: 8, all: ['delegated(task-group-implementer)', 'created_artifact(implementation/work-log.md)'] },   // :346 Output
+  { phase: 9, all: ['gate_fired_at(phase-9)'] },                                                   // :376 conditional TDD Green gate
+  { phase: 10, all: ['gate_fired_at(phase-10)'] },                                                 // :395 Execute IS the prompt
+  { phase: 11, all: ['invoked_skill(implementation-verifier)', 'created_artifact(verification/*)'] },         // :436 Output
+  { phase: 12, all: ['delegated(e2e-test-verifier)'] },                                            // :496 optional
+  { phase: 13, all: ['delegated(user-docs-generator)'] },                                          // :516 optional
+  { phase: 14, all: ['reached_terminal(completion)'] },                                            // :538 corroborative
+];
+
 const gateMap = [
   { phase: 2, re: /continue to phase [345]:/i },
   { phase: 3, re: /tdd red gate complete/i },
@@ -173,6 +206,7 @@ export const scenario = {
   ],
   // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
   gateMap,
+  phaseWitnesses,
   answerMap,
   // Stage 4 (order spine): expected delegated(...) agents in the order the development orchestrator
   // fans them out (analyse -> spec -> plan -> implement -> verify). Names match the delegated(...) tokens

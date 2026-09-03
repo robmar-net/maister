@@ -39,15 +39,16 @@ const golden = JSON.parse(
 
 test('pipeline (research): extract(taskType:research) -> normalize -> compare yields the expected skeleton + AS-EXPECTED', () => {
   // --- extract (events u tree u state -> raw records) ------------------------------------
-  const ex = extract({ events, taskDirRoot, stateYaml, taskType: 'research', gateMap: scenario.gateMap, precedesChain: scenario.precedesChain, minCounts: scenario.minCounts });
+  const ex = extract({ events, taskDirRoot, stateYaml, taskType: 'research', gateMap: scenario.gateMap, precedesChain: scenario.precedesChain, minCounts: scenario.minCounts, phaseWitnesses: scenario.phaseWitnesses });
 
   // A COMPLETE research run: phases present alongside artifacts, so the sanity floor must NOT trip.
   assert.equal(ex.incomplete, false, `unexpected INCOMPLETE: ${ex.incompleteReason}`);
-  // All three sources contributed (state u events u tree).
+  // All four sources contributed — since #71 phases are their own 'witness' source (events+tree),
+  // never state.
   assert.deepEqual(
     new Set(ex.records.map((r) => r.source)),
-    new Set(['state', 'events', 'tree']),
-    'expected records from all three sources',
+    new Set(['state', 'events', 'tree', 'witness']),
+    'expected records from all four sources',
   );
   // Research has no gap-analyzer: the ONLY expected state warning is the absent characteristics block.
   assert.deepEqual(

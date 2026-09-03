@@ -804,3 +804,40 @@ INCOMPLETE on the first drive — it treats "zero completed phases WHILE task-tr
 stalled orchestrator, but a `rootRel` (docs-rooted) profile like `init` writes `.maister/docs/**` with NO
 orchestrator-state.yml, so zero phases is CORRECT. `extract()` now exempts `rootRel` profiles from the
 floor (`extractor.mjs`), covered by a unit test. `∅ → 1984d7d6… → 058ff454…` | PR (#85)
+
+### 39 — WITNESS-DERIVED PHASES: `phase_completed(N)` no longer reads the state file (issue #71, ADR 0004)
+
+**Derivation-source change, PREDICATE-FROZEN, HASH-NEUTRAL — no reference JSON was edited.** Recorded
+here because the *meaning* of an existing predicate changed even though its text did not.
+
+**Before:** `phase_completed(N)` came from `orchestrator-state.yml` (`stateToRecords`, `source:'state'`).
+Copilot serializes that file off-schema and non-deterministically ([ADR 0001](../../../../docs/adr/0001-copilot-orchestrator-state-conformance.md),
+[#57](https://github.com/robmar-net/maister/issues/57)), so a *required* predicate traced to the one
+artifact the platform demonstrably diverges on — a parse miss could false-INCOMPLETE or false-REGRESS a
+healthy run.
+
+**After:** each scenario carries a `phaseWitnesses` map (`scenarios/development.mjs`, `scenarios/research.mjs`)
+citing that phase's DOCUMENTED footprint in SKILL.md; `extractor.witnessedPhaseRecords` emits
+`phase_completed(N)` (`source:'witness'`) only when the full witness set is observed in the event+tree
+records. The state parse survives for `task_characteristic`, `task_status`, the `state_schema`
+conformance token and report diagnostics — with **zero verdict weight**. The MEDIUM-2 sanity floor now
+keys on the witness derivation and only applies to scenarios that model phases.
+
+**Every required phase traces to a witness** (unit-asserted in `test/witness-phases.test.mjs`):
+development 1⇐`invoked_skill(codebase-analyzer)`, 2⇐`delegated(gap-analyzer)`, 5⇐`delegated(specification-creator)`+spec,
+7⇐planner+plan, 8⇐implementer+work-log, 10⇐`gate_fired_at(phase-10)`, 11⇐verifier+`verification/*`,
+14⇐`reached_terminal(completion)`; research 1⇐`delegated(research-planner)`+report.
+
+**Two honest weaknesses, recorded not hidden** (full argument in ADR 0004): phase 10's only documented
+footprint IS its prompt, so that token inherits gateMap wording sensitivity ([#75](https://github.com/robmar-net/maister/issues/75));
+phases 14 (dev) / 6 (research) are corroborative — they cannot fail while `reached_terminal(completion)`
+passes. **One documented coverage loss:** research phase 2 ("Optional Phases Decision", SKILL.md:204)
+writes only `orchestrator-state.yml`, so it has no witness and is no longer emitted — it is `optional`,
+so no verdict changes; the committed research fixture snapshot drops that token.
+
+**Neutrality proof (credit-free, all six persisted bundles replayed before/after — verdicts identical):**
+development `20260903T000910Z` AS-EXPECTED 38·7·0 · development `20260831T024753Z` REGRESSED 37·3·3 ·
+quick-bugfix `20260831T022952Z` AS-EXPECTED 4·0·0 · destructive-guard `20260831T022944Z` REGRESSED 1·0·1 ·
+work `20260903T003148Z` AS-EXPECTED 4·0·0 · init `20260903T004846Z` AS-EXPECTED 6·0·0. (The two REGRESSED
+are pre-existing baselines, unchanged by this work.) Suite 179 pass / 0 fail / 2 skipped;
+`--check-reference ×4` CURRENT (wm v6, hashes untouched — no predicate moved).

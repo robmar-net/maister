@@ -21,11 +21,14 @@ array of 12). Partition rationale (genesis `db26a46`,
 [CALIBRATION-LOG.md](CALIBRATION-LOG.md) entry 2): the Phase-1 research foundation is required;
 conditional brainstorming/design phases, their artifacts, and the root skill are optional.
 
+
+> **Phase derivation (issue #71 / [ADR 0004](../../../../docs/adr/0004-witness-derived-phase-completion.md)):** every `phase_completed(N)` below is emitted from the WITNESS named in its row — the phase's documented footprint in the events/tree — and never from `orchestrator-state.yml`, which Copilot serializes off-schema (ADR 0001, #57). The state file keeps its diagnostic role and carries zero verdict weight. The map lives in `l2/scenarios/research.mjs` (`phaseWitnesses`).
+
 ## Required (14)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `phase_completed(1)` | required | :102 | Phase Configuration table (:100-107): Phase 1 "Research foundation (init, plan, gather, synthesize)" — unconditional foundation |
+| `phase_completed(1)` | required | :102 | Phase Configuration table (:100-107): Phase 1 "Research foundation (init, plan, gather, synthesize)" — unconditional foundation. **Witness (#71):** `delegated(research-planner)` + `created_artifact(outputs/research-report.md)` (:124 Execute + Output) |
 | `delegated(research-planner)` | required | :153 | P1 Step 2: "Use Task tool with `subagent_type: maister:research-planner`" |
 | `delegated(information-gatherer)` | required | :170-177 | P1 Step 3: launch all N gatherers in ONE message (parallel execution pattern); N adaptive but ≥1 always |
 | `delegated(research-synthesizer)` | required | :184 | P1 Step 4: "Use Task tool with `subagent_type: maister:research-synthesizer`" |
@@ -44,11 +47,11 @@ conditional brainstorming/design phases, their artifacts, and the root skill are
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `phase_completed(2)` | optional | :103, :233-235 | Beyond-foundation continuation; P2 routing (:233-235) decides whether 3/5/6 run — only the foundation is required by the model |
-| `phase_completed(3)` | optional | :104, :246 | Skip-if `brainstorming_enabled = false` (user choice in P2, or `--no-brainstorm` flag) |
-| `phase_completed(4)` | optional | :105, :274 | Skip-if `brainstorming_enabled = false` |
-| `phase_completed(5)` | optional | :106, :317 | Skip-if `design_enabled = false` |
-| `phase_completed(6)` | optional | :107 | Terminal summary phase; optional per genesis partition rationale (foundation-only runs may surface completion without a distinct P6 event) |
+| `phase_completed(2)` | optional | :103, :233-235 | Beyond-foundation continuation; P2 routing (:233-235) decides whether 3/5/6 run — only the foundation is required by the model. **Witness (#71):** NONE — Output is "Updated `orchestrator-state.yml`" (:204); unobservable under witness derivation, so no longer emitted (documented coverage loss, ADR 0004) |
+| `phase_completed(3)` | optional | :104, :246 | Skip-if `brainstorming_enabled = false` (user choice in P2, or `--no-brainstorm` flag). **Witness (#71):** `delegated(solution-brainstormer)` + `created_artifact(outputs/solution-exploration.md)` (:239) |
+| `phase_completed(4)` | optional | :105, :274 | Skip-if `brainstorming_enabled = false`. **Witness (#71):** `gate_fired_at(phase-4)` (:267 Execute = Direct/interactive) |
+| `phase_completed(5)` | optional | :106, :317 | Skip-if `design_enabled = false`. **Witness (#71):** `delegated(solution-designer)` + `created_artifact(outputs/high-level-design.md)` (:308) |
+| `phase_completed(6)` | optional | :107 | Terminal summary phase; optional per genesis partition rationale (foundation-only runs may surface completion without a distinct P6 event). **Witness (#71):** `reached_terminal(completion)` (:357 "No new files" — corroborative only, ADR 0004) |
 | `invoked_skill(research)` | optional | :2 | Skill name `maister:research`; entry-point-dependent — a run may arrive via `/maister:work` routing or as an embedded research phase instead of a direct root-skill invocation |
 | `delegated(solution-brainstormer)` | optional | :252, :246 | P3 delegation; phase skippable (`brainstorming_enabled = false`) |
 | `delegated(solution-designer)` | optional | :330, :317 | P5 delegation; phase skippable (`design_enabled = false`) |
