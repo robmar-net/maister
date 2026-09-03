@@ -11,7 +11,8 @@
 //
 // What it reports per bundle (each line is an evidence datum for a specific Parity-Map row):
 //   • Delegations + per-agent MODEL (from subagent.started/completed .data.model — credit-free WP-G).
-//   • Parallel waves (siblings under one parentId whose [start, start+durationMs] windows overlap).
+//   • Parallel fan-out (task calls grouped by assistant turnId + peak concurrent task executions from
+//     start/complete interleaving — subagent.started carries no timestamp/parentId; see #84).
 //   • Verification fan-out (review AGENTS delegated vs invoked_skill(reviews-*) — the 🟡 delta).
 //   • Compaction (session.compaction_*/truncation; if any, the gates that fired AFTER it).
 //   • Task items (session.todos_changed + update_todo/sql tool calls — the TaskCreate→todos transform).
@@ -59,30 +60,43 @@ function delegations(events) {
   });
 }
 
-// Max concurrency among siblings sharing a parentId: count overlapping [start, start+durationMs] windows.
-function parallelWaves(dels) {
-  const groups = new Map();
-  for (const d of dels) {
-    if (d.start == null) continue;
-    const k = d.parentId ?? 'root';
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(d);
+// Parallel fan-out — measured from the assistant TURN that emits the `task` calls, and from
+// start-before-complete interleaving. `subagent.started` carries NO timestamp/parentId (verified on
+// 1.0.82 bundles: keys are toolCallId/agentName/model/agentType/executionMode), so the old window
+// sweep silently reported "no wave" even when 4 agents ran at once (issue #84 — the "peak concurrency
+// = 1" artifact). But `tool.execution_start` for a `task` call carries `turnId`, and the runtime
+// executes same-turn task calls concurrently — N starts appear before any of their completions. So:
+//   (a) wavesByTurn — group task calls by turnId; each turn with >=2 is a parallel wave of that size.
+//   (b) peakTaskConcurrency — max simultaneously-OPEN task executions, scanning start(+1)/complete(-1)
+//       in stream order (no timestamps needed; out-of-order completes confirm true concurrency).
+function taskCalls(events) {
+  const agentByCall = new Map();
+  for (const e of byType(events, 'subagent.started')) agentByCall.set(e?.data?.toolCallId, e?.data?.agentName ?? '?');
+  return byType(events, 'tool.execution_start')
+    .filter((e) => e?.data?.toolName === 'task')
+    .map((e) => ({ turn: e?.data?.turnId ?? '?', call: e?.data?.toolCallId, agent: agentByCall.get(e?.data?.toolCallId) ?? '?' }));
+}
+
+function wavesByTurn(events) {
+  const byTurn = new Map();
+  for (const t of taskCalls(events)) {
+    if (!byTurn.has(t.turn)) byTurn.set(t.turn, []);
+    byTurn.get(t.turn).push(t.agent);
   }
-  const waves = [];
-  for (const [parent, sibs] of groups) {
-    if (sibs.length < 2) continue;
-    // sweep line over start/end points
-    const pts = [];
-    for (const s of sibs) {
-      const end = s.durationMs != null ? s.start + s.durationMs : s.start; // no-duration -> point event
-      pts.push([s.start, +1], [end, -1]);
-    }
-    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    let cur = 0, peak = 0;
-    for (const [, delta] of pts) { cur += delta; if (cur > peak) peak = cur; }
-    waves.push({ parent, count: sibs.length, peakConcurrency: peak, agents: sibs.map((s) => s.agent) });
+  return [...byTurn.entries()]
+    .filter(([, agents]) => agents.length >= 2)
+    .map(([turn, agents]) => ({ turn, size: agents.length, agents }))
+    .sort((a, b) => b.size - a.size);
+}
+
+function peakTaskConcurrency(events) {
+  const taskIds = new Set(taskCalls(events).map((t) => t.call));
+  let cur = 0, peak = 0;
+  for (const e of events) {
+    if (e.type === 'tool.execution_start' && e?.data?.toolName === 'task') { cur += 1; if (cur > peak) peak = cur; }
+    else if (e.type === 'tool.execution_complete' && taskIds.has(e?.data?.toolCallId)) { cur -= 1; }
   }
-  return waves;
+  return peak;
 }
 
 function verificationFanout(events, dels) {
@@ -163,7 +177,8 @@ function reportBundle(dir) {
     if (!perAgentModel.has(d.agent)) perAgentModel.set(d.agent, new Set());
     perAgentModel.get(d.agent).add(d.model);
   }
-  const waves = parallelWaves(dels);
+  const waves = wavesByTurn(events);
+  const peak = peakTaskConcurrency(events);
   const fan = verificationFanout(events, dels);
   const comp = compaction(events);
   const todos = taskItems(events);
@@ -184,9 +199,10 @@ function reportBundle(dir) {
     `invoked_skill(reviews-*) = [${fan.reviewSkills.join(', ') || 'none'}] ` +
     `→ ${fan.reviewDelegated.length && fan.reviewSkills.length ? '🟡 agents run (isolation kept) VIA the skill hop' : (fan.reviewDelegated.length ? '✅ direct agent delegation' : '⚪ neither observed')}`);
 
-  L.push(`- **Parallel waves (peak concurrency per parent):** ` +
-    (waves.length ? waves.map((w) => `${w.peakConcurrency}× of ${w.count} (${[...new Set(w.agents)].join('/')})`).join('; ')
-      : '⚪ no multi-child wave observed (all delegations sequential/singleton)'));
+  L.push(`- **Parallel fan-out (peak concurrent \`task\` executions):** ` +
+    (peak >= 2 ? `✅ ${peak}× peak` : peak === 1 ? '1× (no multi-task turn)' : '⚪ 0') +
+    (waves.length ? ` · waves: ${waves.map((w) => `${w.size}× (${[...new Set(w.agents)].join('/')})`).join('; ')}`
+      : ' · ⚪ no multi-task turn observed'));
 
   L.push(`- **Compaction resume:** ` +
     (comp.occurred
