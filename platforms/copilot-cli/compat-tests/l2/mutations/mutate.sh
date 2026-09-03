@@ -118,14 +118,23 @@ case "$MUT" in
     delete_range "$F" "$L4" "$((L5 - 1))"
 
     # Post-strip verification: the gate is gone, and ONLY the gate.
-    [ "$(grep -c 'EnterPlanMode\|ExitPlanMode' "$F" || true)" = "0" ] \
-      || fail "EnterPlanMode/ExitPlanMode still present after strip"
+    # (#109) The generated variant no longer names EnterPlanMode/ExitPlanMode — Copilot has no
+    # plan-mode tool, so build.sh step 7c rewrites the gate onto the `ask_user` approval surface.
+    # The marker to check is therefore the rewritten plan-approval instruction, not the dead tool
+    # name (checking the tool name would now pass trivially — a silently weakened mutation).
+    [ "$(grep -c 'Present the fix plan for user approval' "$F" || true)" = "0" ] \
+      || fail "plan-approval instruction still present after strip"
     require_once "$F" "$A5"
     # ask_user count: measured from the SOURCE at run time, never hardcoded — if the plugin gains or
     # loses an ask_user site, a stale constant would mask a too-greedy strip.
+    # (#109) Step 4 now CONTAINS an ask_user site (the rewritten plan-approval gate), so the strip
+    # legitimately removes some: the expectation is source-count MINUS whatever lived in the stripped
+    # range, computed from the range itself — never a hardcoded constant.
+    RANGE_ASK="$(awk -v a="$L4" -v b="$((L5 - 1))" 'NR >= a && NR <= b' "$SF" | grep -o 'ask_user' | wc -l | tr -d ' ')"
     SRC_ASK="$(grep -o 'ask_user' "$SF" | wc -l | tr -d ' ')"
     CPY_ASK="$(grep -o 'ask_user' "$F" | wc -l | tr -d ' ')"
-    [ "$CPY_ASK" = "$SRC_ASK" ] || fail "ask_user count drifted (source=$SRC_ASK copy=$CPY_ASK) — strip was not surgical"
+    [ "$CPY_ASK" = "$((SRC_ASK - RANGE_ASK))" ] \
+      || fail "ask_user count drifted (source=$SRC_ASK range=$RANGE_ASK copy=$CPY_ASK) — strip was not surgical"
     for guard in 'no argument AND no bug context' 'more complex than a quick fix' 'The reproduction test passes'; do
       grep -qF -e "$guard" "$F" || fail "site guard string missing after strip: $guard"
     done

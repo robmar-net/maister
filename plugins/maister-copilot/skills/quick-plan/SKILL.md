@@ -12,7 +12,7 @@ This works exactly like an ordinary plan-mode session, with one addition: the re
 
 1. **Get the task** — Use the argument if provided. If none, ask with `ask_user`: "What would you like to plan?"
 
-2. **Enter plan mode** — Call `EnterPlanMode` and let plan mode run exactly as it normally does (explore the codebase, design the approach, write the plan, then `ExitPlanMode` for approval). Do not redefine its phases.
+2. **Enter plan mode** — Copilot CLI has no plan-mode tool, so run the same sequence yourself (explore the codebase, design the approach, write the plan) and then present it for approval with `ask_user`. Do not redefine its phases.
 
 3. **Discover and enforce standards (the addition)** — While planning:
    - Read `.maister/docs/INDEX.md` to find which standards exist.
@@ -21,6 +21,6 @@ This works exactly like an ordinary plan-mode session, with one addition: the re
 
    If `.maister/docs/INDEX.md` does not exist, plan normally and note in the plan: "No Maister standards found. Consider running `/init`."
 
-Do not call `ExitPlanMode` until the plan reflects the applicable standards and includes the Standards Compliance Checklist (or the "no standards found" note).
+Do not ask for plan approval until the plan reflects the applicable standards and includes the Standards Compliance Checklist (or the "no standards found" note).
 
 4. **After approval — implement and verify (mandatory)** — Once the plan is approved and you implement it, go through the `## Standards Compliance Checklist` and verify each item — mark pass/fail and report it. Address any failure before marking the task complete.

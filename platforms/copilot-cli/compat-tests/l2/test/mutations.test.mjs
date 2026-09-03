@@ -137,16 +137,27 @@ test('B (happy path): M1/M2/M3 against the real plugin — one-line path, mutati
       if (id === 'M1') {
         const copy = read(mutant, 'skills/quick-bugfix/SKILL.md');
         const src = read(SOURCE_PLUGIN, 'skills/quick-bugfix/SKILL.md');
-        // Mutation applied in copy, absent in source.
+        // Mutation applied in copy, absent in source. (#109) The GENERATED variant no longer names
+        // EnterPlanMode/ExitPlanMode at all — Copilot has no plan-mode tool, so build.sh step 7c
+        // rewrites the gate onto the ask_user approval surface. The marker is therefore the
+        // rewritten plan-approval instruction; asserting on the dead tool name would pass trivially.
         assert.doesNotMatch(copy, /EnterPlanMode|ExitPlanMode/, 'M1: copy must have zero plan-mode tool mentions');
-        assert.match(src, /EnterPlanMode/, 'M1: source must still mention EnterPlanMode');
-        assert.match(src, /ExitPlanMode/, 'M1: source must still mention ExitPlanMode');
+        assert.doesNotMatch(copy, /Present the fix plan for user approval/, 'M1: copy must have lost the plan-approval gate');
+        assert.match(src, /Present the fix plan for user approval/, 'M1: source must still carry the plan-approval gate');
+        assert.doesNotMatch(src, /EnterPlanMode|ExitPlanMode/, 'M1: the generated source must not name a tool Copilot lacks (#109)');
         // Guards intact — the strip must be surgical (Step 4 range only), never greedy.
         assert.match(copy, /^### Step 5: TDD Red Gate$/m, 'M1: Step 5 heading must survive');
+        // (#109) Step 4 now contains the rewritten ask_user plan-approval gate, so a surgical strip
+        // legitimately removes exactly the ask_user sites that lived in the stripped range.
+        const step4 = src.slice(
+          src.indexOf('### Step 4: Enter Planning Mode'),
+          src.indexOf('### Step 5: TDD Red Gate'),
+        );
+        assert.ok(step4.length > 0, 'M1: Step 4 range must be locatable in the source');
         assert.equal(
           countOf(copy, 'ask_user'),
-          countOf(src, 'ask_user'),
-          'M1: ask_user count in copy must equal the runtime-measured source count'
+          countOf(src, 'ask_user') - countOf(step4, 'ask_user'),
+          'M1: ask_user count in copy must equal source minus the stripped range (strip is surgical, never greedy)'
         );
         for (const guard of ['no argument AND no bug context', 'more complex than a quick fix', 'The reproduction test passes']) {
           assert.ok(copy.includes(guard), `M1: site guard string must survive: "${guard}"`);
@@ -530,8 +541,10 @@ test('I (explicit source arg): mutant is built from the given dir, not the defau
       'mutant must carry the custom-source marker (built from the explicit source, not the default)'
     );
     // ...and the mutation targeted the copy of THAT source, leaving the custom source unwritten.
-    assert.doesNotMatch(read(mutant, 'skills/quick-bugfix/SKILL.md'), /EnterPlanMode|ExitPlanMode/, 'M1 strip applied in the copy');
-    assert.match(read(customSrc, 'skills/quick-bugfix/SKILL.md'), /EnterPlanMode/, 'the explicit source itself must stay unmutated');
+    // (#109) The marker is the plan-approval gate, not the plan-mode TOOL name — the generated
+    // variant no longer names a tool Copilot lacks.
+    assert.doesNotMatch(read(mutant, 'skills/quick-bugfix/SKILL.md'), /Present the fix plan for user approval/, 'M1 strip applied in the copy');
+    assert.match(read(customSrc, 'skills/quick-bugfix/SKILL.md'), /Present the fix plan for user approval/, 'the explicit source itself must stay unmutated');
 
     // Nonexistent source: documented exit-2 reject, nothing created (mutate.sh:55-56 branch).
     const before = mutantEntries();

@@ -46,6 +46,8 @@ validate:
 	@echo "Checking every generated reviews-* command carries the agent re-entry guard (WS5.18, #76 WP-C1)..."
 	@n=$$(grep -l 'IF YOU ARE ALREADY THAT AGENT' plugins/maister-copilot/commands/reviews-*.md 2>/dev/null | wc -l | tr -d ' '); \
 	  [ "$$n" = "5" ] || { echo "FAIL: only $$n/5 generated reviews-* commands carry the re-entry guard; without it an agent that invokes its own reviews-* skill re-delegates to itself (measured: 19-24% of subagent tokens burned on re-entrant runs, ADR 0006). build.sh step 8e must insert it - regenerate with make build" && exit 1; }
+	@echo "Checking no plan-mode tool name survives into the generated variant (WS5.19, #109)..."
+	@! grep -rn 'EnterPlanMode\|ExitPlanMode' plugins/maister-copilot/ 2>/dev/null || (echo "FAIL: plan-mode tool name above in the generated variant; Copilot CLI has no plan-mode tool, so the instruction is dead weight the model must reason around. build.sh step 7c rewrites it to the ask_user approval surface - regenerate with make build" && exit 1)
 	@echo "Checking all manifests carry the downstream <upstream-base>+fork.N version suffix (WS5.16)..."
 	@for f in .claude-plugin/marketplace.json plugins/maister/.claude-plugin/plugin.json plugins/maister-copilot/.claude-plugin/plugin.json; do \
 	  grep -qE '"version":[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+[+]fork\.[0-9]+"' "$$f" || { echo "FAIL: $$f version must be <upstream-base>+fork.<N> (e.g. 2.2.3+fork.1). An upstream merge resets it to the bare upstream number — re-apply the suffix per AGENTS.md 'Versioning', then make build" && exit 1; }; \

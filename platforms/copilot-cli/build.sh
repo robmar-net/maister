@@ -259,6 +259,34 @@ find "$OUT" -name "*.md" | while read f; do
     "$f"
 done
 
+# 7c. (#109) Plan-mode tool names -> the Copilot approval surface. Copilot CLI has NO plan-mode
+#     tool: a live quick-bugfix drive (bundle 20260831T022952Z, 1.0.82) used only
+#     skill/glob/view/ask_user/bash/apply_patch, and `PlanMode` appeared solely as echoed SKILL.md
+#     text — never a tool call; zero plan events across ~49k events in three bundles. Shipping the
+#     Claude wording unchanged instructs the model to call a tool that does not exist (the #19 /
+#     #95 defect class), and a "BLOCKING: do NOT call X" rule whose X is uncallable is dead weight.
+#     The model already improvises with `ask_user`, so this makes the real surface explicit and
+#     keeps the mandatory-sections contract attached to it. Claude source untouched: there the
+#     tools are real. Guard: every rewrite must fire, and step 7d asserts nothing survives.
+sedi \
+  -e 's/\*\*Use the `EnterPlanMode` tool to present the fix plan for user approval\.\*\*/**Present the fix plan for user approval using `ask_user`** (Copilot CLI has no plan-mode tool)./' \
+  -e 's/### ExitPlanMode Gate: Mandatory Sections/### Plan-Approval Gate: Mandatory Sections/' \
+  -e 's/\*\*BLOCKING: Do NOT call `ExitPlanMode` until the plan file contains:\*\*/**BLOCKING: Do NOT ask for plan approval until the plan file contains:**/' \
+  -e 's/If any section is missing, add it before calling ExitPlanMode\./If any section is missing, add it before asking for approval./' \
+  "$OUT/skills/quick-bugfix/SKILL.md"
+sedi \
+  -e 's/Call `EnterPlanMode` and let plan mode run exactly as it normally does (explore the codebase, design the approach, write the plan, then `ExitPlanMode` for approval)/Copilot CLI has no plan-mode tool, so run the same sequence yourself (explore the codebase, design the approach, write the plan) and then present it for approval with `ask_user`/' \
+  -e 's/Do not call `ExitPlanMode` until the plan reflects/Do not ask for plan approval until the plan reflects/' \
+  "$OUT/skills/quick-plan/SKILL.md"
+
+# 7d. Fail loud on ANY residual plan-mode tool name in the generated tree (#109). Also guarded by
+#     `make validate` (WS5.19) so a source reword cannot silently reintroduce the dead instruction.
+if grep -rn 'EnterPlanMode\|ExitPlanMode' "$OUT" >/dev/null 2>&1; then
+  echo "FAIL: step 7d: plan-mode tool name survived into the generated variant:" >&2
+  grep -rn 'EnterPlanMode\|ExitPlanMode' "$OUT" >&2
+  exit 1
+fi
+
 # 8. Branding scrub (WS3.2) across output *.md. The audit-named false platform-behavior claims are
 #    neutralized FIRST (so the blanket brand swap can't re-mangle them into a still-false "GitHub
 #    Copilot CLI's built-in plan mode"): quick-plan's built-in-plan-mode attribution and

@@ -88,7 +88,7 @@ Use ask_user:
 
 ### Step 4: Enter Planning Mode
 
-**Use the `EnterPlanMode` tool to present the fix plan for user approval.**
+**Present the fix plan for user approval using `ask_user`** (Copilot CLI has no plan-mode tool).
 
 Standards context from Step 2 and analysis from Step 3 MUST inform the plan.
 
@@ -119,9 +119,9 @@ If no standards exist: "No Maister standards found. Consider running `/init`."]
 - [ ] [Guideline from standard file] (from `standards/[path]`)
 ```
 
-### ExitPlanMode Gate: Mandatory Sections
+### Plan-Approval Gate: Mandatory Sections
 
-**BLOCKING: Do NOT call `ExitPlanMode` until the plan file contains:**
+**BLOCKING: Do NOT ask for plan approval until the plan file contains:**
 
 1. **"## Bug Analysis"** — root cause hypothesis with evidence
 2. **"## Proposed Fix"** — what changes and why
@@ -129,7 +129,7 @@ If no standards exist: "No Maister standards found. Consider running `/init`."]
 4. **"## Applicable Standards"** — standards read and key guidelines
 5. **"## Standards Compliance Checklist"** — checkboxes for applicable guidelines
 
-If any section is missing, add it before calling ExitPlanMode.
+If any section is missing, add it before asking for approval.
 
 ### Step 5: TDD Red Gate
 
