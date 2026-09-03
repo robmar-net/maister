@@ -19,18 +19,21 @@ sections): 33 required + 42 optional + 21 rules + 10 allowlist = 106 rows (the R
 the two demoted-but-documented rows `task_status`/`state_schema`, so it exceeds the skeleton `required`
 array of 31).
 
+
+> **Phase derivation (issue #71 / [ADR 0004](../../../../docs/adr/0004-witness-derived-phase-completion.md)):** every `phase_completed(N)` below is emitted from the WITNESS named in its row — the phase's documented footprint in the events/tree — and never from `orchestrator-state.yml`, which Copilot serializes off-schema (ADR 0001, #57). The state file keeps its diagnostic role and carries zero verdict weight. The map lives in `l2/scenarios/development.mjs` (`phaseWitnesses`).
+
 ## Required (33)
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `phase_completed(1)` | required | :109 | Phase Configuration table (:107-122): Activation "Always" |
-| `phase_completed(2)` | required | :110 | Activation "Always" |
-| `phase_completed(5)` | required | :113 | Activation "Always" |
-| `phase_completed(7)` | required | :115 | Activation "Always" |
-| `phase_completed(8)` | required | :116 | Activation "Always" |
-| `phase_completed(10)` | required | :118 | Activation "Always" |
-| `phase_completed(11)` | required | :119 | Activation "Always" |
-| `phase_completed(14)` | required | :122 | Activation "Always" |
+| `phase_completed(1)` | required | :109 | Phase Configuration table (:107-122): Activation "Always". **Witness (#71):** `invoked_skill(codebase-analyzer)` (:128 Execute 1) |
+| `phase_completed(2)` | required | :110 | Activation "Always". **Witness (#71):** `delegated(gap-analyzer)` (:143) |
+| `phase_completed(5)` | required | :113 | Activation "Always". **Witness (#71):** `delegated(specification-creator)` + `created_artifact(implementation/spec.md)` (:243 Output) |
+| `phase_completed(7)` | required | :115 | Activation "Always". **Witness (#71):** `delegated(implementation-planner)` + `created_artifact(implementation/implementation-plan.md)` (:319 Output) |
+| `phase_completed(8)` | required | :116 | Activation "Always". **Witness (#71):** `delegated(task-group-implementer)` + `created_artifact(implementation/work-log.md)` (:346 Output) |
+| `phase_completed(10)` | required | :118 | Activation "Always". **Witness (#71):** `gate_fired_at(phase-10)` (:395 — the phase's documented Execute IS the prompt; wording-sensitive, ADR 0004) |
+| `phase_completed(11)` | required | :119 | Activation "Always". **Witness (#71):** `invoked_skill(implementation-verifier)` + `created_artifact(verification/*)` (:436 Output) |
+| `phase_completed(14)` | required | :122 | Activation "Always". **Witness (#71):** `reached_terminal(completion)` (:538 — corroborative only, ADR 0004) |
 | `delegated(gap-analyzer)` | required | :147 | P2: "Task tool - `maister:gap-analyzer` subagent" |
 | `delegated(specification-creator)` | required | :285 | P5: "Task tool - `maister:specification-creator` subagent" |
 | `delegated(implementation-planner)` | required | :332 | P7: "Task tool - `maister:implementation-planner` subagent" |
@@ -61,9 +64,9 @@ array of 31).
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `phase_completed(3)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Red Gate — activation "When `has_reproducible_defect`". The scenario pins `has_reproducible_defect=false` but the model retains latitude to run TDD on a bug-fix (live 1.0.82 run ran phase 3 with the characteristic false); optional completes the conditional-phase set |
-| `phase_completed(6)` | optional | :114, :309 | Activation "Always (conditional)" (:114); "Recommended: Always … User can skip" (:309, gate :311) |
-| `phase_completed(9)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Green Gate — activation "When Phase 3 was executed". Paired with `phase_completed(3)`; optional for the same latitude reason |
+| `phase_completed(3)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Red Gate — activation "When `has_reproducible_defect`". The scenario pins `has_reproducible_defect=false` but the model retains latitude to run TDD on a bug-fix (live 1.0.82 run ran phase 3 with the characteristic false); optional completes the conditional-phase set. **Witness (#71):** `gate_fired_at(phase-3)` (:193) |
+| `phase_completed(6)` | optional | :114, :309 | Activation "Always (conditional)" (:114); "Recommended: Always … User can skip" (:309, gate :311). **Witness (#71):** `delegated(spec-auditor)` (:300) |
+| `phase_completed(9)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Green Gate — activation "When Phase 3 was executed". Paired with `phase_completed(3)`; optional for the same latitude reason. **Witness (#71):** `gate_fired_at(phase-9)` (:376) |
 | `delegated(spec-auditor)` | optional | :305 | P6 delegation; skippable per :309 |
 | `delegated(implementation-completeness-checker)` | optional | implementation-verifier/SKILL.md:120 | Sub-delegation inside the verifier; surfacing depends on the P10 verification-scope selection (:425) and platform (see allowlist note) |
 | `delegated(test-suite-runner)` | optional | implementation-verifier/SKILL.md:107 | Skipped entirely when `skip_test_suite: true` (implementation-verifier/SKILL.md:113) |
@@ -78,8 +81,8 @@ array of 31).
 | `task_characteristic(modifies_existing_code)=false` | optional | :149 | Both-optional pair — see honesty note 2 (tautology guard) |
 | `gate_fired(permission)` | optional | platform divergence (no SKILL.md anchor) | Copilot permission prompts are a harness surface, not model-mandated; may or may not fire depending on session permission mode |
 | `gate_fired(exit_plan_mode)` | optional | platform divergence (no SKILL.md anchor) | The development model gates via AskUserQuestion, not plan mode; Copilot's plan-approval surface may additionally emit this event |
-| `phase_completed(12)` | optional | :120, :508 | Activation "When `e2e_enabled`" (:120); skip-if `options.e2e_enabled = false` (:508) |
-| `phase_completed(13)` | optional | :121, :530 | Activation "When `user_docs_enabled`" (:121); skip-if `options.user_docs_enabled = false` (:530) |
+| `phase_completed(12)` | optional | :120, :508 | Activation "When `e2e_enabled`" (:120); skip-if `options.e2e_enabled = false` (:508). **Witness (#71):** `delegated(e2e-test-verifier)` (:496) |
+| `phase_completed(13)` | optional | :121, :530 | Activation "When `user_docs_enabled`" (:121); skip-if `options.user_docs_enabled = false` (:530). **Witness (#71):** `delegated(user-docs-generator)` (:516) |
 | `delegated(explore)` | optional | codebase-analyzer/SKILL.md:97 | Sub-delegation of the P1 skill: `subagent_type="Explore"`, adaptive role count — presence and multiplicity vary |
 | `delegated(codebase-analysis-reporter)` | optional | codebase-analyzer/SKILL.md:110 | Sub-delegation of the P1 skill; report synthesis step |
 | `delegated(user-docs-generator)` | optional | :525, :530 | P13 delegation; phase conditional on `user_docs_enabled` |

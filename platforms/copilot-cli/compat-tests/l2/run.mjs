@@ -968,6 +968,7 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
       gateMap: sc.gateMap, // per-scenario gate->phase placement (gate_fired_at(phase-N)); default [] no-op
       precedesChain: sc.precedesChain, // Stage-4 ordering spine (adjacent precedes edges); default [] no-op
       minCounts: sc.minCounts, // Stage-4 fan-out counts (min_count expansions); default [] no-op
+      phaseWitnesses: sc.phaseWitnesses, // #71: phase_completed(N) from event/tree witnesses, never state
     });
 
     // Persist a replayable trace bundle (Stage 4; #63 item 3) — best-effort, NEVER breaks the live
@@ -1178,6 +1179,7 @@ function runReplay(opts) {
     gateMap: sc.gateMap,
     precedesChain: sc.precedesChain,
     minCounts: sc.minCounts,
+    phaseWitnesses: sc.phaseWitnesses,
   });
 
   // Build a driveOnce-shaped result so finalizeSingleRun consumes it unchanged.

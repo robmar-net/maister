@@ -75,6 +75,25 @@ const fallbackPrompt =
  * plugins/maister/skills/research/SKILL.md, read-only); a match emits `gate_fired_at(phase-N)` on
  * top of the always-kept `gate_fired(ask)`.
  */
+/**
+ * phaseWitnesses (issue #71) — see the development scenario for the rationale: `phase_completed(N)`
+ * is emitted from the phase's DOCUMENTED footprint in the events/tree, never from the off-schema
+ * `orchestrator-state.yml` (ADR 0001/0004). Citations: plugins/maister/skills/research/SKILL.md.
+ *
+ * Phase 2 ("Optional Phases Decision", :204) is deliberately ABSENT: its documented Output is
+ * "Updated orchestrator-state.yml" and its Execute is Direct — it has no event/tree footprint at
+ * all, so under witness derivation it is unobservable. It is `optional` in the reference, so the
+ * effect is a documented coverage loss, never a failing verdict (ADR 0004).
+ * Phase 6 (:357, "No new files") is corroborative-only, like development's phase 14.
+ */
+const phaseWitnesses = [
+  { phase: 1, all: ['delegated(research-planner)', 'created_artifact(outputs/research-report.md)'] }, // :124 Execute + Output
+  { phase: 3, all: ['delegated(solution-brainstormer)', 'created_artifact(outputs/solution-exploration.md)'] }, // :239
+  { phase: 4, all: ['gate_fired_at(phase-4)'] },                                                      // :267 Execute = Direct (interactive)
+  { phase: 5, all: ['delegated(solution-designer)', 'created_artifact(outputs/high-level-design.md)'] }, // :308
+  { phase: 6, all: ['reached_terminal(completion)'] },                                                // :357 corroborative
+];
+
 const gateMap = [
   { phase: 1, re: /research foundation complete|continue to brainstorming evaluation/i },
   { phase: 4, re: /brainstorming complete|continue to high-level design/i },
@@ -146,6 +165,7 @@ export const scenario = {
   ],
   // Stage 3: gate->phase placement (threaded into extract) + deterministic gate answers (chooseAnswer).
   gateMap,
+  phaseWitnesses,
   answerMap,
   // Stage 4 (order spine): expected delegated(...) agents in the order the research orchestrator fans
   // them out (plan -> gather -> synthesize). Names match the delegated(...) tokens the extractor emits

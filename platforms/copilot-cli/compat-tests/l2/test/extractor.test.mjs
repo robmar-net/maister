@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { extract, parseState, extractFromEvents, extractFromTree } from '../extractor.mjs';
+import { scenario as DEV_SCENARIO } from '../scenarios/development.mjs';
 import { normalize } from '../normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -335,18 +336,36 @@ test('T7 sanity floor: empty completed_phases while task-tree artifacts exist ->
     fs.rmSync(rundir, { recursive: true, force: true });
   }
 
-  // Empty phases + artifacts present -> the extractor raises the INCOMPLETE flag rather than
+  // Zero WITNESSED phases + artifacts present -> the extractor raises the INCOMPLETE flag rather than
   // silently emitting an all-phases-missing set (which would false-alarm as REGRESSED downstream).
+  // Since #71 the floor keys on the witness derivation, not on the state file: here the scenario
+  // models phases but no event witness exists (empty events), so the floor trips regardless of what
+  // the state file claims.
   const emptyPhasesState = 'orchestrator:\n  completed_phases: []\ntask:\n  status: completed\n';
-  const result = extract({ events: [], taskDirRoot: TASK_TREE, stateYaml: emptyPhasesState });
+  const result = extract({
+    events: [], taskDirRoot: TASK_TREE, stateYaml: emptyPhasesState, phaseWitnesses: DEV_SCENARIO.phaseWitnesses,
+  });
   assert.equal(result.incomplete, true);
   assert.match(result.incompleteReason, /phase|artifact/i);
 
-  // Control: with phases present, the same tree does NOT trip the floor.
-  const ok = extract({ events: EVENTS, taskDirRoot: TASK_TREE, stateYaml: STATE_YAML });
+  // A state file that CLAIMS every phase cannot resurrect the run: witnesses are the only source (#71).
+  const lyingState = 'orchestrator:\n  completed_phases: ["phase-1", "phase-2", "phase-5"]\ntask:\n  status: completed\n';
+  const lied = extract({
+    events: [], taskDirRoot: TASK_TREE, stateYaml: lyingState, phaseWitnesses: DEV_SCENARIO.phaseWitnesses,
+  });
+  assert.equal(lied.incomplete, true, 'a state claim without witnesses must not clear the sanity floor');
+  assert.equal(
+    lied.records.filter((r) => r.kind === 'phase_completed').length, 0,
+    'state-claimed phases must never become predicates (#71)',
+  );
+
+  // Control: with witnesses present, the same tree does NOT trip the floor.
+  const ok = extract({
+    events: EVENTS, taskDirRoot: TASK_TREE, stateYaml: STATE_YAML, phaseWitnesses: DEV_SCENARIO.phaseWitnesses,
+  });
   assert.equal(ok.incomplete, false);
-  // And the merged record array carries state + events + tree sources.
-  assert.deepEqual(new Set(ok.records.map((r) => r.source)), new Set(['state', 'events', 'tree']));
+  // And the merged record array carries state + events + tree + witness sources.
+  assert.deepEqual(new Set(ok.records.map((r) => r.source)), new Set(['state', 'events', 'tree', 'witness']));
 });
 
 test('T7b sanity floor: a rootRel (docs-rooted) profile with artifacts + ZERO phases is NOT INCOMPLETE (#85 init)', () => {

@@ -1,9 +1,10 @@
 // L2 predicate extractor + defensive state parser (zero-dependency, node: builtins only).
 //
 // Reduces one Copilot workflow run to an array of RAW predicate records from three sources:
-//   (a) orchestrator-state.yml  -> phase_completed / task_characteristic / task_status
+//   (a) orchestrator-state.yml  -> task_characteristic / task_status / state_schema  (NOT phases — #71)
 //   (b) the run's task-dir tree -> created_artifact
 //   (c) the typed SessionEvent[] -> delegated / invoked_skill / gate_fired / reached_terminal
+//   (e) (b)+(c) via the scenario witness map -> phase_completed   (issue #71 / ADR 0004)
 // Normalization (verb canonicalization, prefix stripping, verification-path collapse, allowlist)
 // is a LATER stage's job (normalize.mjs); records here preserve the payload AS OBSERVED.
 //
@@ -11,7 +12,7 @@
 //   kind    - one of the grammar heads below
 //   name    - payload as observed (agent/skill names may still carry maister:/maister-copilot: prefixes)
 //   value   - boolean, only for task_characteristic
-//   source  - 'state' | 'tree' | 'events'
+//   source  - 'state' | 'tree' | 'events' | 'witness'
 //   evidence- short human string for the report
 //
 // DESIGN NOTES (binding rationale — do not "simplify" away):
@@ -313,9 +314,12 @@ export function parseState(yamlText) {
 
 function stateToRecords(state) {
   const records = [];
-  for (const n of state.phases) {
-    records.push({ kind: 'phase_completed', name: n, source: 'state', evidence: `completed_phases contains phase-${n}` });
-  }
+  // ISSUE #71: `phase_completed(N)` is NO LONGER emitted here. Copilot serializes
+  // `orchestrator-state.yml` off-schema and non-deterministically (ADR 0001, #57), so a state read
+  // must carry ZERO verdict weight: every phase token is now derived from the scenario's
+  // `phaseWitnesses` map over the event/tree records (see `witnessedPhaseRecords`, ADR 0004).
+  // The state parse survives for `task_characteristic`, `task_status`, the `state_schema`
+  // conformance token and the diagnostics/corroboration block in the report.
   for (const k of KNOWN_CHARACTERISTICS) {
     if (k in state.characteristics) {
       const v = state.characteristics[k];
@@ -929,6 +933,52 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
 }
 
 // ---------------------------------------------------------------------------
+// Witness-derived phases (source e) — issue #71 / ADR 0004
+// ---------------------------------------------------------------------------
+
+// A witness token is written in the reference's own notation, `kind(name)`, e.g.
+// `delegated(gap-analyzer)` or `created_artifact(verification/*)`. Matching is deliberately
+// tolerant in exactly two ways, mirroring what normalize.mjs does later:
+//   * the `maister:` / `maister-copilot:` plugin prefix is stripped before comparing, so a
+//     platform naming difference never breaks a witness; and
+//   * a trailing `/*` is a PREFIX match over the artifact path, so `created_artifact(verification/*)`
+//     is satisfied by any concrete report filename (the same collapse normalize applies).
+// Anything else is an exact match on the raw record name.
+const WITNESS_PREFIX_RE = /^maister(?:-copilot)?:/;
+
+export function witnessMatches(records, token) {
+  const m = /^([a-z_]+)\((.*)\)$/.exec(String(token).trim());
+  if (!m) return false;
+  const [, kind, rawName] = m;
+  const wantsPrefix = rawName.endsWith('/*');
+  const want = wantsPrefix ? rawName.slice(0, -1) : rawName; // keep the trailing '/'
+  return records.some((r) => {
+    if (!r || r.kind !== kind) return false;
+    const name = String(r.name ?? '').replace(WITNESS_PREFIX_RE, '');
+    return wantsPrefix ? name.startsWith(want) : name === want;
+  });
+}
+
+// Emit one `phase_completed(N)` record per phase whose ENTIRE witness set is present in the
+// event/tree records. `source: 'witness'` keeps the report honest about where the token came from
+// (the three original sources stay 'state' | 'tree' | 'events'). A scenario with no `phaseWitnesses`
+// (quick-bugfix, destructive-guard, work, init — none of which model phases) emits nothing.
+export function witnessedPhaseRecords(records, phaseWitnesses = []) {
+  const out = [];
+  for (const w of Array.isArray(phaseWitnesses) ? phaseWitnesses : []) {
+    if (!w || w.phase == null || !Array.isArray(w.all) || w.all.length === 0) continue;
+    if (!w.all.every((t) => witnessMatches(records, t))) continue;
+    out.push({
+      kind: 'phase_completed',
+      name: String(w.phase),
+      source: 'witness',
+      evidence: `witnesses present: ${w.all.join(' + ')}`,
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Top-level merge + sanity floor
 // ---------------------------------------------------------------------------
 
@@ -938,7 +988,7 @@ export function extractFromOutcome(outcomeSpec, rundir, sandboxTemplateDir = nul
 // `taskType` selects the tree profile (default 'development' -> byte-identical to the pre-scenario
 // harness; 'research' -> the research task layout). An unknown type falls back to the development
 // profile. Returns { records, incomplete, incompleteReason, parseWarnings }.
-export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [], precedesChain = [], minCounts = [] } = {}) {
+export function extract({ events = [], taskDirRoot = null, stateYaml = null, taskType = 'development', outcome = null, sandboxTemplateDir = null, gateMap = [], precedesChain = [], minCounts = [], phaseWitnesses = [] } = {}) {
   const state = stateYaml != null
     ? parseState(stateYaml)
     : { phases: [], characteristics: {}, status: null, parseWarnings: ['no stateYaml provided'], schemaDivergences: [] };
@@ -951,7 +1001,13 @@ export function extract({ events = [], taskDirRoot = null, stateYaml = null, tas
   // here (fail-fast); a runtime/assertion failure is a `value:'fail'` record, never an exception.
   const outcomeRecords = extractFromOutcome(outcome, taskDirRoot, sandboxTemplateDir);
 
-  const records = [...stateRecords, ...eventRecords, ...treeRecords, ...outcomeRecords];
+  // ISSUE #71 / ADR 0004: phases are derived from the event+tree witnesses only — the state file has
+  // zero verdict weight. Derivation runs BEFORE the merge and sees exactly the two observable
+  // sources (never outcome records, never state), so a phase token can only exist if the workflow
+  // actually left the documented footprint.
+  const phaseRecords = witnessedPhaseRecords([...eventRecords, ...treeRecords], phaseWitnesses);
+
+  const records = [...stateRecords, ...eventRecords, ...treeRecords, ...outcomeRecords, ...phaseRecords];
 
   // Stage 4 (issue #48) §2.4b — state_schema conformance token. Emitted ONLY when state actually
   // exists (stateYaml != null); quick-bugfix has no orchestrator state -> NO record (no predicate).
@@ -975,12 +1031,16 @@ export function extract({ events = [], taskDirRoot = null, stateYaml = null, tas
   //   • a `rootRel` (docs-rooted) profile is NOT an orchestrator task tree — `init` (#85) writes
   //     `.maister/docs/**` with NO orchestrator-state.yml, so zero phases is CORRECT, not a stall; the
   //     phase invariant does not apply, so its legitimate `created_artifact(INDEX.md)` must not trip.
+  //   • since #71 the floor keys on the WITNESS-derived phases (the state parse no longer feeds
+  //     them), and it only applies to a scenario that actually models phases — a scenario with an
+  //     empty `phaseWitnesses` legitimately has none, so it must never trip.
   const artifactsExist = treeRecords.some((r) => r.kind === 'created_artifact');
-  const incomplete = !profile.rootRel
-    && state.phases.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
+  const modelsPhases = Array.isArray(phaseWitnesses) && phaseWitnesses.length > 0;
+  const incomplete = !profile.rootRel && modelsPhases
+    && phaseRecords.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
   const incompleteReason = incomplete
-    ? 'State parse yielded ZERO completed phases while task-tree artifacts exist; refusing to emit a '
-      + 'silent all-phases-missing set (which would false-alarm as REGRESSED). Treat as INCOMPLETE.'
+    ? 'Witness derivation yielded ZERO completed phases while task-tree artifacts exist; refusing to '
+      + 'emit a silent all-phases-missing set (which would false-alarm as REGRESSED). Treat as INCOMPLETE.'
     : null;
 
   return { records, incomplete, incompleteReason, parseWarnings: state.parseWarnings };

@@ -41,16 +41,21 @@ const golden = JSON.parse(
 
 test('pipeline: extract -> normalize -> compare over committed fixtures yields the expected skeleton + AS-EXPECTED (AC3)', () => {
   // --- extract (events u tree u state -> raw records) ------------------------------------
-  const ex = extract({ events, taskDirRoot, stateYaml, gateMap: scenario.gateMap, precedesChain: scenario.precedesChain, minCounts: scenario.minCounts });
+  const ex = extract({ events, taskDirRoot, stateYaml, gateMap: scenario.gateMap, precedesChain: scenario.precedesChain, minCounts: scenario.minCounts, phaseWitnesses: scenario.phaseWitnesses });
 
   // The fixtures represent a COMPLETE run: the MEDIUM-2 sanity floor must NOT trip
   // (phases present alongside artifacts), so the pipeline yields a real verdict.
   assert.equal(ex.incomplete, false, `unexpected INCOMPLETE: ${ex.incompleteReason}`);
   // All three sources contributed (proves the merge wiring end to end).
+  // Since #71 phases are a FOURTH source ('witness'): derived from events+tree, never from state.
   assert.deepEqual(
     new Set(ex.records.map((r) => r.source)),
-    new Set(['state', 'events', 'tree']),
-    'expected records from all three sources (state u events u tree)',
+    new Set(['state', 'events', 'tree', 'witness']),
+    'expected records from all four sources (state u events u tree u witness)',
+  );
+  assert.ok(
+    ex.records.filter((r) => r.kind === 'phase_completed').every((r) => r.source === 'witness'),
+    'no phase_completed record may be state-sourced (#71)',
   );
 
   // FUNCTIONAL ORACLE (issue #48, Stage 2): inject the passing development outcome so the
