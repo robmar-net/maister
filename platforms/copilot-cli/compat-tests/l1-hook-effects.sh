@@ -17,7 +17,12 @@
 #      -> Skill-tool additionalContext rule.
 #
 # Verdicts on Copilot CLI 1.0.73:
-#   L1c  skill-invocation reminder  -> PASS   (Copilot injects SessionStart additionalContext)
+#   L1c.i skill-invocation reminder -> PASS   (#113: the built hook must emit a FLAT top-level
+#        `additionalContext`; Copilot's sessionStart SILENTLY DROPS Claude's hookSpecificOutput
+#        wrapper, so a wrong envelope is a no-op that still looks fine in the debug log)
+#   L1c  skill-invocation reminder  -> PASS   (the hook ran and printed the reminder; a log grep
+#        cannot prove injection — delivery is guaranteed by L1c.i, ground truth is
+#        model.messages_snapshot)
 #   L1a  destructive-command guard  -> PASS   (adapted: the Copilot override emits permissionDecision:
 #        "ask"; Copilot honors it and does NOT bypass under --allow-all-tools — destructive commands
 #        are held fail-closed in headless. Root cause of the adaptation: payload omits agent_type.)
@@ -102,7 +107,7 @@ OBSERVED_KEYS=""   # payload keys observed live, surfaced in the report footer
 # live L1b.ii env probe, since whether Copilot supplies $CLAUDE_PROJECT_DIR is the open question.
 GUARD_FINDING="**Adapted & fixed** for Copilot: the payload has no \`agent_type\`, so build.sh (WS2b) overlays a Copilot variant that emits \`permissionDecision: \"ask\"\` on destructive patterns. Copilot honors \`ask\` and does not bypass it under \`--allow-all-tools\` (held fail-closed in headless) -> destructive commands are **gated (PASS)**."
 PC_FINDING="Script logic intact; effect depends on whether Copilot supplies \`\$CLAUDE_PROJECT_DIR\` (see L1b.ii — not evaluated without a live run)."
-SKILL_FINDING="Expected: Copilot injects the SessionStart \`additionalContext\` so the reminder reaches the model (verified live unless \`--no-live\`)."
+SKILL_FINDING="Envelope contract checked deterministically (L1c.i, #113): the built hook must emit a TOP-LEVEL \`additionalContext\` — Copilot's sessionStart silently drops Claude's \`hookSpecificOutput\` wrapper. The live L1c only shows the hook ran."
 
 # ---------------------------------------------------------------------------- run dir + trap
 RUNDIR="$(mktemp -d)"
@@ -172,6 +177,25 @@ else
     "REGRESSION: expected ask(rm -rf)+ask(git reset --hard)+allow(echo hi). Got ask_rm=$(is_ask "$ask_rm" && echo yes || echo no) ask_reset=$(is_ask "$ask_reset" && echo yes || echo no) safe_out_len=${#allow_safe}. Is build.sh WS2b overlaying hooks-overrides/?"
 fi
 
+# ---- L1c.i — skill-invocation reminder: FLAT SessionStart envelope (#113) ----
+# Copilot's sessionStart hook reads a TOP-LEVEL `additionalContext` and SILENTLY DROPS Claude's
+# `hookSpecificOutput` wrapper (copilot-sdk/types.d.ts SessionStartHookOutput; the onSessionStart
+# table in copilot-sdk/docs/agent-author.md; changelog 1.0.11 — the wrapper appears in neither).
+# Verified live on 1.0.82 with a two-envelope canary: the flat token reached model.messages_snapshot
+# and was echoed by the model, the nested token appeared ONLY in the CLI debug log. So the live
+# L1c below (a log grep) CANNOT catch a wrong envelope — this deterministic contract is what does.
+# NOTE the wrapper is not universally ignored: preToolUse DOES honor it, which is why the guard
+# (L1a.i) keeps its nesting. Mirrored by `make validate` WS5.21.
+sk_out=$(bash "$SKILLHOOK" 2>/dev/null || true)
+if printf '%s' "$sk_out" | grep -qE '^[[:space:]]{0,2}"additionalContext":' \
+   && ! printf '%s' "$sk_out" | grep -q 'hookSpecificOutput'; then
+  record "L1c.i" "skill-invocation" "SessionStart output uses the FLAT additionalContext envelope" "PASS" \
+    "Built hook emits a top-level \"additionalContext\" and no hookSpecificOutput wrapper — the only envelope Copilot's sessionStart reads (#113; verified live on 1.0.82). Claude's source hook keeps the nested form; this is the generator override (WS2c)."
+else
+  record "L1c.i" "skill-invocation" "SessionStart output uses the FLAT additionalContext envelope" "FAIL" \
+    "REGRESSION (#113): expected a top-level \"additionalContext\" and NO hookSpecificOutput. top_level=$(printf '%s' "$sk_out" | grep -qE '^[[:space:]]{0,2}\"additionalContext\":' && echo yes || echo no) wrapper=$(printf '%s' "$sk_out" | grep -q hookSpecificOutput && echo present || echo absent). Copilot silently drops the wrapper for sessionStart, so the reminder would be a NO-OP while still looking fine in the debug log. Fix hooks-overrides/skill-invocation-reminder.sh, then make build."
+fi
+
 # ---- L1b.i — post-compact reminder: script logic intact + env-gating confirmed ----
 PC_PROJ="$RUNDIR/pc-proj"; mkdir -p "$PC_PROJ/.maister/tasks"
 pc_emit=$(CLAUDE_PROJECT_DIR="$PC_PROJ" bash "$PCHOOK" 2>/dev/null || true)
@@ -188,7 +212,7 @@ fi
 # SECTION B — LIVE CHECKS (one combined Copilot session; SKIPPED in --no-live)
 # ============================================================================
 if [ "$NO_LIVE" = "1" ]; then
-  record "L1c"    "skill-invocation" "reminder injected into SessionStart additionalContext" "SKIP" "requires an authenticated live session (omit --no-live)."
+  record "L1c"    "skill-invocation" "reminder text present in the session debug log (hook ran)" "SKIP" "requires an authenticated live session (omit --no-live). The envelope contract that actually guarantees delivery is checked deterministically by L1c.i (#113)."
   record "L1b.ii" "post-compact"     "\$CLAUDE_PROJECT_DIR presence on Copilot"               "SKIP" "requires an authenticated live session (omit --no-live)."
   record "L1a.ii" "guard"            "live subagent destructive command held by ask-gate"     "SKIP" "requires an authenticated live session; the override's ask behavior is already proven deterministically by L1a.i."
 else
@@ -262,7 +286,7 @@ The rm targets a disposable temp marker created only for this test — running i
   if [ -z "$LIVE_LOG" ] || grep -q "No authentication information found" "$RUNDIR/session.out" 2>/dev/null; then
     reason="live session produced no debug log"
     grep -q "No authentication" "$RUNDIR/session.out" 2>/dev/null && reason="live session not authenticated (no Copilot seat) — run with a valid seat, or use --no-live"
-    record "L1c"    "skill-invocation" "reminder injected into SessionStart additionalContext" "SKIP" "$reason"
+    record "L1c"    "skill-invocation" "reminder text present in the session debug log (hook ran)" "SKIP" "$reason"
     record "L1b.ii" "post-compact"     "\$CLAUDE_PROJECT_DIR presence on Copilot"               "SKIP" "$reason"
     record "L1a.ii" "guard"            "live subagent destructive command held by ask-gate"     "SKIP" "$reason"
   else
@@ -272,13 +296,13 @@ The rm targets a disposable temp marker created only for this test — running i
     # proves Copilot injected the plugin's SessionStart additionalContext.
     if grep -q "MAISTER PLUGIN RULE" "$LIVE_LOG" 2>/dev/null \
        && grep -q "invoke it via the Skill tool" "$LIVE_LOG" 2>/dev/null; then
-      SKILL_FINDING="Copilot injects the SessionStart \`additionalContext\` -> the reminder text reaches the model -> **works** (live-confirmed)."
-      record "L1c" "skill-invocation" "reminder injected into SessionStart additionalContext" "PASS" \
-        "Debug log contains the reminder's distinctive text ('MAISTER PLUGIN RULE' + 'invoke it via the Skill tool') — Copilot injects the plugin's SessionStart additionalContext. Hook EFFECT confirmed."
+      SKILL_FINDING="The SessionStart hook ran and printed the reminder (present in the debug log). NOTE (#113): the CLI logs the hook's raw stdout, so this does NOT by itself prove injection into model context — the envelope contract (L1c.i) is what guarantees delivery; ground truth is \`model.messages_snapshot\`."
+      record "L1c" "skill-invocation" "reminder text present in the session debug log (hook ran)" "PASS" \
+        "Debug log contains the reminder's distinctive text ('MAISTER PLUGIN RULE' + 'invoke it via the Skill tool'). CAVEAT (#113): the CLI logs hook stdout verbatim, so a log hit proves the hook RAN, not that Copilot injected it — a nested-envelope hook logs identically while delivering nothing. Delivery is guaranteed by L1c.i (flat envelope) and observable only in model.messages_snapshot."
     else
-      SKILL_FINDING="Reminder text was NOT found in the session debug log -> SessionStart \`additionalContext\` injection could not be confirmed this run."
-      record "L1c" "skill-invocation" "reminder injected into SessionStart additionalContext" "FAIL" \
-        "reminder text NOT found in debug log (searched 'MAISTER PLUGIN RULE' + 'invoke it via the Skill tool'). Injection not confirmed."
+      SKILL_FINDING="Reminder text was NOT found in the session debug log -> the SessionStart hook did not run (or printed nothing) this run."
+      record "L1c" "skill-invocation" "reminder text present in the session debug log (hook ran)" "FAIL" \
+        "reminder text NOT found in debug log (searched 'MAISTER PLUGIN RULE' + 'invoke it via the Skill tool'). The hook did not run or emitted nothing — a stronger failure than a wrong envelope, which would still show up here (#113)."
     fi
 
     # ---- L1b.ii — $CLAUDE_PROJECT_DIR presence on Copilot (the "verify me" open question) ----

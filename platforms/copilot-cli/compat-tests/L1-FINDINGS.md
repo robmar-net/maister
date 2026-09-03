@@ -1,4 +1,4 @@
-# L1 — Hook-Effect Findings (Copilot CLI 1.0.73)
+# L1 — Hook-Effect Findings (Copilot CLI 1.0.73, envelope re-verified on 1.0.82 — see § "SessionStart envelope")
 
 L0 (`run.sh` / `make test-copilot`) proves the three maister hooks **fire** on Copilot. L1
 (`l1-hook-effects.sh` / `make test-hooks`) verifies each hook's **effect**. These are **platform**
@@ -13,7 +13,7 @@ in the generator, not in L1.**
 
 | Hook | Effect on Copilot 1.0.73 | Verdict |
 |------|--------------------------|---------|
-| `skill-invocation-reminder.sh` | Reminder text reaches the model via injected SessionStart `additionalContext`. | **Works (PASS)** |
+| `skill-invocation-reminder.sh` | Reminder text reaches the model via injected SessionStart `additionalContext` — **but only in the flat envelope**. Shipped in Claude's `hookSpecificOutput` wrapper it was a **silent no-op on 1.0.82**; fixed in [#113](https://github.com/robmar-net/maister/issues/113). | **PASS (fixed)** — see § "SessionStart envelope" |
 | `block-destructive-commands.sh` | Payload carries **no agent identifier**, so agent-scoped gating is impossible → the Copilot override instead **asks for confirmation** on any destructive command. Copilot honors `permissionDecision:"ask"` and holds it fail-closed in headless. | **PASS (adapted)** — fixed via generator override |
 | `post-compact-reminder.sh` | Its `$CLAUDE_PROJECT_DIR` dependency **is** satisfied — Copilot sets that var. The real open question is whether Copilot honors the `SessionStart:compact` matcher. | **Env dep OK (PASS)**; compact-matcher unverified |
 
@@ -46,7 +46,10 @@ CLAUDE_PLUGIN_DATA   CLAUDE_PLUGIN_ROOT   CLAUDE_PROJECT_DIR
 
 Copilot's plugin-hook compatibility shim supplies the **full Claude hook-env contract**,
 including `$CLAUDE_PROJECT_DIR` (set to the project / cwd). SessionStart `additionalContext`
-emitted by a hook **is** injected into the model's context.
+emitted by a hook **is** injected into the model's context — **but only when it is a top-level key**;
+Claude's `hookSpecificOutput` wrapper is silently dropped for `sessionStart` (§ "SessionStart
+envelope", #113). The compatibility shim is therefore partial: it covers the hook *input* contract
+and the `preToolUse` *output* nesting, but not `sessionStart` output nesting.
 
 ## Per-hook detail
 
@@ -94,15 +97,61 @@ emitted by a hook **is** injected into the model's context.
   matcher on an actual context compaction. Triggering a real compaction on demand is **out of
   scope** for L1. This — not the env var — is the open risk for this hook on Copilot.
 
-### 3. `skill-invocation-reminder.sh` (SessionStart, no matcher) — **PASS: works**
+### 3. `skill-invocation-reminder.sh` (SessionStart, no matcher) — **PASS after the #113 envelope fix**
 
 - **What it should do:** always emit an `additionalContext` rule ("⚠️ MAISTER PLUGIN RULE: …
   invoke it via the Skill tool …").
-- **Verified (L1c):** the reminder's distinctive text (`MAISTER PLUGIN RULE` +
-  `invoke it via the Skill tool`) appears in the live session's debug log as injected SessionStart
-  `additionalContext` → the reminder reaches the model.
-- The branding scrub does not touch it (build rewrites only `*.md`); the `.sh` is byte-identical
-  to `plugins/maister/hooks/skill-invocation-reminder.sh`, so the exact text survives.
+- **1.0.73 (L1c):** the reminder's distinctive text (`MAISTER PLUGIN RULE` +
+  `invoke it via the Skill tool`) appeared in the live session's debug log. Read at the time as
+  "the reminder reaches the model" — **that inference does not hold**: the CLI logs the hook's raw
+  stdout, so the grep proves the hook *ran*, not that the text was *injected* (⁴ in
+  `README.md`).
+- **1.0.82:** shipped in Claude's nested envelope the reminder reached the model in **none** of the
+  six persisted L2 bundles (0 hits across 129 snapshot messages in `20260903T000910Z`). With the
+  flat envelope a canary landed in `model.messages_snapshot` and was echoed verbatim. Fixed in
+  #113; guarded by L1c.i + `make validate` WS5.21.
+- The branding scrub does not touch it (build rewrites only `*.md`); the `.sh` is no longer
+  byte-identical to `plugins/maister/hooks/skill-invocation-reminder.sh` — it is a generator
+  override (WS2c) whose envelope differs (below), and WS2e normalizes its nomenclature (#95).
+
+### SessionStart envelope — 1.0.82 (#113)
+
+**Copilot's `sessionStart` hook reads a TOP-LEVEL `additionalContext` and silently drops Claude's
+`hookSpecificOutput` wrapper.** Every Copilot surface documents only the flat shape:
+`copilot-sdk/types.d.ts:1105` (`SessionStartHookOutput { additionalContext?, modifiedConfig? }`),
+the `### onSessionStart` table in `copilot-sdk/docs/agent-author.md`, and `changelog.json` 1.0.11
+("sessionStart hook additionalContext is now injected into the conversation"). The wrapper appears
+in **no** doc and **no** changelog entry.
+
+Verified live on **1.0.82** with a two-envelope canary (a throwaway plugin emitting both shapes with
+distinct tokens, one SDK session + one `copilot -p` session):
+
+| envelope | in `model.messages_snapshot` | echoed by the model | in the CLI debug log |
+|---|---|---|---|
+| flat `{ "additionalContext": … }` | **yes** (message 1, a `user` slot) | **yes**, verbatim | yes |
+| nested `{ "hookSpecificOutput": { "additionalContext": … } }` | **no** | no | **yes** |
+
+Both paths (SDK `createSession` and interactive `copilot -p`) behaved identically, so this is the
+envelope — not an SDK-vs-CLI difference and not a plain regression in delivery.
+
+Corroboration from the L2 bundles: `session.usage_info{isInitial:true}` reported
+`messagesLength: 3` (system + prompt + Copilot's own `<system_reminder>`) with our nested hook, and
+`messagesLength: 4` with the flat canary — the injection is a real extra message slot that was
+simply never filled.
+
+Two consequences beyond the fix:
+
+1. **`hookSpecificOutput` is not universally ignored.** Copilot's `preToolUse` parser *does* honor
+   it — the same 1.0.82 run had a `rm -rf` denied with the guard's reason echoed verbatim
+   (`Denied by preToolUse hook (unable to ask user for confirmation): Maister guard: destructive
+   command — …`) and the victim intact. So `block-destructive-commands.sh` keeps its nesting; only
+   the SessionStart override goes flat.
+2. **The old L1c methodology could not have caught this.** It greps the *session debug log*, and the
+   CLI logs the hook's raw stdout — in the canary run the nested token is present in the log and
+   absent from the model. Delivery must be read from `model.messages_snapshot`. L1c is now split:
+   **L1c.i** (deterministic) asserts the built hook emits a top-level `additionalContext`, and the
+   live L1c states plainly what a log grep can and cannot prove. `make validate` **WS5.21** guards
+   the envelope on every build.
 
 ## Follow-ups
 
