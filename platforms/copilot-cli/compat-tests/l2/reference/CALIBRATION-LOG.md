@@ -790,6 +790,17 @@ from the docs tree init writes. Harness change (not a reference edit), covered b
 `∅ → 1984d7d6…` via `compare.computeHash`. Wiring: `run.mjs` SCENARIOS + `run.sh` scenario→sandbox
 (`sample-cli-bare`) + `l2-check.yml` `--check-reference` + `run-sh` test check-5.
 
-**PROVISIONAL — live calibration pending (spend-gated, ~5-15 AIU).** The optional/allowlist partition is
-the model-derived expectation; the N=1 live drive (`run.sh --scenario=init --yes`) calibrates it and
-records the AS-EXPECTED verdict + AIU (the quick-bugfix/`work`-genesis pattern). `∅ → 1984d7d6…` | PR (#85)
+**Live calibration (N=1, Copilot 1.0.82, bundle `20260903T004846Z`, 25.14 AIU).** All 6 REQUIRED
+predicates matched — init invoked, `project-analyzer` + `docs-operator` delegated, `INDEX.md` created,
+`init-structure` passed (non-trivial index), completion reached — proving the first-touch bootstrap works
+end to end (`project-analyzer` ran on `claude-haiku-4.5`, confirming the #86 model mapping live). Three
+route-legitimate extras moved to `optional`: `invoked_skill(docs-manager)` (init's docs engine, surfaced
+as a skill invocation alongside the `docs-operator` delegation), `delegated(general-purpose)` (Copilot
+routed an analysis step to its built-in general-purpose agent), `todos(created)` (the setup tracked as
+task items). Re-hash `1984d7d6… → 058ff454…`; bundle replays **AS-EXPECTED 6·0·0**.
+
+**Harness fix required by this genesis (not a reference edit):** the MEDIUM-2 sanity floor false-tripped
+INCOMPLETE on the first drive — it treats "zero completed phases WHILE task-tree artifacts exist" as a
+stalled orchestrator, but a `rootRel` (docs-rooted) profile like `init` writes `.maister/docs/**` with NO
+orchestrator-state.yml, so zero phases is CORRECT. `extract()` now exempts `rootRel` profiles from the
+floor (`extractor.mjs`), covered by a unit test. `∅ → 1984d7d6… → 058ff454…` | PR (#85)

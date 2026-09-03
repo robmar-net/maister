@@ -10,12 +10,15 @@ derived from. Edits to the sibling JSON are governed by the audit trail in
 | Source (read-only citation source) | `plugins/maister/skills/init/SKILL.md` (`I:N`) |
 | maister_version | `2.2.3` |
 | workflow_model_version | `6` |
-| Sibling JSON hash | `1984d7d63304d4f0197923f9e8b0c7468ddf25dced11bd0e7724eef7349416be` |
-| Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) (genesis: note 38) |
+| Sibling JSON hash | `058ff45405b8896474c5928b387555df3bcfc431e632b3512a943c7293309bc0` |
+| Audit trail | [CALIBRATION-LOG.md](CALIBRATION-LOG.md) (genesis + live calibration: note 38) |
 
-`I:N` anchors cite `skills/init/SKILL.md` (read-only). Partition sizes: 6 required + 5 optional + 0 rules
-+ 0 allowlist = 11 rows. Sandbox: NEW `sample-cli-bare` (no `.maister/`); the `init` TREE_PROFILE uses
-`rootRel: .maister/docs` so `created_artifact(INDEX.md)` is read from the docs tree init writes.
+`I:N` anchors cite `skills/init/SKILL.md` (read-only). Partition sizes: 6 required + 8 optional + 0 rules
++ 0 allowlist = 14 rows (the optional set was calibrated from the live N=1 drive, bundle
+`20260903T004846Z`). Sandbox: NEW `sample-cli-bare` (no `.maister/`); the `init` TREE_PROFILE uses
+`rootRel: .maister/docs` so `created_artifact(INDEX.md)` is read from the docs tree init writes (the first
+`rootRel` profile — it is also exempt from the MEDIUM-2 sanity floor, since a docs tree legitimately has
+zero orchestrator phases; see CALIBRATION note 38).
 
 ## Required (6)
 
@@ -28,11 +31,17 @@ derived from. Edits to the sibling JSON are governed by the audit trail in
 | `outcome(init-structure)=pass` | required | I:160, I:167, I:175 | FUNCTIONAL ORACLE (Stage 2). The bootstrap must produce a materially non-trivial docs index, not a stub: `.maister/docs/INDEX.md` exists with >=5 non-blank lines (I:175 "Structure created (tree with check marks for created items)") |
 | `reached_terminal(completion)` | required | I:175 | the skill's terminal — the created-structure summary |
 
-## Optional (5)
+## Optional (8)
+
+The last three rows were **calibrated** from the live N=1 drive (each a route-legitimate init predicate,
+not run-fitting — see CALIBRATION note 38).
 
 | predicate | partition | citation | note |
 |---|---|---|---|
 | `invoked_skill(standards-discover)` | optional | I:11 (Phase 8, "Use the Skill tool only for standards-discover … the last phase") | the final phase invokes `standards-discover` via the Skill tool; conditional on that phase running, so optional |
+| `invoked_skill(docs-manager)` | optional | I:11 (docs-manager is the docs engine `docs-operator` runs); live bundle | Copilot surfaced the docs engine as a direct skill invocation alongside the required `delegated(docs-operator)`; route-legitimate |
+| `delegated(general-purpose)` | optional | platform variance; live bundle | Copilot routed an analysis step to its built-in `general-purpose` agent — a platform delegation, not model-mandated |
+| `todos(created)` | optional | init's setup task-item tracking (TaskCreate→todos); live bundle | init tracked its setup as task items; presence depends on whether the run created todos |
 | `gate_fired(ask)` | optional | init's interactive setup questions (standards selection etc.) | init asks setup questions; the presence/number of gates depends on the project + the selected options |
 | `gate_fired(permission)` | optional | platform divergence (no model anchor) | Copilot permission prompts are a harness surface, not model-mandated |
 | `gate_fired(exit_plan_mode)` | optional | platform divergence | init is not a plan-mode workflow; listed optional only to absorb a platform-emitted plan event if one occurs |

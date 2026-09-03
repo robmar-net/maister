@@ -968,11 +968,16 @@ export function extract({ events = [], taskDirRoot = null, stateYaml = null, tas
   }
 
   // SANITY FLOOR (MEDIUM-2, now outcome-aware — MEDIUM-4): zero completed phases while task-tree
-  // artifacts exist is normally a parse failure / stalled run -> INCOMPLETE, never a silent REGRESSED.
-  // EXCEPTION: a FAILING outcome is the most trustworthy signal and must never be downgraded to
-  // INCOMPLETE — suppressing the short-circuit lets `compare` produce REGRESSED.
+  // artifacts exist is normally a parse failure / stalled ORCHESTRATOR run -> INCOMPLETE, never a silent
+  // REGRESSED. EXCEPTIONS:
+  //   • a FAILING outcome is the most trustworthy signal and must never be downgraded to INCOMPLETE
+  //     (suppressing the short-circuit lets `compare` produce REGRESSED); and
+  //   • a `rootRel` (docs-rooted) profile is NOT an orchestrator task tree — `init` (#85) writes
+  //     `.maister/docs/**` with NO orchestrator-state.yml, so zero phases is CORRECT, not a stall; the
+  //     phase invariant does not apply, so its legitimate `created_artifact(INDEX.md)` must not trip.
   const artifactsExist = treeRecords.some((r) => r.kind === 'created_artifact');
-  const incomplete = state.phases.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
+  const incomplete = !profile.rootRel
+    && state.phases.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
   const incompleteReason = incomplete
     ? 'State parse yielded ZERO completed phases while task-tree artifacts exist; refusing to emit a '
       + 'silent all-phases-missing set (which would false-alarm as REGRESSED). Treat as INCOMPLETE.'
