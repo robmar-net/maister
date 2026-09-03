@@ -12,6 +12,10 @@
 > copilot plugin install maister-copilot@maister-plugins  # install the Copilot build
 > ```
 >
+> **First two things to type** (both live-verified on Copilot CLI, [Parity-Map](https://github.com/robmar-net/maister/wiki/Parity-Map)):
+> - New project → `Initialize the maister framework in this project` (bootstraps `.maister/docs/**`).
+> - A task → `Use the maister work entry point for this task: <describe it>` (auto-classifies + routes to the right workflow).
+>
 > **Why this build vs installing straight from upstream:** the stock upstream variant ships **no hooks at all** (no skill-routing reminder, no destructive-command guard), no `mcpServers` declaration (MCP never loads after install), Claude-only task tools and single-select-only gates — verified diffs with evidence: [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
 >
 > Slash commands do not exist on Copilot CLI — describe the task in plain language (e.g. *"Run the maister development workflow to add …"*) and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/README.md`](platforms/copilot-cli/README.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
