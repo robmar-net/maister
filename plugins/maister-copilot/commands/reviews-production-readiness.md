@@ -5,6 +5,8 @@ description: Verify production deployment readiness with comprehensive checks
 
 **ACTION REQUIRED**: This command delegates to a subagent. The `<command-name>` tag refers to THIS command, not the target. Invoke the production-readiness-checker subagent via the task tool NOW. Pass path and target arguments. Do not read files, explore code, or execute workflow steps yourself.
 
+**IF YOU ARE ALREADY THAT AGENT** (you were invoked via the task tool with this `agent_type`), do NOT delegate — you would be calling yourself. Perform the review directly with your own instructions and return the result.
+
 You are verifying production deployment readiness using the `production-readiness-checker` subagent.
 
 ## Your Task

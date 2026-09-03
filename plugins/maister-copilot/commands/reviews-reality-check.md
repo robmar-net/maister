@@ -5,6 +5,8 @@ description: Comprehensive reality assessment of completed work to verify it act
 
 **ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the task tool with agent_type="maister-copilot:reality-assessor" NOW. Pass the task path in the prompt. Do not read files, explore code, or execute workflow steps yourself.
 
+**IF YOU ARE ALREADY THAT AGENT** (you were invoked via the task tool with this `agent_type`), do NOT delegate — you would be calling yourself. Perform the review directly with your own instructions and return the result.
+
 You are running a comprehensive reality check using the `reality-assessor` agent.
 
 ## Your Task

@@ -331,6 +331,30 @@ perl -0777 -i -pe '
   END { exit($c == 1 ? 0 : 1) }
 ' "$OUT/CLAUDE.md" || { echo "FAIL: step 8d: 'GitHub Copilot CLI Documentation' section not found exactly once in \$OUT/CLAUDE.md (source drift?)" >&2; exit 1; }
 
+# 8e. (#76 WP-C1 / ADR 0006) RE-ENTRY GUARD for the reviews-* command bodies.
+#     Copilot surfaces `commands/*.md` as MODEL-INVOCABLE skills (step 8b). Each reviews-* body
+#     opens with an **ACTION REQUIRED** imperative to delegate to its agent NOW, which is correct
+#     when a USER invokes the skill — and a self-call loop when the agent itself invokes it. Measured
+#     on two live 1.0.82 development bundles: spec-auditor ran 3x (1 top-level + 2 re-entrant) in
+#     both, reality-assessor 3x in one; the extra instantiations burned 19-24% of ALL subagent tokens
+#     (755k of 3.14M; 604k of 3.14M) for no additional work. This inserts one guard sentence directly
+#     after each body's ACTION REQUIRED imperative, so the delegation still happens for a user
+#     invocation but stops at the agent itself. Claude source ($CORE) untouched: on Claude these are
+#     slash commands whose model-invocable surface is not the one measured here.
+#     Guard: must fire for EVERY reviews-* command file (5), else the build fails loudly.
+guard_count=0
+for f in "$OUT"/commands/reviews-*.md; do
+  [ -e "$f" ] || continue
+  perl -0777 -i -pe '
+    $c = s{(\*\*ACTION REQUIRED\*\*:[^\n]*\n)}{$1
+**IF YOU ARE ALREADY THAT AGENT** (you were invoked via the task tool with this `agent_type`), do NOT delegate — you would be calling yourself. Perform the review directly with your own instructions and return the result.
+}s;
+    END { exit($c == 1 ? 0 : 1) }
+  ' "$f" || { echo "FAIL: step 8e: ACTION REQUIRED anchor not found exactly once in $f (source drift?)" >&2; exit 1; }
+  guard_count=$((guard_count + 1))
+done
+[ "$guard_count" -eq 5 ] || { echo "FAIL: step 8e: expected 5 reviews-* command files, guarded $guard_count" >&2; exit 1; }
+
 # 9. Add platform note to plugin's CLAUDE.md — appended LAST, after the ask_user (step 7) and
 #    branding (step 8) global passes, so its literal `AskUserQuestion` and its "Key differences
 #    from Claude Code" comparison are authored final and not clobbered.

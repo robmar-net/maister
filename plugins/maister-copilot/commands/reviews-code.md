@@ -5,6 +5,8 @@ description: Run automated code quality, security, and performance analysis on y
 
 **ACTION REQUIRED**: This command delegates to a subagent. The `<command-name>` tag refers to THIS command, not the target. Invoke the code-reviewer subagent via the task tool NOW. Pass path and scope arguments. Do not read files, explore code, or execute workflow steps yourself.
 
+**IF YOU ARE ALREADY THAT AGENT** (you were invoked via the task tool with this `agent_type`), do NOT delegate — you would be calling yourself. Perform the review directly with your own instructions and return the result.
+
 You are running a comprehensive code review using the `code-reviewer` subagent.
 
 ## Your Task

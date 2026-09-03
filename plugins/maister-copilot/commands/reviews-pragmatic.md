@@ -5,6 +5,8 @@ description: Run pragmatic code review to detect over-engineering and ensure cod
 
 **ACTION REQUIRED**: This command delegates to a different skill. The `<command-name>` tag refers to THIS command, not the target. Call the task tool with agent_type="maister-copilot:code-quality-pragmatist" NOW. Pass the path to analyze in the prompt. Do not read files, explore code, or execute workflow steps yourself.
 
+**IF YOU ARE ALREADY THAT AGENT** (you were invoked via the task tool with this `agent_type`), do NOT delegate — you would be calling yourself. Perform the review directly with your own instructions and return the result.
+
 You are running a pragmatic code review using the `code-quality-pragmatist` agent.
 
 ## Your Task
