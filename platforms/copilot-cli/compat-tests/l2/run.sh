@@ -2,10 +2,10 @@
 #
 # L2 — Workflow-model conformance testing harness: thin bash operator wrapper for run.mjs.
 #
-# Drives ONE Copilot workflow (development by default; research or quick-bugfix via --scenario) through the
-# bundled @github/copilot-sdk (via l2/run.mjs), reduces the typed trace + task-dir tree +
-# orchestrator-state.yml to a normalized predicate Set, and set-compares it to the committed
-# maister-model-derived reference. Answers "did this Copilot release or generator change break the
+# Drives ONE Copilot workflow (development by default; research, quick-bugfix, destructive-guard,
+# work or init via --scenario) through the bundled @github/copilot-sdk (via l2/run.mjs), reduces
+# the typed trace + task-dir tree + orchestrator-state.yml to a normalized predicate Set, and
+# set-compares it to the committed maister-model-derived reference. Answers "did this Copilot release or generator change break the
 # maister workflow?" with one `make test-l2` — without false-alarming on legitimate LLM
 # non-determinism, and honestly SKIPping when there is no seat.
 #
@@ -17,7 +17,8 @@
 #
 # Usage:
 #   bash run.sh                        # full live run (needs an authenticated Copilot seat + AI credits)
-#   bash run.sh --scenario=research    # drive the research workflow instead of development (default)
+#   bash run.sh --scenario=<id>        # development (default) | research | quick-bugfix |
+#                                      # destructive-guard | work | init
 #   bash run.sh --check-reference      # CREDIT-FREE: staleness/tamper verdict for the committed reference
 #   bash run.sh --scenario=research --check-reference  # CREDIT-FREE verdict for the research reference
 #   bash run.sh --scenario=quick-bugfix --check-reference  # CREDIT-FREE verdict for the quick-bugfix reference
