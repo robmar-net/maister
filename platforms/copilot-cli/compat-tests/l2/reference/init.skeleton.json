@@ -1,0 +1,24 @@
+{
+  "scenario": "init",
+  "maister_version": "2.2.3",
+  "schema_version": 5,
+  "workflow_model_version": 6,
+  "required": [
+    "invoked_skill(init)",
+    "delegated(project-analyzer)",
+    "delegated(docs-operator)",
+    "created_artifact(INDEX.md)",
+    "outcome(init-structure)=pass",
+    "reached_terminal(completion)"
+  ],
+  "optional": [
+    "invoked_skill(standards-discover)",
+    "gate_fired(ask)",
+    "gate_fired(permission)",
+    "gate_fired(exit_plan_mode)",
+    "standards(index_read)"
+  ],
+  "rules": [],
+  "allowlist": [],
+  "hash": "1984d7d63304d4f0197923f9e8b0c7468ddf25dced11bd0e7724eef7349416be"
+}

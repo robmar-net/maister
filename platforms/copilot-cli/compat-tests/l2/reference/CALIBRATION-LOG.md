@@ -765,3 +765,31 @@ into `optional` — model-grounded (each is a documented `development` marker, p
 reference), NOT fitted: they are optional because the route is task-dependent, so a future quick route
 simply leaves them unobserved. Re-hash `b7f60681… → 59659cc3…`; the bundle now replays **AS-EXPECTED
 4·0·0**. `∅ → b7f60681… → 59659cc3…` | PR (#85)
+
+### 38 — `init` FIRST-TOUCH genesis (issue #85, #76 WP-E)
+
+Genesis of the SIXTH scenario reference, `init.skeleton.json` — the framework-bootstrap entry point
+(`skills/init/SKILL.md`), which analyses the project and builds the `.maister/docs/**` reference tree.
+`init`, `project-analyzer` and `docs-manager` were ⚪ (never observed on Copilot). Model-derived
+(credit-free), NOT fitted.
+
+**Required (6):** `invoked_skill(init)` (I:1-3), `delegated(project-analyzer)` (I:49 — Task-tool codebase
+analysis), `delegated(docs-operator)` (I:11/:112/:160 — all docs-manager ops run via the docs-operator
+subagent), `created_artifact(INDEX.md)` (I:167 "Verify INDEX.md exists"), `outcome(init-structure)=pass`
+(Stage-2 functional oracle: `.maister/docs/INDEX.md` non-trivial — exists with ≥5 non-blank lines, no
+restage since init CREATES the tree), `reached_terminal(completion)`. **Optional (5):**
+`invoked_skill(standards-discover)` (I:11 Phase-8 via Skill tool), `gate_fired(ask|permission|exit_plan_mode)`,
+`standards(index_read)`.
+
+**New sandbox + extractor capability.** `sample-cli-bare` (the sample CLI with NO `.maister/`) so init
+bootstraps from scratch. `TREE_PROFILES.init` adds a `rootRel: .maister/docs` override to `findTaskDirs`
+— the FIRST profile whose `created_artifact` root is not `.maister/tasks/<taskType>` — so INDEX.md is read
+from the docs tree init writes. Harness change (not a reference edit), covered by unit suite.
+
+**Governance:** reuses existing grammar heads → NO schema/wm bump (schema 5 / wm 6 hold). Hash
+`∅ → 1984d7d6…` via `compare.computeHash`. Wiring: `run.mjs` SCENARIOS + `run.sh` scenario→sandbox
+(`sample-cli-bare`) + `l2-check.yml` `--check-reference` + `run-sh` test check-5.
+
+**PROVISIONAL — live calibration pending (spend-gated, ~5-15 AIU).** The optional/allowlist partition is
+the model-derived expectation; the N=1 live drive (`run.sh --scenario=init --yes`) calibrates it and
+records the AS-EXPECTED verdict + AIU (the quick-bugfix/`work`-genesis pattern). `∅ → 1984d7d6…` | PR (#85)
