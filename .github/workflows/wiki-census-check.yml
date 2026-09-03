@@ -5,10 +5,15 @@ name: Wiki census check (Parity-Map header)
 # wiki can silently drift the counters away from the tables, so this workflow re-checks the live
 # wiki page whenever the wiki changes (`gollum` fires on wiki page create/update and runs from the
 # default branch) and on demand. Read-only, credit-free, no Copilot seat involved.
+#
+# The daily cron is the backstop for the main edit path: `gollum` fires on WEB-UI wiki edits only —
+# observed 2026-09-03: three `git push`es to the wiki repo triggered zero gollum runs.
 
 on:
   gollum:
   workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *' # daily backstop — git pushes to the wiki do not fire gollum
 
 # Least privilege: reads the repo for the tool, clones the public wiki — no writes.
 permissions:
