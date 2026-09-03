@@ -99,7 +99,7 @@ test('check 3 (AC4): no copilot/seat on the LIVE path -> loud SKIP, exit 0 (not 
 test('check 5: every non-check-reference scenario is recognized on the LIVE path (no "unknown scenario")', () => {
   assert.ok(!copilotVisibleUnder(NO_COPILOT_PATH), 'test setup: copilot must be absent from NO_COPILOT_PATH');
   // Scenarios registered in run.mjs that a maintainer would drive live. Keep in sync with the registry.
-  for (const scenario of ['development', 'research', 'quick-bugfix', 'destructive-guard']) {
+  for (const scenario of ['development', 'research', 'quick-bugfix', 'destructive-guard', 'work']) {
     const res = runSh([`--scenario=${scenario}`], { PATH: NO_COPILOT_PATH });
     // The live-path case must recognize the scenario and fall through to the no-seat SKIP (exit 0),
     // NOT bail at the `*)` unknown-scenario arm (exit 2).

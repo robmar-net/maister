@@ -178,9 +178,9 @@ fi
 # --check-reference already exec'd above (it needs no sandbox), so this guards only the live path.
 case "$SCENARIO" in
   development|research) SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli" ;;
-  quick-bugfix)        SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli-bug" ;;  # seeded, test-reproducible defect
+  quick-bugfix|work)   SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli-bug" ;;  # seeded, test-reproducible defect (work routes to a bug-fix workflow over it)
   destructive-guard)   SANDBOX_TEMPLATE="$SCRIPT_DIR/sandbox/sample-cli-destructive" ;;  # exercises the block-destructive-commands hook (#48 Stage 6)
-  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research|quick-bugfix|destructive-guard)" >&2; exit 2 ;;
+  *) echo "L2 INCOMPLETE: unknown scenario '$SCENARIO' (expected development|research|quick-bugfix|destructive-guard|work)" >&2; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------- seat preflight (mirrors L1 :262-267 no-seat idiom)

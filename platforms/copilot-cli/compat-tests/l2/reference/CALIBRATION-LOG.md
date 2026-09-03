@@ -727,3 +727,33 @@ byte-identical. Post-change bundles replay AS-EXPECTED (research `20260831T14263
 bundles predating the plant/hardening (e.g. research `20260830T195404Z`, pre-#88 dev bundles) now REGRESS
 on the promoted required predicate — expected, they predate the workflow-model change and are not
 re-judged.
+
+### 37 — `work` FRONT-DOOR genesis (issue #85, #76 WP-E)
+
+Genesis of the FIFTH scenario reference, `work.skeleton.json` — the documented ENTRY POINT
+(`plugins/maister/commands/work.md`) that auto-classifies a task via the `task-classifier` subagent and
+ROUTES it, rather than a workflow named directly. Model-derived (credit-free), NOT fitted to a run.
+
+**Route-invariant required set (4).** Because the routed workflow is task-dependent (`work` "Workflow
+Type Routing"), only the predicates that hold on every route are required: `invoked_skill(work)` (W:2-3,
+the user-invocable entry skill), `delegated(task-classifier)` (W:6 — "invokes the task-classifier
+subagent … at specific steps"; classification precedes every route), `outcome(bug-fixed)=pass` (the
+Stage-2 functional oracle reused from quick-bugfix — the restaged `run-tests.sh` passes iff whatever
+`work` routed to actually fixed the seeded `upper` defect), `reached_terminal(completion)`.
+
+**Optional (5):** `invoked_skill(quick-bugfix)` (the EXPECTED route for a small scoped bug, but the
+classifier may pick `development` — both fix it), plus `gate_fired(ask|permission|exit_plan_mode)` and
+`standards(index_read)` (all belong to the routed workflow / platform, task-dependent). `rules[] = []`
+(no phase gate invented at the entry-point layer). `allowlist[] = []` at genesis.
+
+**Governance:** reuses existing grammar heads (`invoked_skill`/`delegated`/`outcome`/`reached_terminal`)
+→ NO schema/wm bump (schema_version 5 / workflow_model_version 6 hold). Hash `∅ → b7f60681…` stamped via
+`compare.computeHash`. Tree profile `work` added (empty/no-match, mirroring quick-bugfix — the routed
+workflow owns its tree; unmodelled here). Wiring: `run.mjs` SCENARIOS + `run.sh` scenario→sandbox
+(`sample-cli-bug`) + `l2-check.yml` `--check-reference`. Sandbox reused (`sample-cli-bug`).
+
+**PROVISIONAL — live calibration pending (spend-gated).** The optional/allowlist partition is the
+model-derived expectation; the N=1 live drive (`run.sh --scenario=work --yes`) calibrates it — any
+route-specific predicate the model legitimately emits (e.g. a `development` orchestrator's
+`delegated(...)`/`created_artifact(...)`) is added to `optional`/`allowlist` from that run, and the
+AS-EXPECTED verdict + AIU figure recorded — the quick-bugfix-genesis pattern (note 4). `∅ → b7f60681…` | PR (#85)
