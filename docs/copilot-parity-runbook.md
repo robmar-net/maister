@@ -213,6 +213,57 @@ sqlite3 ~/.copilot/session-store.db \
 ```
 - L2 reports say "AIU: unknown" because 1.0.75+ SDK sessions carry no `session.shutdown` usage — read the DB instead.
 
+### AIU is an exact linear function of tokens (#110)
+
+`total_nano_aiu` is not opaque. Fitting it against `(fresh_input, cache_read, output)` per model over
+6,555 local 1.0.82 requests recovers a price table, and predicting from that table reproduces the
+recorded value with a **mean absolute error of 0.00000 AIU/request for `gpt-5.4` (n=1162) and
+`gpt-5.4-mini` (n=530)** (0.001–0.002 for the smaller Claude samples):
+
+```
+AIU = fresh_in/1000 * r_f  +  cache_read/1000 * r_c  +  output/1000 * r_o
+      where fresh_in = input_tokens - cache_read_tokens
+```
+
+| model | `r_f` (fresh in) | `r_c` (cached in) | `r_o` (output) |
+|---|---|---|---|
+| `gpt-5.4` | 0.250 | 0.025 | 1.500 |
+| `gpt-5.4-mini` | 0.075 | 0.0075 | 0.450 |
+| `gpt-5.6-terra` | 0.3125 | 0.025 | 1.500 |
+| `claude-sonnet-5` | 0.250 | 0.020 | 1.000 |
+| `claude-sonnet-4.6` | 0.375 | 0.030 | 1.500 |
+| `claude-haiku-4.5` | 0.125 | 0.010 | 0.500 |
+| `gemini-3.5-flash` | 0.150 | 0.015 | 0.900 |
+
+Three consequences for how this project spends credits:
+
+1. **Output costs 4–6× fresh input and 40–60× cached input per token.** Chatty artifacts are not free.
+2. **Cached context is re-billed every turn** (~10% of the fresh rate), so run cost ≈
+   `context_size × turn_count`. Anything that adds *turns* is expensive even when it adds no words.
+3. **A saving can be predicted credit-free** from token/byte deltas and the table above — spend
+   credits only to confirm the prediction and the conformance/oracle verdicts.
+
+Two cautions, both load-bearing:
+
+- **Rates are re-priced in place.** `gpt-5.6-luna` moved 0.137 → 0.027 AIU/1k fresh input between
+  2026-07 and 2026-08, which is why a single fit across its history lands at R²≈0.45 while every
+  other model is 1.000. Re-derive after a CLI release or a model rotation — an independent reason the
+  matrix is keyed by `(maister, CLI, model, OS)`.
+- **The public GitHub billing docs describe a different meter.** They present "one premium request per
+  prompt × model multiplier" — that is the legacy `request_multiplier` column (still recorded, still
+  worth reporting), NOT the token-metered AIU this runbook treats as authoritative. Reasoning from the
+  docs alone leads to the wrong conclusion that output length is free.
+
+Re-derive the table from the local store (credit-free — reads only, no session is driven):
+
+```bash
+sqlite3 ~/.copilot/session-store.db \
+  "SELECT model, COUNT(*) n, SUM(input_tokens-cache_read_tokens) fresh, \
+          SUM(cache_read_tokens) cached, SUM(output_tokens) out, \
+          ROUND(SUM(total_nano_aiu)/1e9,3) aiu \
+   FROM assistant_usage_events GROUP BY model ORDER BY n DESC;"
+```
+
 **Scope by `session_id`, not the window alone (#63 item 5).** A both-ends `created_at` window still
 **double-counts** when other Copilot activity (a concurrent CLI, or the overlapping windows of an N>1
 sweep) falls inside it. `assistant_usage_events` carries a per-request `session_id`; `readCost` now scopes
