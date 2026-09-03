@@ -727,3 +727,41 @@ byte-identical. Post-change bundles replay AS-EXPECTED (research `20260831T14263
 bundles predating the plant/hardening (e.g. research `20260830T195404Z`, pre-#88 dev bundles) now REGRESS
 on the promoted required predicate — expected, they predate the workflow-model change and are not
 re-judged.
+
+### 37 — `work` FRONT-DOOR genesis (issue #85, #76 WP-E)
+
+Genesis of the FIFTH scenario reference, `work.skeleton.json` — the documented ENTRY POINT
+(`plugins/maister/commands/work.md`) that auto-classifies a task via the `task-classifier` subagent and
+ROUTES it, rather than a workflow named directly. Model-derived (credit-free), NOT fitted to a run.
+
+**Route-invariant required set (4).** Because the routed workflow is task-dependent (`work` "Workflow
+Type Routing"), only the predicates that hold on every route are required: `invoked_skill(work)` (W:2-3,
+the user-invocable entry skill), `delegated(task-classifier)` (W:6 — "invokes the task-classifier
+subagent … at specific steps"; classification precedes every route), `outcome(bug-fixed)=pass` (the
+Stage-2 functional oracle reused from quick-bugfix — the restaged `run-tests.sh` passes iff whatever
+`work` routed to actually fixed the seeded `upper` defect), `reached_terminal(completion)`.
+
+**Optional (5):** `invoked_skill(quick-bugfix)` (the EXPECTED route for a small scoped bug, but the
+classifier may pick `development` — both fix it), plus `gate_fired(ask|permission|exit_plan_mode)` and
+`standards(index_read)` (all belong to the routed workflow / platform, task-dependent). `rules[] = []`
+(no phase gate invented at the entry-point layer). `allowlist[] = []` at genesis.
+
+**Governance:** reuses existing grammar heads (`invoked_skill`/`delegated`/`outcome`/`reached_terminal`)
+→ NO schema/wm bump (schema_version 5 / workflow_model_version 6 hold). Hash `∅ → b7f60681…` stamped via
+`compare.computeHash`. Tree profile `work` added (empty/no-match, mirroring quick-bugfix — the routed
+workflow owns its tree; unmodelled here). Wiring: `run.mjs` SCENARIOS + `run.sh` scenario→sandbox
+(`sample-cli-bug`) + `l2-check.yml` `--check-reference`. Sandbox reused (`sample-cli-bug`).
+
+**Live calibration (N=1, Copilot 1.0.82, bundle `20260903T003148Z`, 18.92 AIU).** The classifier routed
+this "upper prints lowercase" bug to the FULL `development` workflow (a documented route, not the quick
+path) and fixed it. All 4 route-invariant REQUIRED predicates matched — `invoked_skill(work)`,
+`delegated(task-classifier)`, `outcome(bug-fixed)=pass`, `reached_terminal(completion)` — proving the
+front door routes + the routed workflow produces the correct deliverable. The 16 development-route
+predicates the run emitted (`invoked_skill(development|codebase-analyzer|implementation-plan-executor|
+implementation-verifier|reviews-code|reviews-spec-audit)`, `delegated(explore|codebase-analysis-reporter|
+gap-analyzer|specification-creator|spec-auditor|implementation-planner|task-group-implementer|
+implementation-completeness-checker|code-reviewer)`, `todos(created)`) were moved required-side-untouched
+into `optional` — model-grounded (each is a documented `development` marker, present in that scenario's own
+reference), NOT fitted: they are optional because the route is task-dependent, so a future quick route
+simply leaves them unobserved. Re-hash `b7f60681… → 59659cc3…`; the bundle now replays **AS-EXPECTED
+4·0·0**. `∅ → b7f60681… → 59659cc3…` | PR (#85)

@@ -60,6 +60,7 @@ import developmentScenario from './scenarios/development.mjs';
 import researchScenario from './scenarios/research.mjs';
 import quickBugfixScenario from './scenarios/quick-bugfix.mjs';
 import destructiveGuardScenario from './scenarios/destructive-guard.mjs';
+import workScenario from './scenarios/work.mjs';
 
 // --------------------------------------------------------------------------- scenario registry
 // Keyed by id. `development` is the MVP-proven default; `research` is the second workflow shape, added
@@ -70,6 +71,7 @@ const SCENARIOS = Object.freeze({
   [researchScenario.id]: researchScenario,
   [quickBugfixScenario.id]: quickBugfixScenario,
   [destructiveGuardScenario.id]: destructiveGuardScenario,
+  [workScenario.id]: workScenario,
 });
 const DEFAULT_SCENARIO_ID = developmentScenario.id;
 

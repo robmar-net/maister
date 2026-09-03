@@ -593,6 +593,17 @@ export const TREE_PROFILES = Object.freeze({
     collapseDirs: [],
     fallbackDirs: [],
   },
+  work: {
+    // `work` (#85) is a routing ENTRY POINT — the routed workflow owns whatever tree it writes, and the
+    // route is task-dependent. An empty, no-match profile keeps the `work` reference route-INVARIANT
+    // (events-only: invoked_skill(work) + delegated(task-classifier) + outcome + terminal); any routed
+    // orchestrator artifacts stay unmodelled here and, if observed, are calibrated into the reference's
+    // optional/allowlist from the live run rather than fitted blindly. Mirrors the quick-bugfix profile.
+    taskType: 'work',
+    exactArtifacts: [],
+    collapseDirs: [],
+    fallbackDirs: [],
+  },
 });
 
 const DEFAULT_TREE_PROFILE = TREE_PROFILES.development;
