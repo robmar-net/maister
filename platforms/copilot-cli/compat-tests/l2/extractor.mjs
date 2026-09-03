@@ -604,6 +604,17 @@ export const TREE_PROFILES = Object.freeze({
     collapseDirs: [],
     fallbackDirs: [],
   },
+  init: {
+    // `init` (#85) bootstraps a DOCS tree at `.maister/docs/**` (not `.maister/tasks/`), so it uses the
+    // `rootRel` override. INDEX.md is the always-created core artifact (init/SKILL.md :167 "Verify INDEX.md
+    // exists"); the per-category project docs are conditional on the standards selection, so only INDEX.md
+    // is modelled here as `created_artifact(INDEX.md)` — the rest, if observed, calibrate into optional.
+    taskType: 'init',
+    rootRel: path.join('.maister', 'docs'),
+    exactArtifacts: ['INDEX.md'],
+    collapseDirs: [],
+    fallbackDirs: [],
+  },
 });
 
 const DEFAULT_TREE_PROFILE = TREE_PROFILES.development;
@@ -619,6 +630,13 @@ const isFile = (p) => {
 // `root` being the sandbox rundir (contains `.maister/tasks/<taskType>/*/`) OR a single task dir.
 function findTaskDirs(root, profile) {
   const dirs = [];
+  // #85 `init` writes a docs tree at `.maister/docs/**`, NOT `.maister/tasks/<taskType>/*`. A profile
+  // with an explicit `rootRel` treats that path (under the rundir) as its single "task dir" so
+  // exactArtifacts resolve relative to it — bypassing the tasks/<taskType> convention entirely.
+  if (profile.rootRel) {
+    const r = path.join(root, profile.rootRel);
+    return isDir(r) ? [r] : [];
+  }
   const typeDir = path.join(root, '.maister', 'tasks', profile.taskType);
   if (isDir(typeDir)) {
     for (const e of fs.readdirSync(typeDir, { withFileTypes: true })) {
@@ -950,11 +968,16 @@ export function extract({ events = [], taskDirRoot = null, stateYaml = null, tas
   }
 
   // SANITY FLOOR (MEDIUM-2, now outcome-aware — MEDIUM-4): zero completed phases while task-tree
-  // artifacts exist is normally a parse failure / stalled run -> INCOMPLETE, never a silent REGRESSED.
-  // EXCEPTION: a FAILING outcome is the most trustworthy signal and must never be downgraded to
-  // INCOMPLETE — suppressing the short-circuit lets `compare` produce REGRESSED.
+  // artifacts exist is normally a parse failure / stalled ORCHESTRATOR run -> INCOMPLETE, never a silent
+  // REGRESSED. EXCEPTIONS:
+  //   • a FAILING outcome is the most trustworthy signal and must never be downgraded to INCOMPLETE
+  //     (suppressing the short-circuit lets `compare` produce REGRESSED); and
+  //   • a `rootRel` (docs-rooted) profile is NOT an orchestrator task tree — `init` (#85) writes
+  //     `.maister/docs/**` with NO orchestrator-state.yml, so zero phases is CORRECT, not a stall; the
+  //     phase invariant does not apply, so its legitimate `created_artifact(INDEX.md)` must not trip.
   const artifactsExist = treeRecords.some((r) => r.kind === 'created_artifact');
-  const incomplete = state.phases.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
+  const incomplete = !profile.rootRel
+    && state.phases.length === 0 && artifactsExist && !outcomeRecords.some((r) => r.value === 'fail');
   const incompleteReason = incomplete
     ? 'State parse yielded ZERO completed phases while task-tree artifacts exist; refusing to emit a '
       + 'silent all-phases-missing set (which would false-alarm as REGRESSED). Treat as INCOMPLETE.'

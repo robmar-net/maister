@@ -349,6 +349,26 @@ test('T7 sanity floor: empty completed_phases while task-tree artifacts exist ->
   assert.deepEqual(new Set(ok.records.map((r) => r.source)), new Set(['state', 'events', 'tree']));
 });
 
+test('T7b sanity floor: a rootRel (docs-rooted) profile with artifacts + ZERO phases is NOT INCOMPLETE (#85 init)', () => {
+  // `init` writes `.maister/docs/**` with NO orchestrator-state.yml, so zero completed phases is CORRECT,
+  // not a stalled orchestrator. The init TREE_PROFILE (rootRel: .maister/docs) yields created_artifact
+  // (INDEX.md); the floor MUST NOT trip on it (that was the first live-drive false-INCOMPLETE, #85).
+  const rundir = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-init-'));
+  try {
+    const docs = path.join(rundir, '.maister', 'docs');
+    fs.mkdirSync(docs, { recursive: true });
+    fs.writeFileSync(path.join(docs, 'INDEX.md'), '# Project Documentation\n\n- vision\n- standards\n');
+    const result = extract({ events: [], taskDirRoot: rundir, taskType: 'init', stateYaml: null });
+    // The docs artifact is captured...
+    assert.ok(result.records.some((r) => r.kind === 'created_artifact' && r.name === 'INDEX.md'),
+      'created_artifact(INDEX.md) must be extracted from the docs-rooted profile');
+    // ...but zero phases + that artifact does NOT trip the floor (rootRel exemption).
+    assert.equal(result.incomplete, false, 'a rootRel profile is exempt from the zero-phases sanity floor');
+  } finally {
+    fs.rmSync(rundir, { recursive: true, force: true });
+  }
+});
+
 // =========================================================================
 // STAGE 4 (issue #48) — precedes / min_count / state_schema (Task Group 2)
 // =========================================================================

@@ -765,3 +765,42 @@ into `optional` — model-grounded (each is a documented `development` marker, p
 reference), NOT fitted: they are optional because the route is task-dependent, so a future quick route
 simply leaves them unobserved. Re-hash `b7f60681… → 59659cc3…`; the bundle now replays **AS-EXPECTED
 4·0·0**. `∅ → b7f60681… → 59659cc3…` | PR (#85)
+
+### 38 — `init` FIRST-TOUCH genesis (issue #85, #76 WP-E)
+
+Genesis of the SIXTH scenario reference, `init.skeleton.json` — the framework-bootstrap entry point
+(`skills/init/SKILL.md`), which analyses the project and builds the `.maister/docs/**` reference tree.
+`init`, `project-analyzer` and `docs-manager` were ⚪ (never observed on Copilot). Model-derived
+(credit-free), NOT fitted.
+
+**Required (6):** `invoked_skill(init)` (I:1-3), `delegated(project-analyzer)` (I:49 — Task-tool codebase
+analysis), `delegated(docs-operator)` (I:11/:112/:160 — all docs-manager ops run via the docs-operator
+subagent), `created_artifact(INDEX.md)` (I:167 "Verify INDEX.md exists"), `outcome(init-structure)=pass`
+(Stage-2 functional oracle: `.maister/docs/INDEX.md` non-trivial — exists with ≥5 non-blank lines, no
+restage since init CREATES the tree), `reached_terminal(completion)`. **Optional (5):**
+`invoked_skill(standards-discover)` (I:11 Phase-8 via Skill tool), `gate_fired(ask|permission|exit_plan_mode)`,
+`standards(index_read)`.
+
+**New sandbox + extractor capability.** `sample-cli-bare` (the sample CLI with NO `.maister/`) so init
+bootstraps from scratch. `TREE_PROFILES.init` adds a `rootRel: .maister/docs` override to `findTaskDirs`
+— the FIRST profile whose `created_artifact` root is not `.maister/tasks/<taskType>` — so INDEX.md is read
+from the docs tree init writes. Harness change (not a reference edit), covered by unit suite.
+
+**Governance:** reuses existing grammar heads → NO schema/wm bump (schema 5 / wm 6 hold). Hash
+`∅ → 1984d7d6…` via `compare.computeHash`. Wiring: `run.mjs` SCENARIOS + `run.sh` scenario→sandbox
+(`sample-cli-bare`) + `l2-check.yml` `--check-reference` + `run-sh` test check-5.
+
+**Live calibration (N=1, Copilot 1.0.82, bundle `20260903T004846Z`, 25.14 AIU).** All 6 REQUIRED
+predicates matched — init invoked, `project-analyzer` + `docs-operator` delegated, `INDEX.md` created,
+`init-structure` passed (non-trivial index), completion reached — proving the first-touch bootstrap works
+end to end (`project-analyzer` ran on `claude-haiku-4.5`, confirming the #86 model mapping live). Three
+route-legitimate extras moved to `optional`: `invoked_skill(docs-manager)` (init's docs engine, surfaced
+as a skill invocation alongside the `docs-operator` delegation), `delegated(general-purpose)` (Copilot
+routed an analysis step to its built-in general-purpose agent), `todos(created)` (the setup tracked as
+task items). Re-hash `1984d7d6… → 058ff454…`; bundle replays **AS-EXPECTED 6·0·0**.
+
+**Harness fix required by this genesis (not a reference edit):** the MEDIUM-2 sanity floor false-tripped
+INCOMPLETE on the first drive — it treats "zero completed phases WHILE task-tree artifacts exist" as a
+stalled orchestrator, but a `rootRel` (docs-rooted) profile like `init` writes `.maister/docs/**` with NO
+orchestrator-state.yml, so zero phases is CORRECT. `extract()` now exempts `rootRel` profiles from the
+floor (`extractor.mjs`), covered by a unit test. `∅ → 1984d7d6… → 058ff454…` | PR (#85)

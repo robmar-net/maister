@@ -23,6 +23,7 @@ on:
           - quick-bugfix
           - destructive-guard
           - work
+          - init
         default: all
 
 # Least privilege: this workflow only reads the repo and runs tests — no writes, no commits.
@@ -89,6 +90,11 @@ jobs:
           if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "work" ]; then
             echo "::group::work reference"
             bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=work --check-reference || rc=$?
+            echo "::endgroup::"
+          fi
+          if [ "$SCENARIO" = "all" ] || [ "$SCENARIO" = "init" ]; then
+            echo "::group::init reference"
+            bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=init --check-reference || rc=$?
             echo "::endgroup::"
           fi
           exit "$rc"
