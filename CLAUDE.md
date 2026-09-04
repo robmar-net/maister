@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **FORK ADDITION (robmar-net/maister).** This is a downstream fork. Its binding working agreement
+> lives in `AGENTS.md` and is imported here so Claude Code actually loads it — without this line
+> `AGENTS.md` is never read, and rules such as "never push upstream", the `+fork.N` versioning
+> scheme and the one-ticket-one-worktree rule silently do not apply. Read it before any change:
+>
+> @AGENTS.md
+>
+> Everything below is upstream's file, kept verbatim.
+
 ## Repository Overview
 
 This is a Claude Code plugin marketplace repository containing bundled plugins for AI-driven SDLC workflows. The main plugin is `maister` which provides structured development workflows.
