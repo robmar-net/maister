@@ -19,9 +19,17 @@
 //
 // NULL DISCIPLINE (spec R7, `extractUsage` rule): every VALUE derived from an event payload is `null` when
 // its source event is absent — never 0 (aiu.*, tokens.*, weightedRequests, systemTokensInitial,
-// toolDefinitionTokens.initial, wallMinutes, crossCheck.*, servedModels.main). Event COUNTS (usageEvents,
-// subagents.count, reads.viewTotal, cacheBreaks.count, gates.total, ...) are true observations over the
-// stream and may be 0.
+// toolDefinitionTokens.initial, wallMinutes, crossCheck.*, servedModels.main, modelMix.offPin.*). Event
+// COUNTS (usageEvents, subagents.count, reads.viewTotal, cacheBreaks.count, gates.total, ...) are true
+// observations over the stream and may be 0.
+//
+// MODEL MIX (#129): Copilot picks the model PER DELEGATION at `subagent.configured` time and ignores both
+// the session pin and the agent's `model: inherit` — one such delegation was worth ~24 AIU on a development
+// drive and ~82 on research. `modelMix` reports the pin (`meta.sessionOptions.model` ?? `meta.model`, read
+// from the bundle — never a catalog), the per-model split, and the AIU that entered the drive OUTSIDE the
+// pin, with the agents and `subagent.configured` models that carried it. NO hardcoded model list exists in
+// this file: `KNOWN_RATES` is a rate-drift detector only (see its comment) and money always comes from the
+// per-event `tokenDetails`.
 //
 // AGENT JOIN (spec R7, audit I12): a usage/usage_info/skill/view event's top-level `agentId` joins
 // `subagent.started.agentId` -> `data.agentName`; events without `agentId` belong to `main`.
@@ -46,8 +54,12 @@ import { computeHash, EXIT } from '../compare.mjs';
 // otherwise silently null this report's gates). An unknown/absent scenario still yields mapped/fallback
 // null (never a throw — the report stays useful for a foreign bundle).
 
-// Informational price table, AIU per 1 M tokens per class (spec R7). Totals ALWAYS use the observed
-// per-event prices; this only flags drift so a rate change on the provider side is visible.
+// STALENESS DETECTOR, not an authority (#129). AIU per 1 M tokens per class. Money is ALWAYS derived
+// per event from `tokenDetails[].costPerBatch / batchSize` — this table never enters a total and is NEVER
+// a catalog of "the models we support": the provider's model list rotates faster than this file, so a
+// model missing from it is `no cross-check row` (an absence of evidence), NEVER a defect. Its one job is
+// to make a rate CHANGE on a model we did record visible as a drift warning. Add a row only after
+// observing the rate in a real bundle; never delete a row to silence a drift.
 export const KNOWN_RATES = Object.freeze({
   'gpt-5.6-luna': { input: 20, cache_read: 2, cache_write: 25, output: 120 },
   'gpt-5.4-mini': { input: 75, cache_read: 7.5, cache_write: 0, output: 450 },
@@ -136,6 +148,19 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
   }
   // 'main' for no agentId; the joined agentName; 'unjoined' when the agentId matches no subagent.started.
   const agentOf = (e) => (e?.agentId == null ? 'main' : (agentById.get(e.agentId) ?? 'unjoined'));
+  // subagent.configured carries the model the RUNTIME chose for that delegation (#129) — the evidence
+  // line for an off-pin model. It has no agentName, so it joins on agentId only (audit I12).
+  const configuredModelById = new Map();
+  for (const c of configured) {
+    const cm = c?.data?.model;
+    if (c.agentId != null && typeof cm === 'string' && !configuredModelById.has(c.agentId)) configuredModelById.set(c.agentId, cm);
+  }
+
+  // -- the session model pin, read from the bundle alone: the exact object passed to createSession
+  // (meta v2 `sessionOptions`), else the legacy `meta.model`. NO catalog lookup, NO default — an
+  // unknown pin is null, and every offPin figure below is then null (unknown), never 0.
+  const pin = typeof m.sessionOptions?.model === 'string' && m.sessionOptions.model ? m.sessionOptions.model
+    : (typeof m.model === 'string' && m.model ? m.model : null);
 
   // -- assistant.usage: AIU / tokens / models / agents / prices / weighted requests
   const usage = byType(evs, 'assistant.usage');
@@ -150,6 +175,11 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
   const unmatchedParents = new Set();
   const availableToolCounts = new Set();
   let subagentUsageEvents = 0;
+  // #129 model mix: what the runtime actually served vs what the session was pinned to.
+  const offPinModels = new Set();
+  const offPinByAgent = {};
+  let offPinCalls = 0;
+  let offPinNano = null;
   for (const u of usage) {
     const d = u?.data ?? {};
     const model = String(d.model ?? 'unknown');
@@ -157,17 +187,29 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
     const cu = d.copilotUsage;
     const nano = isNum(cu?.totalNanoAiu) ? cu.totalNanoAiu : null;
     if (nano != null) nanoTotal = (nanoTotal ?? 0) + nano;
+    const bm = (byModel[model] ??= { aiu: null, calls: 0, tokens: null });
     for (const td of Array.isArray(cu?.tokenDetails) ? cu.tokenDetails : []) {
       const cls = td?.tokenType;
       if (typeof cls !== 'string' || !isNum(td.tokenCount) || !isNum(td.costPerBatch) || !isNum(td.batchSize) || td.batchSize === 0) continue;
       nanoByClass[cls] = (nanoByClass[cls] ?? 0) + (td.tokenCount * td.costPerBatch) / td.batchSize;
       tokensByClass[cls] = (tokensByClass[cls] ?? 0) + td.tokenCount;
+      bm.tokens = (bm.tokens ?? 0) + td.tokenCount;
       const ratePerM = round((td.costPerBatch / td.batchSize) * 1e6 / 1e9, 6); // AIU per 1 M tokens
       ((observedRates[model] ??= {})[cls] ??= new Set()).add(ratePerM);
     }
-    const bm = (byModel[model] ??= { aiu: null, calls: 0 });
     bm.calls += 1;
     if (nano != null) bm.aiu = (bm.aiu ?? 0) + nano;
+    if (pin != null && model !== pin) {
+      offPinCalls += 1;
+      offPinModels.add(model);
+      if (nano != null) offPinNano = (offPinNano ?? 0) + nano;
+      const oa = (offPinByAgent[agent] ??= { models: new Set(), configured: new Set(), calls: 0, aiu: null });
+      oa.calls += 1;
+      oa.models.add(model);
+      const cfg = u.agentId == null ? null : configuredModelById.get(u.agentId);
+      if (typeof cfg === 'string') oa.configured.add(cfg);
+      if (nano != null) oa.aiu = (oa.aiu ?? 0) + nano;
+    }
     const ba = (byAgent[agent] ??= { aiu: null, calls: 0, models: new Set() });
     ba.calls += 1;
     ba.models.add(model);
@@ -189,6 +231,40 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
   };
   const aiuByModel = {};
   for (const k of Object.keys(byModel).sort()) aiuByModel[k] = { aiu: nanoToAiu(byModel[k].aiu), calls: byModel[k].calls };
+
+  // -- #129 model mix. `pin` is what the SESSION asked for; Copilot re-decides per delegation at
+  // `subagent.configured` time and ignores both the pin and the agent's `model: inherit`, so an off-pin
+  // model can enter a drive silently and swing its AIU by an order of magnitude. Nothing here consults a
+  // model catalog: every id comes from this bundle's own events, every price from its own tokenDetails.
+  //   offPin.aiu  0        -> usage observed, all of it on the pin
+  //               > 0      -> the runtime's own choice, priced from the bundle
+  //               null     -> unknown (no pin recorded, no usage event, or off-pin usage carrying no
+  //                           copilotUsage) — never 0.
+  //   verdict     null when the pin is unknown OR no usage event was observed (nothing to judge).
+  const mixByModel = {};
+  for (const k of Object.keys(byModel).sort()) mixByModel[k] = { calls: byModel[k].calls, aiu: nanoToAiu(byModel[k].aiu), tokens: byModel[k].tokens };
+  const oneOrList = (set) => { const a = [...set].sort(); return a.length === 0 ? null : a.length === 1 ? a[0] : a; };
+  const mixKnown = pin != null && usage.length > 0;
+  const offPinNanoEff = !mixKnown ? null : (offPinCalls === 0 ? 0 : offPinNano);
+  const offPinAgentObj = {};
+  for (const k of Object.keys(offPinByAgent).sort()) {
+    const oa = offPinByAgent[k];
+    offPinAgentObj[k] = { model: oneOrList(oa.models), configured: oneOrList(oa.configured), calls: oa.calls, aiu: nanoToAiu(oa.aiu) };
+  }
+  const modelMix = {
+    pin,
+    byModel: mixByModel,
+    offPin: mixKnown
+      ? {
+        models: [...offPinModels].sort(),
+        calls: offPinCalls,
+        aiu: offPinNanoEff == null ? null : nanoToAiu(offPinNanoEff),
+        share: offPinNanoEff == null || nanoTotal == null || nanoTotal === 0 ? null : round(offPinNanoEff / nanoTotal, 4),
+        byAgent: offPinAgentObj,
+      }
+      : { models: null, calls: null, aiu: null, share: null, byAgent: null },
+    verdict: !mixKnown ? null : (offPinCalls > 0 ? 'off-pin' : 'on-pin'),
+  };
   const aiuByAgent = {};
   for (const k of Object.keys(byAgent).sort()) aiuByAgent[k] = { aiu: nanoToAiu(byAgent[k].aiu), calls: byAgent[k].calls, models: [...byAgent[k].models].sort() };
   const pricesObserved = {};
@@ -198,7 +274,9 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
     for (const c of CLASSES) if (observedRates[model][c]) pricesObserved[model][c] = numSorted(observedRates[model][c]);
     for (const c of Object.keys(observedRates[model]).sort()) if (!(c in pricesObserved[model])) pricesObserved[model][c] = numSorted(observedRates[model][c]);
     const known = KNOWN_RATES[model];
-    if (!known) { pricesCheck[model] = 'unknown-model'; continue; }
+    // Absent from the drift table is an ABSENCE OF EVIDENCE, not a defect (#129): the provider's model
+    // list rotates, the totals never used this table, and the report must not read as broken.
+    if (!known) { pricesCheck[model] = 'no cross-check row'; continue; }
     const drifts = [];
     for (const c of CLASSES) {
       const obs = pricesObserved[model][c];
@@ -309,6 +387,7 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
     aiu: { total: aiuTotal, byClass: classObj(nanoByClass, nanoToAiu), byModel: aiuByModel, byAgent: aiuByAgent },
     tokens: { byClass: classObj(tokensByClass, (v) => v) },
     usageEvents: usage.length,
+    modelMix,
     joins: {
       subagents: started.length,
       subagentUsageEvents,
@@ -362,6 +441,32 @@ const fmt = (v) => {
 };
 const deltaCell = (d) => (d == null ? 'null (one side unknown)' : Math.abs(d) < 5e-7 ? 'matches (Δ 0.000000)' : `Δ ${d.toFixed(6)}`);
 
+// `## Model mix` (#129) — what the session PINNED vs what the runtime actually served, and the AIU that
+// entered the drive outside the pin. `null` everywhere means unknown (no pin recorded / no usage), not 0.
+function renderModelMix(mm) {
+  const L = ['## Model mix', ''];
+  L.push('| metric | value |'); L.push('|---|---|');
+  L.push(`| pin (\`sessionOptions.model\` ?? \`meta.model\`) | ${fmt(mm.pin)} |`);
+  L.push(`| verdict | ${fmt(mm.verdict)} |`);
+  L.push(`| offPin.models | ${fmt(mm.offPin.models)} |`);
+  L.push(`| offPin.calls | ${fmt(mm.offPin.calls)} |`);
+  L.push(`| offPin.aiu | ${fmt(mm.offPin.aiu)} |`);
+  L.push(`| offPin.share of aiu.total | ${fmt(mm.offPin.share)} |`);
+  if (mm.verdict === 'off-pin') {
+    L.push('');
+    L.push(`- ⚠ **off-pin models served** — the runtime chose ${fmt(mm.offPin.models)} for ${mm.offPin.calls} usage event(s) although the session was pinned to \`${mm.pin}\`. Copilot decides the model per delegation at \`subagent.configured\` time and ignores both the session pin and the agent's \`model: inherit\`; this AIU is the runtime's choice, not the arm's. **Do not compare this drive with one whose served-model set differs** (\`ab-compare\` refuses it).`);
+  }
+  const agents = mm.offPin.byAgent;
+  if (agents && Object.keys(agents).length) {
+    L.push('');
+    L.push('| off-pin agent | served model | subagent.configured model | calls | AIU |');
+    L.push('|---|---|---|---|---|');
+    for (const [name, v] of Object.entries(agents)) L.push(`| ${name} | ${fmt(v.model)} | ${fmt(v.configured)} | ${v.calls} | ${fmt(v.aiu)} |`);
+  }
+  L.push('');
+  return L;
+}
+
 export function renderMarkdown(mx) {
   const L = [];
   const row = (k, v) => L.push(`| ${k} | ${fmt(v)} |`);
@@ -382,12 +487,19 @@ export function renderMarkdown(mx) {
   row(`aiu.total vs session.usage_checkpoint (${fmt(mx.crossCheck.recorded.checkpointAiu)})`, deltaCell(mx.crossCheck.aiuVsCheckpoint));
   row(`weightedRequests vs meta.cost.weightedRequests (${fmt(mx.crossCheck.recorded.metaWeightedRequests)})`, deltaCell(mx.crossCheck.weightedVsMeta));
   L.push('');
-  L.push('## By model'); L.push(''); L.push('| model | calls | AIU | price check | observed AIU / 1M (in, cache_read, cache_write, out) |'); L.push('|---|---|---|---|---|');
+  L.push('## By model'); L.push(''); L.push('| model | calls | AIU | tokens | price check | observed AIU / 1M (in, cache_read, cache_write, out) |'); L.push('|---|---|---|---|---|---|');
   for (const [model, v] of Object.entries(mx.aiu.byModel)) {
     const obs = mx.prices.observed[model];
-    L.push(`| ${model} | ${v.calls} | ${fmt(v.aiu)} | ${mx.prices.check[model] ?? 'n/a'} | ${obs ? CLASSES.map((c) => fmt(obs[c])).join(' / ') : 'n/a'} |`);
+    const tokens = mx.modelMix.byModel[model]?.tokens ?? null;
+    L.push(`| ${model} | ${v.calls} | ${fmt(v.aiu)} | ${fmt(tokens)} | ${mx.prices.check[model] ?? 'n/a'} | ${obs ? CLASSES.map((c) => fmt(obs[c])).join(' / ') : 'n/a'} |`);
+  }
+  // The drift table is informational: a missing row is `no cross-check row`, a moved rate is a WARNING —
+  // never a failure, and never a source of money (totals are re-priced per event).
+  for (const [model, check] of Object.entries(mx.prices.check)) {
+    if (typeof check === 'string' && check.startsWith('drift:')) L.push(`- ⚠ **rate drift** — \`${model}\`: ${check.replace(/drift: /g, '')}. KNOWN_RATES is a staleness detector, not an authority (the catalog rotates); AIU totals used the observed per-event prices.`);
   }
   L.push('');
+  L.push(...renderModelMix(mx.modelMix));
   L.push('## By agent'); L.push(''); L.push('| agent | calls | AIU | models |'); L.push('|---|---|---|---|');
   for (const [agent, v] of Object.entries(mx.aiu.byAgent)) L.push(`| ${agent} | ${v.calls} | ${fmt(v.aiu)} | ${fmt(v.models)} |`);
   L.push('');

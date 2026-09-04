@@ -1,4 +1,4 @@
-// Credit-free checks for `l2/tools/cost-report.mjs` (issue #122, G4 / spec R7 + R9).
+// Credit-free checks for `l2/tools/cost-report.mjs` (issue #122, G4 / spec R7 + R9; #129 model mix).
 // Run ONLY this file:
 //   node --test platforms/copilot-cli/compat-tests/l2/test/cost-report.test.mjs
 //
@@ -8,6 +8,13 @@
 // `extractFromBundle` + `deriveVerdict` exports of run.mjs) WITHOUT writing a report, emits deterministic
 // `--json`, and honours the process contract (no args -> exit 2, unreadable events.json -> exit 2, never
 // writes into the bundle dir).
+//
+// #129 (last four cases): `modelMix` reports the session pin (`meta.sessionOptions.model` ?? `meta.model`,
+// read from the bundle — there is NO model catalog anywhere in the tool), the per-model split, and the AIU
+// that entered the drive OUTSIDE the pin with the agent and `subagent.configured` model that carried it;
+// an unknown pin nulls every offPin field (never 0); and `KNOWN_RATES` is proven to be a staleness detector
+// — a model missing from it renders the neutral `no cross-check row`, a moved rate renders a drift WARNING,
+// and neither ever changes a total.
 //
 // CREDIT-FREE: the tool only reads events.json / replay-meta.json; `--verdict` re-runs the outcome oracle
 // on the persisted rundir copy and never imports the SDK (the staged research bundle carries a bogus
@@ -381,4 +388,145 @@ test('wallMinutes on a 200 000-event bundle: no RangeError (single-pass min/max,
   assert.doesNotThrow(() => { m = computeMetrics({ events, meta: {}, dir: path.join(os.tmpdir(), '20990607T000000Z') }); }, '200 000 events must not throw (RangeError from a spread)');
   assert.equal(m.bundle.events, N, 'event count observed');
   assert.equal(m.wallMinutes, 61, 'wallMinutes = (max − min) / 60000 = 61.00 over the out-of-order extremes');
+});
+
+// ---------------------------------------------------------------- #129 model mix
+// Synthetic, inline, tiny: one `assistant.usage` per served model, priced exactly as a real event is
+// (`tokenDetails[].costPerBatch / batchSize`), so the report's own arithmetic — never a table — produces
+// the AIU. `reports/` is not read here either.
+const RATE = Object.freeze({ luna: { input: 20, cache_read: 2, cache_write: 25, output: 120 } });
+const usageEvent = ({ model, nanoAiu, agentId = null, ratePerM = RATE.luna, tokenCount = 1000, timestamp = '2099-06-08T00:00:00.000Z' }) => ({
+  type: 'assistant.usage',
+  ...(agentId == null ? {} : { agentId }),
+  timestamp,
+  data: {
+    model,
+    cost: 1,
+    copilotUsage: {
+      totalNanoAiu: nanoAiu,
+      tokenDetails: Object.entries(ratePerM).map(([tokenType, perM]) => ({ batchSize: 1e6, costPerBatch: perM * 1e9, tokenCount, tokenType })),
+    },
+  },
+});
+const MIX_DIR = path.join(os.tmpdir(), '20990608T000000Z');
+
+test('#129 modelMix: pin honored -> verdict "on-pin" with offPin.aiu 0; one off-pin delegation -> "off-pin", its AIU/share, and offPin.byAgent naming the agent AND its subagent.configured model', () => {
+  const pinned = { sessionOptions: { skipCustomInstructions: true, model: 'gpt-5.6-luna' } };
+
+  // (a) every usage event on the pin.
+  const onPin = computeMetrics({
+    events: [usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 1e9 }), usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 3e9 })],
+    meta: pinned,
+    dir: MIX_DIR,
+  });
+  assert.equal(onPin.modelMix.pin, 'gpt-5.6-luna', 'pin read from meta.sessionOptions.model (no catalog lookup)');
+  assert.equal(onPin.modelMix.verdict, 'on-pin', 'nothing served off the pin -> verdict "on-pin"');
+  assert.equal(onPin.modelMix.offPin.aiu, 0, 'offPin.aiu is a REAL 0 here: usage was observed and none of it was off-pin');
+  assert.equal(onPin.modelMix.offPin.calls, 0, 'no off-pin usage event');
+  assert.deepEqual(onPin.modelMix.offPin.models, [], 'no off-pin model');
+  assert.equal(onPin.modelMix.offPin.share, 0, 'share 0 of a 4 AIU drive');
+  assert.deepEqual(onPin.modelMix.offPin.byAgent, {}, 'no off-pin agent');
+  assert.deepEqual(onPin.modelMix.byModel, { 'gpt-5.6-luna': { calls: 2, aiu: 4, tokens: 8000 } }, 'byModel: calls, AIU and Σ tokenCount for the one served model');
+
+  // (b) the #129 shape: a subagent the runtime configured onto a stronger model than the session pin.
+  const A = 'a0000000-0000-4000-8000-00000000000a';
+  const events = [
+    { type: 'subagent.started', agentId: A, timestamp: '2099-06-08T00:00:01.000Z', data: { agentName: 'maister-copilot:test-suite-runner', toolCallId: 'tc-1' } },
+    { type: 'subagent.configured', agentId: A, timestamp: '2099-06-08T00:00:02.000Z', data: { model: 'claude-sonnet-5', reasoningEffort: 'high', multiTurn: false } },
+    usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 1e9 }),
+    usageEvent({ model: 'claude-sonnet-5', nanoAiu: 3e9, agentId: A, ratePerM: { input: 200, cache_read: 20, cache_write: 250, output: 1000 } }),
+  ];
+  const off = computeMetrics({ events, meta: pinned, dir: MIX_DIR });
+  assert.equal(off.modelMix.verdict, 'off-pin', 'a served model != pin -> verdict "off-pin"');
+  assert.deepEqual(off.modelMix.offPin.models, ['claude-sonnet-5'], 'the off-pin model, from the bundle events');
+  assert.equal(off.modelMix.offPin.calls, 1, 'one off-pin usage event');
+  assert.equal(off.modelMix.offPin.aiu, 3, 'offPin.aiu = Σ totalNanoAiu of the off-pin events / 1e9');
+  assert.equal(off.aiu.total, 4, 'drive total is 4 AIU');
+  assert.equal(off.modelMix.offPin.share, 0.75, 'share = offPin.aiu / aiu.total, 4 dp');
+  assert.deepEqual(off.modelMix.offPin.byAgent, {
+    'maister-copilot:test-suite-runner': { model: 'claude-sonnet-5', configured: 'claude-sonnet-5', calls: 1, aiu: 3 },
+  }, 'the off-pin AIU is attributed to the joined agentName, with the subagent.configured model as the mechanism evidence');
+
+  const md = renderMarkdown(off);
+  assert.match(md, /## Model mix/, 'markdown carries a Model mix section');
+  assert.match(md, /off-pin models served/, 'an off-pin verdict renders a visible warning line');
+  assert.match(md, /maister-copilot:test-suite-runner \| claude-sonnet-5 \| claude-sonnet-5 \| 1 \| 3 \|/, 'the off-pin agent row names served + configured model');
+  assert.ok(!md.includes('undefined'), 'markdown never renders undefined');
+});
+
+test('#129 modelMix null discipline: a legacy meta with no sessionOptions and no model -> pin null, every offPin field null (never 0), verdict null, byModel still observed, no crash', () => {
+  const events = [usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 1e9 }), usageEvent({ model: 'gpt-5.4-mini', nanoAiu: 2e9, ratePerM: { input: 75, cache_read: 7.5, cache_write: 0, output: 450 } })];
+  const m = computeMetrics({ events, meta: { scenario: 'development', ts: '20990608T000000Z' }, dir: MIX_DIR });
+  assert.equal(m.modelMix.pin, null, 'no sessionOptions.model and no meta.model -> pin null');
+  assert.equal(m.modelMix.verdict, null, 'an unknown pin cannot be judged -> verdict null');
+  for (const k of ['models', 'calls', 'aiu', 'share', 'byAgent']) {
+    assert.equal(m.modelMix.offPin[k], null, `offPin.${k} is null (unknown), never 0/[]/{} — the R7 null-never-0 discipline`);
+  }
+  assert.deepEqual(Object.keys(m.modelMix.byModel), ['gpt-5.4-mini', 'gpt-5.6-luna'], 'the served models are still observed and sorted');
+  assert.equal(m.modelMix.byModel['gpt-5.4-mini'].aiu, 2, 'per-model AIU is independent of the pin');
+
+  // The legacy `meta.model` is the fallback pin when no v2 sessionOptions exists.
+  const legacyPinned = computeMetrics({ events, meta: { model: 'gpt-5.6-luna' }, dir: MIX_DIR });
+  assert.equal(legacyPinned.modelMix.pin, 'gpt-5.6-luna', 'meta.model is the fallback pin');
+  assert.equal(legacyPinned.modelMix.verdict, 'off-pin', 'mini is off that pin');
+  assert.equal(legacyPinned.modelMix.offPin.aiu, 2, 'off-pin AIU from the mini event');
+
+  // No usage event at all: nothing to judge, even with a pin.
+  const noUsage = computeMetrics({ events: [], meta: { sessionOptions: { model: 'gpt-5.6-luna' } }, dir: MIX_DIR });
+  assert.equal(noUsage.modelMix.verdict, null, 'a pin with no usage event -> verdict null (never a false "on-pin")');
+  assert.equal(noUsage.modelMix.offPin.aiu, null, 'and offPin.aiu null, never 0');
+  const md = renderMarkdown(m);
+  assert.match(md, /## Model mix/, 'the section renders on an unpinned bundle too');
+  assert.ok(!md.includes('undefined'), 'markdown never renders undefined');
+});
+
+test('#129 KNOWN_RATES is a staleness detector: a model absent from it is "no cross-check row" (never a defect), a moved rate is a visible drift WARNING, and neither touches the total', () => {
+  // A model id nobody has a row for — the catalog rotates, so this is the NORMAL case, not a defect.
+  const unknownModel = computeMetrics({
+    events: [usageEvent({ model: 'gpt-9.9-nova', nanoAiu: 5e9, ratePerM: { input: 1, cache_read: 1, cache_write: 1, output: 1 } })],
+    meta: { sessionOptions: { model: 'gpt-9.9-nova' } },
+    dir: MIX_DIR,
+  });
+  assert.equal(unknownModel.prices.check['gpt-9.9-nova'], 'no cross-check row', 'neutral wording for a model the drift table does not carry');
+  assert.equal(unknownModel.aiu.total, 5, 'the total is priced from the event, not from the table');
+  const mdU = renderMarkdown(unknownModel);
+  assert.ok(!mdU.includes('unknown-model'), 'the old defect-sounding "unknown-model" wording is gone');
+  assert.ok(!/rate drift/.test(mdU), 'a missing row is not a drift');
+
+  // A model that IS in the table, served at a different input rate -> an informational warning naming both.
+  const drifted = computeMetrics({
+    events: [usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 1e9, ratePerM: { ...RATE.luna, input: 999 } })],
+    meta: { sessionOptions: { model: 'gpt-5.6-luna' } },
+    dir: MIX_DIR,
+  });
+  assert.match(drifted.prices.check['gpt-5.6-luna'], /drift: input observed 999 expected 20/, 'the check names class, observed and table value');
+  const mdD = renderMarkdown(drifted);
+  assert.match(mdD, /rate drift.*gpt-5\.6-luna.*input observed 999 expected 20/, 'markdown prints a drift warning naming the model, the observed and the table rate');
+  assert.match(mdD, /staleness detector, not an authority/, 'the warning says the table is not the authority');
+  assert.equal(drifted.aiu.total, 1, 'a drift never changes the total (observed per-event prices are the only source of money)');
+});
+
+test('#129 modelMix on the committed fixture: verdict is computed, byModel matches the models the bundle contains, and an injected pin attributes the off-pin AIU', () => {
+  const m = metricsOfFixture();
+  // The fixture is a pre-provenance bundle: `model: null`, no sessionOptions -> the pin is genuinely unknown.
+  assert.equal(META.model, null, 'guard: the committed fixture records no session model');
+  assert.ok(!('sessionOptions' in META), 'guard: the committed fixture is pre-provenance (no sessionOptions)');
+  assert.equal(m.modelMix.pin, null, 'pin unknown on a pre-provenance bundle');
+  assert.equal(m.modelMix.verdict, null, 'verdict is computed and honestly null — the pin is not recorded');
+  assert.deepEqual(Object.keys(m.modelMix.byModel), Object.keys(m.aiu.byModel), 'modelMix.byModel covers exactly the models aiu.byModel found');
+  assert.deepEqual(Object.keys(m.modelMix.byModel), ['gpt-5.4-mini', 'gpt-5.6-luna'], 'the two models the fixture contains');
+  assert.equal(m.modelMix.byModel['gpt-5.6-luna'].calls, 146, 'luna calls agree with aiu.byModel');
+  near(m.modelMix.byModel['gpt-5.6-luna'].aiu, 28.587435, 1e-6, 'luna AIU agrees with aiu.byModel');
+  const tokenSum = Object.values(m.modelMix.byModel).reduce((s, v) => s + v.tokens, 0);
+  assert.equal(tokenSum, Object.values(m.tokens.byClass).reduce((s, v) => s + v, 0), 'Σ per-model tokens = Σ tokens.byClass');
+
+  // The same real events under a luna pin: mini becomes the off-pin model, attributed to the explore agents.
+  const pinned = computeMetrics({ events: EVENTS, meta: { ...META, sessionOptions: { model: 'gpt-5.6-luna' } }, dir: path.join(os.tmpdir(), FIXTURE_TS) });
+  assert.equal(pinned.modelMix.verdict, 'off-pin', 'under a luna pin the fixture is off-pin');
+  assert.deepEqual(pinned.modelMix.offPin.models, ['gpt-5.4-mini'], 'mini is the off-pin model');
+  assert.equal(pinned.modelMix.offPin.calls, 18, 'the 18 mini usage events');
+  near(pinned.modelMix.offPin.aiu, 8.407545, 1e-6, 'off-pin AIU = the recorded mini figure');
+  near(pinned.modelMix.offPin.share, 0.2273, 1e-4, 'share = 8.407545 / 36.99498');
+  assert.deepEqual(Object.keys(pinned.modelMix.offPin.byAgent), ['explore'], 'the off-pin AIU is attributed to the explore subagents');
+  assert.equal(pinned.modelMix.offPin.byAgent.explore.configured, 'gpt-5.4-mini', 'subagent.configured recorded the same model the runtime served');
 });
