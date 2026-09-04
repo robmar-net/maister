@@ -1,4 +1,5 @@
-// Credit-free checks for `l2/tools/ab-compare.mjs` (issue #122, spec R8 + R9 `ab-compare` row).
+// Credit-free checks for `l2/tools/ab-compare.mjs` (issue #122, spec R8 + R9 `ab-compare` row; #129
+// served-model mismatch).
 // Run ONLY this file:
 //   node --test platforms/copilot-cli/compat-tests/l2/test/ab-compare.test.mjs
 //
@@ -10,6 +11,13 @@
 // and an unreadable bundle -> a verbatim `REFUSED: <ts> — <reason>` line and exit 2 —
 // and honours the process contract (no args -> exit 2, deterministic `--json` = `{ rows, refused }`,
 // the fixed table header, nothing written under `reports/` or into any bundle dir).
+//
+// #129 (last three cases): a cross-bundle guard on top of the per-bundle classification — `comparable: yes`
+// rows whose SERVED-MODEL SET (their own `assistant.usage.data.model` values, deduped + sorted; no model
+// catalog anywhere) differs from the majority one are REFUSED with `served-model mismatch: <set> vs
+// <majority>` (exit 2), or, with `--allow-model-mix`, listed as `no (model mix)` under a visible `WARNING:`
+// line above the table. The tie-break is the sorted row order, so the outcome never depends on argv order;
+// legacy-map and allowed-mutant rows are already non-comparable and are outside the guard.
 //
 // CREDIT-FREE: the tool only reads events.json / replay-meta.json; it never spawns a seat, never imports
 // the SDK, and `--replay` is NEVER invoked by this file. No seat, no session.
@@ -40,7 +48,7 @@ const RESEARCH_EVENTS = path.join(__dirname, 'fixtures', 'research', 'events.sam
 const LEGACY_MAP = JSON.parse(fs.readFileSync(path.join(L2_DIR, 'variants', 'legacy-arms.json'), 'utf8'));
 
 const MAPPED_TS = '20260831T022952Z'; // IS in the committed legacy map (upstream-control / quick-bugfix)
-const TABLE_HEADER = 'ts | scenario | arm | source | comparable | commit | AIU';
+const TABLE_HEADER = 'ts | scenario | arm | source | comparable | commit | AIU | models';
 const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 
 function runTool(args, opts = {}) {
@@ -103,7 +111,7 @@ function listing(dir) {
 test('no args -> exit 2 + usage on stderr, nothing on stdout; unknown flag -> exit 2', () => {
   const none = runTool([]);
   assert.equal(none.status, 2, 'no args -> exit 2');
-  assert.match(none.stderr, /usage: .*ab-compare\.mjs <bundle-dir>\.\.\. \[--json\] \[--allow-mutants\]/, 'usage on stderr');
+  assert.match(none.stderr, /usage: .*ab-compare\.mjs <bundle-dir>\.\.\. \[--json\] \[--allow-mutants\] \[--allow-model-mix\]/, 'usage on stderr');
   assert.equal(none.stdout, '', 'nothing on stdout');
   const bad = runTool(['--bogus']);
   assert.equal(bad.status, 2, 'unknown flag -> exit 2');
@@ -120,7 +128,7 @@ test('v2 bundle with variant plain -> row source meta, comparable yes, commit fr
     assert.ok(r.stdout.includes(`| ${TABLE_HEADER} |`), `table header is "${TABLE_HEADER}"\n${r.stdout}`);
     const rows = tableRows(r.stdout);
     assert.equal(rows.length, 1, `exactly one data row\n${r.stdout}`);
-    assert.deepEqual(cells(rows[0]), [ts, 'research', 'plain', 'meta', 'yes', COMMIT.slice(0, 8), 'unknown'], 'row cells: ts, scenario, arm=variant, source meta, comparable yes, commit (8-hex short oid in the table), AIU unknown (research events carry no copilotUsage)');
+    assert.deepEqual(cells(rows[0]), [ts, 'research', 'plain', 'meta', 'yes', COMMIT.slice(0, 8), 'unknown', 'unknown'], 'row cells: ts, scenario, arm=variant, source meta, comparable yes, commit (8-hex short oid in the table), AIU unknown and models unknown (research events carry no assistant.usage at all)');
     assert.equal(refusedLines(r.stdout).length, 0, 'no REFUSED line');
     const j = JSON.parse(runTool([dir, '--json']).stdout);
     assert.equal(j.rows[0].commit, COMMIT, 'JSON row commit = pluginSource.commit (the FULL oid; only the table shortens it)');
@@ -147,6 +155,7 @@ test('pre-provenance meta staged under a mapped ts (20260831T022952Z) -> arm ups
     assert.equal(c[3], 'legacy-map', 'source legacy-map');
     assert.equal(c[4], 'no (legacy)', 'comparable "no (legacy)"');
     assert.equal(c[6], 'unknown', 'AIU unknown');
+    assert.equal(c[7], 'unknown', 'models unknown (no assistant.usage in the fixture events)');
     assert.equal(refusedLines(r.stdout).length, 0, 'not refused');
     const j = JSON.parse(runTool([dir, '--json']).stdout);
     assert.equal(j.rows[0].source, 'legacy-map', 'JSON source legacy-map');
@@ -197,7 +206,7 @@ test('v2 mutant M1 (variant null, the shape the harness produces) -> REFUSED "mu
     assert.equal(refusedLines(a.stdout).length, 0, 'no REFUSED line with --allow-mutants (variant null is NOT "unattributed" on a mutant)');
     const rows = tableRows(a.stdout);
     assert.equal(rows.length, 1, 'one row with --allow-mutants');
-    assert.deepEqual(cells(rows[0]), [ts, 'research', 'mutant M1', 'meta', 'no (mutant)', COMMIT.slice(0, 8), 'unknown'], 'row: arm "mutant <id>" (visible), source meta, comparable "no (mutant)", commit (short oid) from pluginSource');
+    assert.deepEqual(cells(rows[0]), [ts, 'research', 'mutant M1', 'meta', 'no (mutant)', COMMIT.slice(0, 8), 'unknown', 'unknown'], 'row: arm "mutant <id>" (visible), source meta, comparable "no (mutant)", commit (short oid) from pluginSource, models unknown');
     const j = JSON.parse(runTool([dir, '--allow-mutants', '--json']).stdout);
     assert.equal(j.rows[0].arm, 'mutant M1', 'JSON arm = "mutant <id>"');
     assert.equal(j.rows[0].mutation, 'M1', 'JSON row carries the mutation id');
@@ -285,7 +294,7 @@ test('--json -> { rows, refused } deterministic (byte-identical, pinned keys, so
     assert.deepEqual(Object.keys(j), ['rows', 'refused'], 'top-level shape { rows, refused }');
     assert.deepEqual(j.rows.map((x) => x.ts), [MAPPED_TS, tsA], 'rows sorted by ts');
     assert.deepEqual(j.refused.map((x) => x.ts), [tsB, tsC], 'refused sorted by ts');
-    assert.deepEqual(Object.keys(j.rows[0]), ['ts', 'scenario', 'arm', 'mutation', 'source', 'comparable', 'commit', 'aiu', 'dir'], 'row key order pinned');
+    assert.deepEqual(Object.keys(j.rows[0]), ['ts', 'scenario', 'arm', 'mutation', 'source', 'comparable', 'commit', 'aiu', 'models', 'dir'], 'row key order pinned (models added by #129)');
     assert.deepEqual(Object.keys(j.refused[0]), ['ts', 'dir', 'reason'], 'refused key order pinned');
     assert.equal(j.rows[1].arm, 'lean', 'v2 lean row');
     assert.equal(j.refused[1].reason, 'mutant M1 (pass --allow-mutants)', 'mutant refusal reason verbatim');
@@ -294,7 +303,7 @@ test('--json -> { rows, refused } deterministic (byte-identical, pinned keys, so
     const lines = md.stdout.split('\n');
     const hi = lines.findIndex((l) => l === `| ${TABLE_HEADER} |`);
     assert.ok(hi >= 0, `table header line is exactly "| ${TABLE_HEADER} |"\n${md.stdout}`);
-    assert.match(lines[hi + 1], /^\|(---\|){7}$/, 'separator row has seven columns');
+    assert.match(lines[hi + 1], /^\|(---\|){8}$/, 'separator row has eight columns (models added by #129)');
     assert.equal(tableRows(md.stdout).length, 2, 'two rows in markdown');
     assert.equal(refusedLines(md.stdout).length, 2, 'two REFUSED lines in markdown');
     assert.ok(lines.indexOf(refusedLines(md.stdout)[0]) > hi, 'REFUSED lines follow the table');
@@ -302,6 +311,124 @@ test('--json -> { rows, refused } deterministic (byte-identical, pinned keys, so
 
     assert.deepEqual(listing(root), rootBefore, 'no file created in or next to any bundle');
     assert.deepEqual(listing(REPORTS_DIR), reportsBefore, 'nothing written under reports/');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------- #129 served-model mismatch
+// The research fixture carries NO `assistant.usage`, so a bundle's served-model set is synthesized here by
+// appending one tiny usage event per model — the same shape a real event has, priced from its own
+// `tokenDetails`. No model catalog is involved on either side: the tool reads these ids back out of the
+// events it was handed.
+const RESEARCH_EVENT_LIST = JSON.parse(fs.readFileSync(RESEARCH_EVENTS, 'utf8'));
+const usageEvent = (model, nanoAiu) => ({
+  type: 'assistant.usage',
+  timestamp: '2099-07-07T00:00:00.000Z',
+  data: {
+    model,
+    cost: 1,
+    copilotUsage: {
+      totalNanoAiu: nanoAiu,
+      tokenDetails: [{ batchSize: 1e6, costPerBatch: 20e9, tokenCount: 1000, tokenType: 'input' }],
+    },
+  },
+});
+
+// Stage a bundle whose served-model set is exactly `models` (one usage event each, 1 AIU per model).
+function stageBundleServing(root, ts, meta, models) {
+  const dir = stageBundle(root, ts, meta);
+  fs.writeFileSync(path.join(dir, 'events.json'), JSON.stringify([...RESEARCH_EVENT_LIST, ...models.map((m) => usageEvent(m, 1e9))]));
+  return dir;
+}
+
+test('#129 identical served-model sets -> both listed, exit 0, models column short-named (mini+luna) when the last dash segment is unambiguous', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-ab-compare-mix-same-'));
+  try {
+    const tsA = '20990707T000000Z';
+    const tsB = '20990707T000001Z';
+    const a = stageBundleServing(root, tsA, v2Meta(tsA, { variant: 'plain' }), ['gpt-5.6-luna', 'gpt-5.4-mini']);
+    const b = stageBundleServing(root, tsB, v2Meta(tsB, { variant: 'lean' }), ['gpt-5.4-mini', 'gpt-5.6-luna']);
+    const r = runTool([a, b]);
+    assert.equal(r.status, 0, `matching served-model sets are comparable -> exit 0\n${r.stdout}${r.stderr}`);
+    assert.equal(refusedLines(r.stdout).length, 0, 'no REFUSED line when the sets match');
+    const rows = tableRows(r.stdout);
+    assert.equal(rows.length, 2, 'both bundles listed');
+    assert.equal(cells(rows[0])[7], 'mini+luna', 'models cell: the last dash segment of each id, ordered by the sorted FULL ids (gpt-5.4-mini < gpt-5.6-luna), joined with +');
+    assert.equal(cells(rows[1])[7], 'mini+luna', 'the set is order-independent (deduped and sorted)');
+    assert.equal(cells(rows[0])[4], 'yes', 'still comparable');
+    assert.ok(!r.stdout.includes('WARNING'), 'no warning line when the sets match');
+    const j = JSON.parse(runTool([a, b, '--json']).stdout);
+    assert.deepEqual(j.rows[0].models, ['gpt-5.4-mini', 'gpt-5.6-luna'], 'JSON keeps the FULL sorted ids (only the table shortens them)');
+    assert.deepEqual(Object.keys(j), ['rows', 'refused'], 'top-level JSON shape unchanged');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('#129 differing served-model sets -> REFUSED "served-model mismatch: <set> vs <majority>" exit 2; --allow-model-mix lists the row as "no (model mix)" under a WARNING, exit 0', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-ab-compare-mix-diff-'));
+  try {
+    // Two `plain` drives, one of which the runtime also served on claude-sonnet-5 (the #129 shape).
+    const tsMaj = '20990708T000000Z';
+    const tsMaj2 = '20990708T000001Z';
+    const tsOdd = '20990708T000002Z';
+    const maj = stageBundleServing(root, tsMaj, v2Meta(tsMaj, { variant: 'plain' }), ['gpt-5.6-luna', 'gpt-5.4-mini']);
+    const maj2 = stageBundleServing(root, tsMaj2, v2Meta(tsMaj2, { variant: 'lean' }), ['gpt-5.6-luna', 'gpt-5.4-mini']);
+    const odd = stageBundleServing(root, tsOdd, v2Meta(tsOdd, { variant: 'plain' }), ['gpt-5.6-luna', 'gpt-5.4-mini', 'claude-sonnet-5']);
+
+    const r = runTool([maj, maj2, odd]);
+    assert.equal(r.status, 2, `a served-model mismatch is a refusal -> exit 2\n${r.stdout}${r.stderr}`);
+    assert.deepEqual(refusedLines(r.stdout), [
+      `REFUSED: ${tsOdd} — served-model mismatch: claude-sonnet-5+gpt-5.4-mini+gpt-5.6-luna vs gpt-5.4-mini+gpt-5.6-luna`,
+    ], 'verbatim refusal line: the offending set vs the majority set, both as full sorted ids');
+    assert.equal(tableRows(r.stdout).length, 2, 'the two matching bundles are still listed');
+
+    const a = runTool([maj, maj2, odd, '--allow-model-mix']);
+    assert.equal(a.status, 0, `--allow-model-mix lists the mismatch instead of refusing it\n${a.stdout}${a.stderr}`);
+    assert.equal(refusedLines(a.stdout).length, 0, 'no REFUSED line with the flag');
+    const warn = a.stdout.split('\n').filter((l) => l.startsWith('WARNING: '));
+    assert.equal(warn.length, 1, `exactly one visible warning line\n${a.stdout}`);
+    assert.match(warn[0], /^WARNING: served-model mismatch across 3 comparable bundles \(.*\) — AIU is NOT comparable/, 'the warning names the mismatch and says AIU is not comparable');
+    assert.ok(a.stdout.indexOf(warn[0]) < a.stdout.indexOf(`| ${TABLE_HEADER} |`), 'the warning sits ABOVE the table');
+    const rows = tableRows(a.stdout);
+    assert.equal(rows.length, 3, 'all three rows listed with the flag');
+    const oddRow = rows.find((l) => cells(l)[0] === tsOdd);
+    assert.equal(cells(oddRow)[4], 'no (model mix)', 'the offending row is listed but downgraded to non-comparable');
+    assert.equal(cells(oddRow)[7], 'claude-sonnet-5+gpt-5.4-mini+gpt-5.6-luna', 'full ids in the models column: "5" (from claude-sonnet-5) is a version number, not an unambiguous name');
+    assert.equal(cells(rows.find((l) => cells(l)[0] === tsMaj))[4], 'yes', 'the majority rows stay comparable');
+    const j = JSON.parse(runTool([maj, maj2, odd, '--allow-model-mix', '--json']).stdout);
+    assert.deepEqual(Object.keys(j), ['rows', 'refused'], 'JSON shape is still { rows, refused } (the mismatch shows as the row comparable + models)');
+    assert.equal(j.rows.find((x) => x.ts === tsOdd).comparable, 'no (model mix)', 'the JSON row carries the downgrade — the gap is machine-visible, not warning-only');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('#129 the mismatch guard is deterministic (byte-identical --json regardless of argument order), spares non-comparable rows, and never fires on a single bundle', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-ab-compare-mix-det-'));
+  try {
+    const tsA = '20990709T000000Z';
+    const tsB = '20990709T000001Z';
+    const a = stageBundleServing(root, tsA, v2Meta(tsA, { variant: 'plain' }), ['gpt-5.6-luna']);
+    const b = stageBundleServing(root, tsB, v2Meta(tsB, { variant: 'lean' }), ['gpt-5.4-mini']);
+    const r1 = runTool([a, b, '--json']);
+    const r2 = runTool([b, a, '--json']);
+    assert.equal(r1.status, 2, 'a 1-vs-1 mismatch still refuses');
+    assert.equal(r1.stdout, r2.stdout, 'byte-identical regardless of argument order (the majority tie is broken by the sorted row order, not by argv)');
+    const j = JSON.parse(r1.stdout);
+    assert.deepEqual(j.rows.map((x) => x.ts), [tsA], 'the first sorted set wins the tie and stays listed');
+    assert.deepEqual(j.refused.map((x) => x.reason), ['served-model mismatch: gpt-5.4-mini vs gpt-5.6-luna'], 'the other is refused with both sets named');
+
+    // A single bundle has nothing to mismatch against.
+    assert.equal(runTool([b]).status, 0, 'one bundle alone is never a mismatch');
+
+    // A legacy-map row is already `no (legacy)`: it neither triggers nor suffers the guard.
+    const legacy = stageBundleServing(root, MAPPED_TS, legacyMeta(MAPPED_TS, 'quick-bugfix'), ['claude-haiku-4.5']);
+    const withLegacy = runTool([a, legacy]);
+    assert.equal(withLegacy.status, 0, `a non-comparable row with a different served-model set is not a refusal\n${withLegacy.stdout}`);
+    assert.equal(tableRows(withLegacy.stdout).length, 2, 'both rows listed');
+    assert.equal(cells(tableRows(withLegacy.stdout).find((l) => cells(l)[0] === MAPPED_TS))[4], 'no (legacy)', 'the legacy row keeps its own non-comparable label');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

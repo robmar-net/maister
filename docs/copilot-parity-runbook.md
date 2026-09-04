@@ -252,8 +252,10 @@ source of the price is the bundle itself** — each `assistant.usage` event's
 charged for that request (`costPerBatch / batchSize × 1e6 / 1e9` = AIU per 1 M tokens), and
 `cost-report.mjs` re-reads it **per event**, so a mid-sweep re-pricing cannot skew a total. The table
 below is the `KNOWN_RATES` constant it cross-checks against (`price check` column: `ok` /
-`drift: <class> observed X expected Y` / `unknown-model`) — a cross-check that **may disagree** and never
-enters a total:
+`drift: <class> observed X expected Y` / `no cross-check row`) — a **staleness detector**, not a model
+catalog (#129): it may disagree, it never enters a total, and a model missing from it is an absence of
+evidence, not a defect (the provider's model list rotates faster than this table). A `drift:` row also
+prints a visible warning line under the report's `## By model` table:
 
 | model | `input` | `cache_read` | `cache_write` | `output` | (AIU per 1 M tokens) |
 |---|---|---|---|---|---|
@@ -476,11 +478,23 @@ one that is not listed renders `UNATTRIBUTED (pre-provenance bundle; cost-report
 loaded path)` and `unknown (pre-provenance bundle)`. The live `PLUGIN_DIR` is never read on the replay
 path. Never add a post-#122 ts to the legacy map — provenance must come from the bundle.
 
-**Attribution check** — `node platforms/copilot-cli/compat-tests/l2/tools/ab-compare.mjs <bundle-dir>... [--json] [--allow-mutants]`
+**Check the model mix BEFORE comparing arms** ([#129](https://github.com/robmar-net/maister/issues/129),
+[ADR 0008](adr/0008-copilot-overrides-the-model-pin-per-subagent.md)): `COMPAT_L2_MODEL` pins the **main
+session only** — Copilot re-decides the model per delegation at `subagent.configured` time and ignores both
+the pin and the agent's `model: inherit`, and one `claude-sonnet-5` subagent is worth ~24 AIU on a
+development drive and ~82 on research (ten times `gpt-5.6-luna`), which is more than every arm lever
+combined. `ab-compare` therefore **refuses** two bundles whose served-model sets differ
+(`served-model mismatch: <set> vs <majority set>`, exit 2; `--allow-model-mix` lists them as
+`no (model mix)` under a warning), and `cost-report`'s `## Model mix` section shows the pin, the verdict
+(`on-pin` / `off-pin`) and the off-pin AIU with the agent and `subagent.configured` model that carried it.
+
+**Attribution check** — `node platforms/copilot-cli/compat-tests/l2/tools/ab-compare.mjs <bundle-dir>... [--json] [--allow-mutants] [--allow-model-mix]`
 prints one row per bundle — `ts | scenario | arm | source (meta / legacy-map) | comparable (yes / no (legacy) /
-no (mutant)) | commit | AIU` — and **refuses** (one `REFUSED: <ts> — <reason>` line each, exit 2) anything it
-cannot attribute: `mutant <id> (pass --allow-mutants)`, `unattributed (driven without --variant)`,
-`pre-provenance bundle not in legacy-arms.json`, and — an amendment to spec R8's three reasons, so one
+no (mutant) / no (model mix)) | commit | AIU | models` — and **refuses** (one `REFUSED: <ts> — <reason>` line
+each, exit 2) anything it cannot attribute: `mutant <id> (pass --allow-mutants)`,
+`unattributed (driven without --variant)`,
+`pre-provenance bundle not in legacy-arms.json`, `served-model mismatch: <set> vs <majority set>` (#129,
+pass `--allow-model-mix`), and — an amendment to spec R8's three reasons, so one
 broken directory in a glob does not abort the rest — `unreadable bundle: <detail>`. With `--allow-mutants`
 a mutant bundle (always `variant: null`, since `run.sh` forbids `--variant` with `--mutation`) is listed as a
 **visible** row, arm `mutant <id>`, source `meta`, comparable `no (mutant)`, commit from `pluginSource` — never
