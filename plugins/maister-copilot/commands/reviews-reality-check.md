@@ -68,17 +68,17 @@ The reality-assessor agent will:
 
 **Example 1**: Reality check before deployment
 ```
-User: /reviews-reality-check .maister/tasks/development/2025-11-17-payment-processing/
+User: /maister-copilot:reviews-reality-check .maister/tasks/development/2025-11-17-payment-processing/
 ```
 
 **Example 2**: Verify claimed completion
 ```
-User: /reviews-reality-check .maister/tasks/development/2025-11-17-login-timeout/
+User: /maister-copilot:reviews-reality-check .maister/tasks/development/2025-11-17-login-timeout/
 ```
 
 **Example 3**: Production readiness check
 ```
-User: /reviews-reality-check .maister/tasks/development/2025-11-17-user-dashboard/ --production
+User: /maister-copilot:reviews-reality-check .maister/tasks/development/2025-11-17-user-dashboard/ --production
 ```
 
 ## What to Expect

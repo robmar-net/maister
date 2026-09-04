@@ -371,7 +371,7 @@ ask_user - "Design complete. Continue to output generation?"
 3. If design artifacts exist, suggest starting development in a fresh session:
    ```
    To start development based on this research, clear context first or start a new session, then run:
-   /development [task-path]
+   /maister-copilot:development [task-path]
    ```
 
 → End of workflow
@@ -474,7 +474,7 @@ options:
 
 ### As Standalone Research
 
-**Command**: `/research [research-question]`
+**Command**: `/maister-copilot:research [research-question]`
 **Flow**: Complete all phases, save outputs in task directory
 
 ### As Embedded Research Phase
@@ -502,8 +502,8 @@ research_outputs:
 ## Command Integration
 
 Invoked via:
-- `/research [question] [--type=TYPE] [--brainstorm] [--no-brainstorm] [--design] [--no-design]` (new)
-- `/research [task-path] [--from=PHASE]` (resume)
+- `/maister-copilot:research [question] [--type=TYPE] [--brainstorm] [--no-brainstorm] [--design] [--no-design]` (new)
+- `/maister-copilot:research [task-path] [--from=PHASE]` (resume)
 
 **Brainstorming flags**:
 - `--brainstorm`: Force brainstorming phase (auto-resolves Phase 2 brainstorming decision to "enable")

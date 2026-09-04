@@ -432,8 +432,8 @@ options:
 ## Command Integration
 
 Invoked via:
-- `/performance [description] [--sequential]` (new)
-- `/performance [task-path] [--from=PHASE] [--sequential]` (resume)
+- `/maister-copilot:performance [description] [--sequential]` (new)
+- `/maister-copilot:performance [task-path] [--from=PHASE] [--sequential]` (resume)
 
 Flags:
 - `--from=PHASE`: Resume from specific phase

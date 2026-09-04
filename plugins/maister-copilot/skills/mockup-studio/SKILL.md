@@ -11,7 +11,7 @@ The single, reusable engine for generating UI mockups in the maister plugin. It 
 Two ways it runs:
 
 - **Invoked by an orchestrator** (development Phase 4, product-design Phase 7) via the Skill tool, with explicit parameters (see Input Parameters). The orchestrator owns its own phase gate; mockup-studio does the generation.
-- **Invoked standalone by a user** (`/mockup-studio "<screen or feature>"`). It creates its own task directory and runs the full interactive flow.
+- **Invoked standalone by a user** (`/maister-copilot:mockup-studio "<screen or feature>"`). It creates its own task directory and runs the full interactive flow.
 
 Whatever the caller, the work is the same: discover the project's design language → render mockups in the chosen format → persist them → (optionally) index them for downstream binding.
 
@@ -118,7 +118,7 @@ Read `references/visual-companion.md` for the full protocol. Then:
 
 ## Standalone Mode
 
-When a user runs `/mockup-studio "<screen or feature>"` (no `task_path` from an orchestrator):
+When a user runs `/maister-copilot:mockup-studio "<screen or feature>"` (no `task_path` from an orchestrator):
 
 1. Capture the clock; create `.maister/tasks/mockups/YYYY-MM-DD-<short-name>/` with an `analysis/` subdir.
 2. Defaults: `output_subdir = analysis/mockups`, `iteration = full`, `emit_index_rows = false`, `format` from `.maister/config.yml` `mockup_format` (default `html`).

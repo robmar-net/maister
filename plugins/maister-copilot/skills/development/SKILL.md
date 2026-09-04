@@ -690,7 +690,7 @@ When starting development from a completed research task, the orchestrator loads
 
 **Method 1: Research folder as sole argument** (recommended)
 ```
-/development .maister/tasks/research/2026-01-12-oauth-research
+/maister-copilot:development .maister/tasks/research/2026-01-12-oauth-research
 ```
 The orchestrator auto-detects this is a research folder and:
 - Extracts task description from `research_context.research_question`
@@ -699,7 +699,7 @@ The orchestrator auto-detects this is a research folder and:
 
 **Method 2: Explicit --research flag**
 ```
-/development "Implement OAuth" --research=.maister/tasks/research/2026-01-12-oauth-research
+/maister-copilot:development "Implement OAuth" --research=.maister/tasks/research/2026-01-12-oauth-research
 ```
 
 ### Research Artifacts (Standard List)
@@ -735,13 +735,13 @@ When mockups or design artifacts are present, they become **binding inputs** to 
 
 **Source 1 — Product-design task path** (recommended handoff):
 ```
-/development .maister/tasks/product-design/2026-05-09-user-dashboard/
+/maister-copilot:development .maister/tasks/product-design/2026-05-09-user-dashboard/
 ```
 Auto-detected when the argument resolves to a `.maister/tasks/product-design/*` directory. Brief and mockups are copied into `design-context/`.
 
 **Source 2 — Inline mockup paths in task description**:
 ```
-/development "Implement the dashboard from /tmp/dashboard-mockup.html"
+/maister-copilot:development "Implement the dashboard from /tmp/dashboard-mockup.html"
 ```
 Auto-detected file paths (`.html`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.pdf`) are copied into `design-context/mockups/`. Design-tool URLs (Figma, Sketch Cloud, Zeplin) are recorded in `design-context/external-links.md`.
 
@@ -774,8 +774,8 @@ Non-UI tasks see zero behavior change.
 ## Command Integration
 
 Invoked via:
-- `/development [description] [--e2e] [--user-docs] [--research=PATH]` (new)
-- `/development [task-path] [--from=PHASE] [--reset-attempts]` (resume)
+- `/maister-copilot:development [description] [--e2e] [--user-docs] [--research=PATH]` (new)
+- `/maister-copilot:development [task-path] [--from=PHASE] [--reset-attempts]` (resume)
 
 ---
 

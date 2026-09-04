@@ -214,7 +214,7 @@ issue_counts:
 
 ## Integration
 
-**Invoked by**: implementation-verifier (Phase 3), standalone via `/reviews-code` command
+**Invoked by**: implementation-verifier (Phase 3), standalone via `/maister-copilot:reviews-code` command
 
 **Prerequisites**:
 - Code exists at the specified path

@@ -1,7 +1,7 @@
 {
   "name": "maister-copilot",
   "mcpServers": ".mcp.json",
-  "version": "2.2.3+fork.4",
+  "version": "2.2.3+fork.5",
   "description": "Structured, standards-aware development workflows for GitHub Copilot CLI",
   "author": {
     "name": "Skillpanel",
