@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "note": "Pre-provenance bundles (metaSchema < 2) attributed after the fact from maisterVersion + skill.invoked.data.path (ADR-002 refined 2026-09-03). All six ran with leaked custom instructions; none is comparable to post-#122 arms. Never add a post-#122 ts here — provenance must come from the bundle.",
+  "bundles": {
+    "20260831T022944Z": { "legacyArm": "upstream-control", "scenario": "destructive-guard", "maisterVersion": "2.2.3", "pluginDirRecovered": null,
+      "comparable": false, "note": "no path-bearing event (no skill.invoked); operator assertion — same upstream-variant session as 022952Z" },
+    "20260831T022952Z": { "legacyArm": "upstream-control", "scenario": "quick-bugfix", "maisterVersion": "2.2.3",
+      "pluginDirRecovered": "/private/tmp/claude-501/upstream-variant-1isJtp/plugins/maister-copilot",
+      "comparable": false, "note": "informational bridge for plain-legacy@T1 only (upstream 2.2.3 tree, no fork hook, leaked instructions)" },
+    "20260831T024753Z": { "legacyArm": "upstream-control", "scenario": "development", "maisterVersion": "2.2.3",
+      "pluginDirRecovered": "/private/tmp/claude-501/upstream-variant-NnRsgq/plugins/maister-copilot",
+      "comparable": false, "note": "upstream 2.2.3 tree; leaked instructions" },
+    "20260903T000910Z": { "legacyArm": "fork-legacy", "scenario": "development", "maisterVersion": "2.2.3+fork.2",
+      "pluginDirRecovered": "/Users/robmar/Projects/Maister/maister/plugins/maister-copilot",
+      "comparable": false, "note": "+fork.2: SessionStart hook silent no-op (pre-#120); leaked instructions" },
+    "20260903T003148Z": { "legacyArm": "fork-legacy", "scenario": "work", "maisterVersion": "2.2.3+fork.2",
+      "pluginDirRecovered": "/Users/robmar/Projects/Maister/maister/plugins/maister-copilot",
+      "comparable": false, "note": "+fork.2: hook no-op; leaked instructions" },
+    "20260903T004846Z": { "legacyArm": "fork-legacy", "scenario": "init", "maisterVersion": "2.2.3+fork.2",
+      "pluginDirRecovered": "/Users/robmar/Projects/Maister/maister/plugins/maister-copilot",
+      "comparable": false, "note": "+fork.2: hook no-op; leaked instructions" }
+  }
+}

@@ -105,8 +105,8 @@ test-hooks:
 #     EXHAUST a monthly Copilot quota (--runs=N multiplies it). The harness PROMPTS for confirmation
 #     before spending (or pass --yes / COMPAT_L2_YES=1 for automation) and self-reports the AIU cost in
 #     the report + stdout.
-# The scenario defaults to `development`; four workflow shapes are selectable — development | research |
-# quick-bugfix | destructive-guard:
+# The scenario defaults to `development`; six workflow shapes are selectable — development | research |
+# quick-bugfix | destructive-guard | work | init:
 #   bash platforms/copilot-cli/compat-tests/l2/run.sh --scenario=research
 # Credit-free (no seat, no credits) staleness/tamper verdict (per scenario):
 #   bash platforms/copilot-cli/compat-tests/l2/run.sh [--scenario=research] --check-reference

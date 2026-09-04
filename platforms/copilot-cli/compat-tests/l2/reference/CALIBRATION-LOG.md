@@ -841,3 +841,55 @@ quick-bugfix `20260831T022952Z` AS-EXPECTED 4·0·0 · destructive-guard `202608
 work `20260903T003148Z` AS-EXPECTED 4·0·0 · init `20260903T004846Z` AS-EXPECTED 6·0·0. (The two REGRESSED
 are pre-existing baselines, unchanged by this work.) Suite 179 pass / 0 fail / 2 skipped;
 `--check-reference ×4` CURRENT (wm v6, hashes untouched — no predicate moved).
+
+### 40 — HYGIENE DEFAULT + PROVENANCE: skipCustomInstructions:true, replay header from meta (issue #122, ADR 0007)
+
+**PREDICATE-FROZEN, HASH-NEUTRAL — no reference JSON was edited.** Recorded here because the harness's
+*live semantics* changed (what the model is shown on every future drive) even though no predicate, grammar
+head, schema or hash moved. Full argument in [ADR 0007](../../../../docs/adr/0007-l2-hygiene-default-and-bundle-provenance.md).
+
+**Live-semantics change.** Every drive now runs `createSession({ skipCustomInstructions: true })` by
+default (manifest → `COMPAT_L2_SKIP_INSTR` → `true`; only the `plain-legacy` arm re-admits the leak) and
+seeds `<rundir>/.maister/config.yml` (`html_output`, `mockup_format: html`) for every scenario but `init`.
+Until now every persisted bundle carried the operator's global `~/.copilot/copilot-instructions.md` plus
+the repo's `AGENTS.md`/`CLAUDE.md` — 3 `<custom_instruction>` blocks, ≈ 15 K tokens — in the main system
+message (raw `events.json`: 6 `<custom_instruction` / 8 `caveman` hits on the four single-snapshot bundles).
+The next live drive therefore sees a *different* prompt than every drive the references were calibrated
+on. **Pre-declared rule: a moved verdict is a wanted red — fix or LIMITATION with workflow-model citation,
+never relaxed.** The first `plain` T1 drive (#123) must also show **0 `<custom_instruction` / 0 `caveman`**
+raw hits — the only proof that the global file (which the SDK doc does not name) is suppressed too.
+
+**Provenance.** `replay-meta.json` is schema v2 (`variant`, `mutation`, `pluginDir`, `pluginDigest`,
+`pluginSource`, `sessionOptions`, `sandboxSeeds`, `referenceHash`, `cliVersion`, `servedModels`,
+`armManifest` after the unchanged first twelve keys); `--replay` renders the header from the bundle or
+the committed `variants/legacy-arms.json` (never the live `PLUGIN_DIR` — the `run.mjs:1203`@`66a523c`
+defect that had attributed the upstream-control bundle `20260831T022952Z` to the fork path on disk);
+arms are staged from `git archive <pinned commit>` (`variants/variant.sh`, five manifests); cost is
+bundle-first (`tools/cost-report.mjs`: 36.99498 AIU on `20260903T000910Z` = `meta.cost.aiu` =
+`session.usage_checkpoint`, Δ 0). Follow-up [#127](https://github.com/robmar-net/maister/issues/127):
+`--replay` overwrites the same-ts live report (pre-existing) — which is why the replays below run **last**.
+
+**Neutrality proof (credit-free, all six persisted bundles replayed before/after — verdicts must be identical):**
+- **before (#39):** development `20260903T000910Z` AS-EXPECTED 38·7·0 · development `20260831T024753Z`
+  REGRESSED 37·3·3 · quick-bugfix `20260831T022952Z` AS-EXPECTED 4·0·0 · destructive-guard
+  `20260831T022944Z` REGRESSED 1·0·1 · work `20260903T003148Z` AS-EXPECTED 4·0·0 · init
+  `20260903T004846Z` AS-EXPECTED 6·0·0. (The two REGRESSED are pre-existing baselines.)
+- **after (2026-09-04, replayed in the isolated worktree `.worktrees/122` on copies of the six bundles; the
+  operator's reports untouched):** development `20260903T000910Z` AS-EXPECTED 38·7·0 · development
+  `20260831T024753Z` REGRESSED 37·3·3 · quick-bugfix `20260831T022952Z` AS-EXPECTED 4·0·0 · destructive-guard
+  `20260831T022944Z` REGRESSED 1·0·1 · work `20260903T003148Z` AS-EXPECTED 4·0·0 · init `20260903T004846Z`
+  AS-EXPECTED 6·0·0 — **identical to #39** (the two REGRESSED replays exit 1 by design). Headers: `Variant:
+  upstream-control (legacy map — pre-provenance bundle)` ×3 (`20260831T*`) / `Variant: fork-legacy (legacy map —
+  pre-provenance bundle)` ×3 (`20260903T*`); `Plugin under test` = the map's `pluginDirRecovered` verbatim
+  (`/private/tmp/claude-501/upstream-variant-{1isJtp,NnRsgq}/…` ×2, `UNATTRIBUTED (pre-provenance bundle;
+  legacy map — no path-bearing event)` for `022944Z`, and the +fork.2 drive-time path
+  `/Users/robmar/Projects/Maister/maister/plugins/maister-copilot` ×3 — a recorded value, not a live one: the
+  replaying worktree's live `PLUGIN_DIR` (`…/.worktrees/122/plugins/maister-copilot`) appears in none of the six).
+
+Suite **227 tests / 225 pass / 0 fail / 2 skipped** (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`,
+2026-09-04; +1 over the pre-TG9 226 = the `run.mjs -h` scenario-list parity guard); `--check-reference ×6`
+(development / quick-bugfix / destructive-guard / work / init / research) CURRENT (wm v6, hash-neutral — no
+reference JSON edited); `make validate` "All checks passed", `make build` byte-identical (`git status --porcelain`
+unchanged, `2.2.3+fork.4` unchanged), `make check-deterministic` PASS.
+
+Amended 2026-09-04 after the verification fix pass: suite 230 / 228 / 0 / 2 (×2, no flakes), `make validate` green — measured in `verification/test-suite-results.md`.

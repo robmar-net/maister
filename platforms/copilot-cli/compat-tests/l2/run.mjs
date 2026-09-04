@@ -50,12 +50,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 import { resolveSdkPath } from './sdk-path.mjs';
 import { readCost } from './cost.mjs';
 import { extract } from './extractor.mjs';
 import { normalize } from './normalize.mjs';
-import { compare, checkReference, EXIT, witnessTokensForPhase } from './compare.mjs';
+import { compare, checkReference, computeHash, EXIT, witnessTokensForPhase } from './compare.mjs';
 import developmentScenario from './scenarios/development.mjs';
 import researchScenario from './scenarios/research.mjs';
 import quickBugfixScenario from './scenarios/quick-bugfix.mjs';
@@ -67,7 +68,9 @@ import initScenario from './scenarios/init.mjs';
 // Keyed by id. `development` is the MVP-proven default; `research` is the second workflow shape, added
 // once the MVP conformance loop was first verified live. `--scenario=<id>` selects; `getScenario()` resolves
 // from here. Adding a scenario = import it + list it here (+ commit its reference/<id>.skeleton.json).
-const SCENARIOS = Object.freeze({
+// EXPORTED (fix pass): tools/cost-report.mjs reads this registry instead of keeping a copy, so a scenario
+// added here is seen by every consumer (run.test.mjs pins the six ids). `getScenario` stays private (throws).
+export const SCENARIOS = Object.freeze({
   [developmentScenario.id]: developmentScenario,
   [researchScenario.id]: researchScenario,
   [quickBugfixScenario.id]: quickBugfixScenario,
@@ -86,6 +89,8 @@ const REPORTS_DIR = path.resolve(L2_DIR, '..', 'reports');
 const PLUGIN_JSON = path.join(REPO_ROOT, 'plugins', 'maister', '.claude-plugin', 'plugin.json');
 const PLUGIN_DIR = process.env.COMPAT_PLUGIN_DIR || path.join(REPO_ROOT, 'plugins', 'maister-copilot');
 const PLUGIN_NAME = 'maister-copilot';
+// G3 (#122, R3.1): after-the-fact attribution of the six pre-provenance bundles (metaSchema < 2).
+const LEGACY_ARMS_PATH = path.join(L2_DIR, 'variants', 'legacy-arms.json');
 
 // --------------------------------------------------------------------------- tiny fs helpers
 const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
@@ -197,7 +202,7 @@ function printUsage(stream = process.stdout) {
     '',
     'Flags:',
     '  --scenario=ID       Workflow shape to drive / check: development (default) | research | quick-bugfix |',
-    '                      destructive-guard. Selects the',
+    '                      destructive-guard | work | init. Selects the',
     '                      live drive AND which reference/<ID>.skeleton.json --check-reference reads.',
     '  --check-reference   Credit-free, offline: recompute the reference hash + check its version',
     '                      stamp (workflow-model, or maister package as fallback). No SDK session,',
@@ -229,6 +234,22 @@ function printUsage(stream = process.stdout) {
     '                           plugins/maister/.claude-plugin/plugin.json).',
     '  COMPAT_L2_MODEL          Requested model for a live run (metadata; resolution opts ?? env ??',
     '                           scenario default). A --model= flag may be added later.',
+    'A/B arm staging (#122; each is persisted in the bundle\'s replay-meta.json for provenance):',
+    '  COMPAT_VARIANT           Arm name (plain, plain-legacy, lean, caveman, terse) — set by run.sh',
+    '                           --variant=<arm>; the plugin under test is the staged transformed copy.',
+    '  COMPAT_ARM_MANIFEST      Path to the arm\'s l2/variants/arms/<arm>.json. When set it is parsed',
+    '                           BEFORE any credit is spent: unreadable/invalid JSON -> exit 2. Supplies',
+    '                           sessionOptions{skipCustomInstructions, excludedTools, reasoningEffort}',
+    '                           and sandboxSeeds{configYml.html_output, hookContextAppend}.',
+    '  COMPAT_VARIANT_COMMIT    Commit the variant was staged from (run.sh --commit=<sha>); provenance.',
+    '  COMPAT_MUTATION          Mutation id of a --mutation drive (e.g. M1); provenance, else absent.',
+    '  COMPAT_L2_HTML_OUTPUT    0/1: html_output seeded into the rundir .maister/config.yml (every',
+    '                           scenario but init). Resolution: manifest ?? this ?? 1 (true).',
+    '  COMPAT_L2_SKIP_INSTR     0/1: createSession skipCustomInstructions. manifest ?? this ?? 1 (true,',
+    '                           ADR-001: the operator\'s ~/.copilot instructions never leak into a drive).',
+    '  COMPAT_L2_EXCLUDED_TOOLS Comma-separated createSession excludedTools (e.g. mcp:playwright).',
+    '                           manifest ?? this ?? absent.',
+    '  COMPAT_L2_EFFORT         createSession reasoningEffort (e.g. low). manifest ?? this ?? absent.',
     '',
     'Normally invoked via `make test-l2` -> run.sh (seat preflight + plugin de-shadow + isolation).',
     '',
@@ -236,7 +257,8 @@ function printUsage(stream = process.stdout) {
 }
 
 // --------------------------------------------------------------------------- reference + version
-function loadReference(scenarioId) {
+// EXPORTED (fix pass): the ONE reader of reference/<id>.skeleton.json (cost-report --verdict imports it).
+export function loadReference(scenarioId) {
   const refPath = path.join(L2_DIR, 'reference', `${scenarioId}.skeleton.json`);
   if (!isFile(refPath)) {
     throw preconditionError(`reference not found: ${refPath} (author the golden / run make build first)`);
@@ -290,14 +312,66 @@ function getScenario(id) {
 // the development workflow MUTATES the rundir (writes .maister/tasks/**, edits the sandbox), so N>1
 // runs must never share one. We deliberately do NOT reuse COMPAT_RUNDIR (run.sh's single copy) for
 // the same reason; run.sh's isolation (plugin de-shadow) is orthogonal and still applies.
-function makeFreshRundir(sc) {
+// G6a (#122): seed the rundir's `.maister/config.yml` right after the template copy. Returns the seed
+// record persisted in replay-meta.json (`sandboxSeeds`). `htmlOutput` = the boolean runLive resolved ONCE
+// (resolveHtmlOutput) and handed down via driveOnce's `resolved` — never re-derived from process.env here.
+function makeFreshRundir(sc, htmlOutput) {
   const templateDir = path.join(L2_DIR, 'sandbox', sc.sandboxTemplate);
   if (!isDir(templateDir)) {
     throw preconditionError(`sandbox template not found: ${templateDir}`);
   }
   const rundir = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-rundir-'));
   fs.cpSync(templateDir, rundir, { recursive: true });
-  return rundir;
+  let seed;
+  try {
+    seed = seedConfigYml(rundir, sc, htmlOutput);
+  } catch (err) {
+    // A seed precondition fires BEFORE any session exists — do not leak the half-built mktemp dir.
+    try { fs.rmSync(rundir, { recursive: true, force: true }); } catch { /* ignore */ }
+    throw err;
+  }
+  return { rundir, seed };
+}
+
+// G6a (#122): write `<rundir>/.maister/config.yml` in the exact shape `/maister:init` writes, so a
+// drive's html_output is a CONTROLLED variable (the untouched templates left it to the plugin default,
+// an uncontrolled cost lever — #110). PURE fs side-effect over (rundir, sc, htmlOutput); no globals, NO env.
+//   * `init` is SKIPPED: its template must stay bare (the init-structure oracle asserts what /maister:init
+//     creates). Returns { configYml: null, note } — the note is persisted so the meta says why.
+//   * html_output = the boolean resolveHtmlOutput returned (manifest `sandboxSeeds.configYml.html_output`
+//     ?? COMPAT_L2_HTML_OUTPUT (0/1) ?? true) — resolved ONCE in runLive; anything else is a precondition.
+//   * A template that ALREADY ships .maister/config.yml is a precondition (exit 2, nothing spent): a
+//     silent overwrite would mask a future template edit. No template ships one today.
+//   * Applies to every non-init scenario incl. --mutation drives and templates without .maister/
+//     (sample-cli-bug, sample-cli-destructive) — predicate-inert (standards(index_read) stays optional).
+// PURE over (seeds, env): manifest `sandboxSeeds.configYml.html_output` ?? COMPAT_L2_HTML_OUTPUT (0/1) ?? true.
+// Fix pass (R2.4 literal): runLive resolves this ONCE, before the credit-spend confirm, so an env typo is a
+// precondition (exit 2) that spends nothing. Fix pass 2: seedConfigYml takes ONLY the pre-resolved boolean
+// (via driveOnce's required `resolved`) — no env fallback for sessionOptions / html_output / model below runLive
+// (the ADR-001 COMPAT_PROMPT_FILE and the COMPAT_KEEP_RUNDIR cleanup seams in driveOnce are unrelated and stay).
+export function resolveHtmlOutput(seeds, env = process.env) {
+  const htmlOutput = seeds?.configYml?.html_output ?? envFlag(env, 'COMPAT_L2_HTML_OUTPUT') ?? true;
+  if (typeof htmlOutput !== 'boolean') {
+    throw preconditionError(`sandboxSeeds.configYml.html_output must be a boolean, got ${JSON.stringify(htmlOutput)}`);
+  }
+  return htmlOutput;
+}
+
+export function seedConfigYml(rundir, sc, htmlOutput) {
+  if (sc?.id === 'init') {
+    return { configYml: null, note: 'init: template must stay bare (init-structure oracle)' };
+  }
+  if (typeof htmlOutput !== 'boolean') {
+    throw preconditionError(`seedConfigYml: html_output must be a resolved boolean (resolveHtmlOutput), got ${JSON.stringify(htmlOutput)}`);
+  }
+  const maisterDir = path.join(rundir, '.maister');
+  const configPath = path.join(maisterDir, 'config.yml');
+  if (fs.existsSync(configPath)) {
+    throw preconditionError(`refusing to overwrite a template-shipped ${configPath} (the seed expects a bare template; adjust the seed, not the copy)`);
+  }
+  fs.mkdirSync(maisterDir, { recursive: true });
+  fs.writeFileSync(configPath, `html_output: ${htmlOutput}\nmockup_format: html\n`);
+  return { configYml: { html_output: htmlOutput, mockup_format: 'html' }, note: null };
 }
 
 // Read the run's orchestrator-state.yml from the rundir task tree (first task dir of the scenario's
@@ -384,6 +458,253 @@ function usageSuffix(u) {
 // null = "account/SDK default" (the header renders `default`). PURE — unit-tested credit-free.
 export function resolveModel(opts, sc, env = process.env) {
   return opts?.model ?? env.COMPAT_L2_MODEL ?? sc?.model ?? null;
+}
+
+// --------------------------------------------------------------------------- G6a (#122) session options seam (pure)
+// A 0/1 env flag -> boolean; unset/empty -> null (falls through to the next source). Any other value is
+// a precondition (exit 2): an operator typo must never silently resolve to the default.
+function envFlag(env, name) {
+  const v = env?.[name];
+  if (v == null || v === '') return null;
+  if (v === '1') return true;
+  if (v === '0') return false;
+  throw preconditionError(`${name} must be 0 or 1, got ${JSON.stringify(v)}`);
+}
+
+// Parse the arm manifest named by COMPAT_ARM_MANIFEST (l2/variants/arms/<arm>.json). Unset/empty -> null
+// (no arm: env seams + defaults apply). Set-but-unreadable or not a JSON object is a HARD precondition
+// (exit 2) thrown by runLive BEFORE the credit-spend confirm — never a silent fallback to defaults.
+export function loadArmManifest(manifestPath) {
+  if (manifestPath == null || manifestPath === '') return null;
+  let raw;
+  try { raw = fs.readFileSync(manifestPath, 'utf8'); }
+  catch (err) { throw preconditionError(`COMPAT_ARM_MANIFEST is set but unreadable: ${manifestPath} — ${err.message}`); }
+  let manifest;
+  try { manifest = JSON.parse(raw); }
+  catch (err) { throw preconditionError(`COMPAT_ARM_MANIFEST is not valid JSON: ${manifestPath} — ${err.message}`); }
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw preconditionError(`COMPAT_ARM_MANIFEST is not a JSON object: ${manifestPath}`);
+  }
+  return manifest;
+}
+
+// The createSession config BEYOND the fixed keys (workingDirectory, pluginDirectories, callbacks). PURE
+// over (manifest, env) — unit-tested credit-free. Per key the FIRST NON-NULL source wins, in the order
+// manifest `sessionOptions.<key>` -> env seam -> default, and a null resolution OMITS the key entirely
+// (never `key: null` — the same conditional-spread rule as `model`, see createSession). `model` is NOT
+// resolved here: it stays with resolveModel and is merged into this object by driveOnce.
+//   skipCustomInstructions  manifest boolean  ?? COMPAT_L2_SKIP_INSTR (0/1)                 ?? true (ADR-001)
+//   excludedTools           manifest string[] ?? COMPAT_L2_EXCLUDED_TOOLS (comma-separated) ?? absent
+//   reasoningEffort         manifest string   ?? COMPAT_L2_EFFORT                           ?? absent
+// So `skipCustomInstructions` is present on EVERY drive; only a plain-legacy manifest yields false.
+export function buildSessionOptions(manifest, env = process.env) {
+  const mo = manifest?.sessionOptions ?? {};
+  const skipCustomInstructions = mo.skipCustomInstructions ?? envFlag(env, 'COMPAT_L2_SKIP_INSTR') ?? true;
+  if (typeof skipCustomInstructions !== 'boolean') {
+    throw preconditionError(`sessionOptions.skipCustomInstructions must be a boolean, got ${JSON.stringify(skipCustomInstructions)}`);
+  }
+  const envTools = env?.COMPAT_L2_EXCLUDED_TOOLS;
+  const excludedTools = mo.excludedTools
+    ?? (envTools ? envTools.split(',').map((t) => t.trim()).filter(Boolean) : null);
+  if (excludedTools != null && !(Array.isArray(excludedTools) && excludedTools.every((t) => typeof t === 'string'))) {
+    throw preconditionError(`sessionOptions.excludedTools must be a string[] or null, got ${JSON.stringify(excludedTools)}`);
+  }
+  const reasoningEffort = mo.reasoningEffort ?? (env?.COMPAT_L2_EFFORT || null);
+  if (reasoningEffort != null && typeof reasoningEffort !== 'string') {
+    throw preconditionError(`sessionOptions.reasoningEffort must be a string or null, got ${JSON.stringify(reasoningEffort)}`);
+  }
+  return {
+    skipCustomInstructions,
+    ...(excludedTools != null ? { excludedTools } : {}),
+    ...(reasoningEffort != null ? { reasoningEffort } : {}),
+  };
+}
+
+// --------------------------------------------------------------------------- G3 (#122) provenance (pure)
+// First `\d+.\d+.\d+` of the raw `copilot --version` output (two lines on 1.0.8x); null when there is no
+// match (the `unknown (copilot not on PATH)` fallback). copilotVersion itself is persisted verbatim.
+export function normalizeCliVersion(s) {
+  const m = /\d+\.\d+\.\d+/.exec(String(s ?? ''));
+  return m ? m[0] : null;
+}
+
+// Content digest of a plugin tree: sha256 over the LC_ALL=C-sorted (byte-order) list of regular files
+// under `dir`, each contributing the line `<sha256(contents)>  ./<rel>\n` — exactly what
+// `cd <dir> && find . -type f | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256` prints, so an
+// operator can re-derive it by hand (R2.3; same shape as Makefile check-deterministic, which is SHA-1).
+// Symlinks and directories are skipped like `-type f`. Throws on an unreadable tree (the caller maps it
+// to a precondition). PURE over the filesystem: no globals, no env.
+export function digestTree(dir) {
+  const files = [];
+  const walk = (abs, rel) => {
+    for (const d of fs.readdirSync(abs, { withFileTypes: true })) {
+      const a = path.join(abs, d.name);
+      const r = `${rel}/${d.name}`;
+      if (d.isDirectory()) walk(a, r);
+      else if (d.isFile()) files.push({ abs: a, rel: r });
+    }
+  };
+  walk(dir, '.');
+  files.sort((x, y) => Buffer.compare(Buffer.from(x.rel, 'utf8'), Buffer.from(y.rel, 'utf8')));
+  const outer = createHash('sha256');
+  for (const f of files) {
+    const inner = createHash('sha256').update(fs.readFileSync(f.abs)).digest('hex');
+    outer.update(`${inner}  ${f.rel}\n`);
+  }
+  return `sha256:${outer.digest('hex')}`;
+}
+
+// Which model(s) actually served the drive, from the typed event stream: `main` = the startup
+// `session.model_change` newModel (first one wins; null when absent), plus one entry per
+// `subagent.started.data.agentName` carrying a `model` — a single model is the string, an agent seen with
+// several DISTINCT models becomes a sorted array (never last-wins; null-never-0). PURE.
+export function servedModelsFromEvents(events) {
+  const out = { main: null };
+  const byAgent = new Map();
+  for (const e of Array.isArray(events) ? events : []) {
+    const d = e?.data;
+    if (e?.type === 'session.model_change' && d?.source === 'startup' && out.main == null && d.newModel != null) {
+      out.main = String(d.newModel);
+    } else if (e?.type === 'subagent.started' && typeof d?.agentName === 'string' && d.model != null) {
+      if (!byAgent.has(d.agentName)) byAgent.set(d.agentName, new Set());
+      byAgent.get(d.agentName).add(String(d.model));
+    }
+  }
+  for (const [name, models] of byAgent) {
+    const sorted = [...models].sort();
+    out[name] = sorted.length === 1 ? sorted[0] : sorted;
+  }
+  return out;
+}
+
+// The repo-level provenance a live run persists in every bundle's replay-meta.json (R2.2), computed ONCE
+// in runLive in the FAIL-CLOSED order (R2.4): arm manifest (parsed ONCE by runLive and passed in as
+// `manifest`; `manifestPath` is the read-it-here form for a direct call) -> referenceHash (compare.mjs computeHash,
+// never re-implemented) -> pluginDigest -> treeOid / forkVersion. Every failure is a precondition
+// (exit 2) thrown BEFORE confirmCreditSpend, so nothing is ever spent on a run whose identity cannot be
+// recorded. `method` is `git-archive` iff a variant is set (run.sh staged the tree from a commit), else
+// `working-tree`. forkVersion is the ONE soft field: unreadable plugin.json -> null + stderr warning.
+export function computeRunProvenance({ manifest, manifestPath, pluginDir, commit = null, variant = null, reference }) {
+  // Fix pass 2: a parsed `manifest` (runLive's single loadArmManifest) is used verbatim; only a call WITHOUT
+  // one reads `manifestPath` here (precondition on set-but-unreadable/invalid, as before).
+  const armManifest = manifest !== undefined ? manifest : loadArmManifest(manifestPath);
+  const referenceHash = computeHash(reference);
+  let pluginDigest;
+  try { pluginDigest = digestTree(pluginDir); }
+  catch (err) { throw preconditionError(`cannot digest the plugin tree ${pluginDir}: ${err.message}`); }
+  // Fix pass (reality W2): the operator's spelling (short sha / tag / HEAD) is RESOLVED to the 40-hex commit
+  // oid so the same commit never reads as two identities across bundles; the spelling is kept as commitRef.
+  let commitOid = null;
+  let treeOid = null;
+  if (commit != null && commit !== '') {
+    const gitRevParse = (spec) => {
+      try {
+        return execFileSync('git', ['rev-parse', '--verify', spec], {
+          cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        }).trim();
+      } catch (err) {
+        throw preconditionError(`COMPAT_VARIANT_COMMIT=${commit}: git rev-parse --verify ${spec} failed — ${(err?.stderr || err?.message || String(err)).toString().trim()}`);
+      }
+    };
+    commitOid = gitRevParse(`${commit}^{commit}`);
+    treeOid = gitRevParse(`${commitOid}:plugins/${PLUGIN_NAME}`);
+  }
+  let forkVersion = null;
+  const pluginJson = path.join(pluginDir, '.claude-plugin', 'plugin.json');
+  try {
+    const pj = JSON.parse(fs.readFileSync(pluginJson, 'utf8'));
+    if (typeof pj.version !== 'string' || !pj.version) throw new Error('missing "version" field');
+    forkVersion = pj.version;
+  } catch (err) {
+    process.stderr.write(`L2: warning: forkVersion unreadable from ${pluginJson} (${err.message}) — recording null\n`);
+  }
+  const method = variant != null && variant !== '' ? 'git-archive' : 'working-tree';
+  return {
+    armManifest,
+    referenceHash,
+    pluginDigest,
+    pluginSource: { commit: commitOid, commitRef: commit || null, treeOid, forkVersion, method },
+  };
+}
+
+// G3 (#122, R3.1): the committed legacy map. Absence is an EMPTY map ({ bundles: {} }) — replay of a
+// pre-provenance bundle then renders UNATTRIBUTED rather than failing; a present-but-unparsable file is a
+// precondition (exit 2). The file is never written by run.mjs.
+export function loadLegacyArms(file = LEGACY_ARMS_PATH) {
+  if (!isFile(file)) return { bundles: {} };
+  try {
+    const map = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return { ...map, bundles: map?.bundles ?? {} };
+  } catch (err) {
+    throw preconditionError(`legacy map unreadable: ${file} — ${err.message}`);
+  }
+}
+
+// G3 (#122, R3.2): the report-header provenance ctx for a `--replay`, PURE over the persisted meta, the
+// bundle ts and the legacy map. This is the ONLY source of the replay header's plugin identity — the live
+// PLUGIN_DIR (COMPAT_PLUGIN_DIR of the REPLAYING process) is never read on the replay path, so a foreign
+// bundle can no longer be attributed to the fork's tree (the defect replay-provenance.test.mjs pins).
+//   metaSchema >= 2      -> provenance 'meta': the recorded identity (pluginDir absent -> a literal
+//                           UNATTRIBUTED fallback, never `undefined`; audit I8)
+//   ts in legacyMap      -> provenance 'legacy-map': legacyArm + pluginDirRecovered from the map row
+//   otherwise            -> provenance 'none'
+// Every field is null-filled (never undefined) so buildReport renders the R3.3 table deterministically.
+export function provenanceForReplay(meta, ts, legacyMap = { bundles: {} }) {
+  const m = meta ?? {};
+  if (typeof m.metaSchema === 'number' && m.metaSchema >= 2) {
+    return {
+      provenance: 'meta',
+      pluginDir: m.pluginDir ?? 'UNATTRIBUTED (v2 meta missing pluginDir)',
+      pluginName: m.pluginName ?? PLUGIN_NAME,
+      variant: m.variant ?? null,
+      mutation: m.mutation ?? null,
+      pluginSource: m.pluginSource ?? null,
+      pluginDigest: m.pluginDigest ?? null,
+      sessionOptions: m.sessionOptions ?? null,
+      legacyArm: null,
+      pluginDirRecovered: null,
+    };
+  }
+  const key = ts ?? m.ts ?? null;
+  const row = key != null ? (legacyMap?.bundles ?? {})[key] : undefined;
+  const base = {
+    pluginDir: null, pluginName: PLUGIN_NAME,
+    variant: null, mutation: null, pluginSource: null, pluginDigest: null, sessionOptions: null,
+  };
+  if (row) {
+    return { ...base, provenance: 'legacy-map', legacyArm: row.legacyArm ?? null, pluginDirRecovered: row.pluginDirRecovered ?? null };
+  }
+  return { ...base, provenance: 'none', legacyArm: null, pluginDirRecovered: null };
+}
+
+// The header-provenance subset of a finalize ctx (live or replay), null-filled so buildReport never sees
+// `undefined`. Live ctx and replay ctx supply the same keys, so a v2 bundle's replay header equals its
+// live header line-for-line on the four provenance lines (R3.3).
+function headerProvenance(ctx) {
+  return {
+    provenance: ctx.provenance ?? 'meta',
+    variant: ctx.variant ?? null, mutation: ctx.mutation ?? null,
+    pluginSource: ctx.pluginSource ?? null, pluginDigest: ctx.pluginDigest ?? null,
+    sessionOptions: ctx.sessionOptions ?? null,
+    legacyArm: ctx.legacyArm ?? null, pluginDirRecovered: ctx.pluginDirRecovered ?? null,
+  };
+}
+
+// An oid for a header: a 40-hex value -> its first 8 hex; any other non-empty spelling verbatim; else unknown.
+function shortOid(v) {
+  const str = v != null ? String(v) : '';
+  return /^[0-9a-f]{40}$/.test(str) ? str.slice(0, 8) : (str || 'unknown');
+}
+
+// `Plugin source` cell for a v2 header: git-archive (staged from a commit) vs working-tree. The short oid
+// leads; the operator's spelling (commitRef) is shown only when it differs from the resolved commit.
+function renderPluginSource(ps) {
+  const version = ps.forkVersion ?? 'unknown';
+  if (ps.method === 'git-archive') {
+    const ref = ps.commitRef != null && ps.commitRef !== '' && ps.commitRef !== ps.commit ? `ref ${ps.commitRef}; ` : '';
+    return `git-archive ${shortOid(ps.commit)} (${ref}tree ${shortOid(ps.treeOid)}, version ${version})`;
+  }
+  return `working-tree (version ${version})`;
 }
 
 // The ACTUAL model(s) that served the run, from extractUsage().models (the session.shutdown
@@ -509,6 +830,9 @@ export function buildReport(ctx) {
     pluginDir, pluginName, finalN, parseWarnings = [], sdkPath, noiseBand = null, perRun = null,
     usage = null, usageTotal = null, gateLog = [], replaySource = null,
     model = null, modelActual = null, cost = null,
+    // G3 (#122, R3.3): provenance ctx — 'meta' (live, or a v2 bundle), 'legacy-map', or 'none'.
+    provenance = 'meta', variant = null, mutation = null, pluginSource = null, pluginDigest = null,
+    sessionOptions = null, legacyArm = null, pluginDirRecovered = null,
   } = ctx;
 
   const L = [];
@@ -517,7 +841,35 @@ export function buildReport(ctx) {
   L.push(`- **Generated (UTC):** ${ts}`);
   L.push(`- **Copilot CLI:** \`${esc(copilotVersion)}\``);
   L.push(`- **maister version (reference stamp):** \`${esc(maisterVersion)}\``);
-  L.push(`- **Plugin under test:** \`${esc(pluginDir)}\` (name: \`${pluginName}\`)`);
+  // G3 (#122, R3.3): plugin identity + four provenance lines, rendered per case. A LIVE run and a v2
+  // `--replay` take the 'meta' column from the same values; pre-provenance bundles are attributed from
+  // the legacy map or labelled UNATTRIBUTED — the REPLAYING process's plugin dir is never rendered.
+  if (provenance === 'meta') {
+    // Fix pass (reality W5): an arm drive's pluginDir is a vanished mktemp path — for a git-archive bundle the
+    // durable identity (commit + tree oid) leads and the staged path is secondary. Working-tree unchanged.
+    if (pluginSource?.method === 'git-archive') {
+      L.push(`- **Plugin under test:** \`git-archive ${shortOid(pluginSource.commit)} (tree ${shortOid(pluginSource.treeOid)})\` (name: \`${pluginName}\`; staged at \`${esc(pluginDir)}\`)`);
+    } else {
+      L.push(`- **Plugin under test:** \`${esc(pluginDir)}\` (name: \`${pluginName}\`)`);
+    }
+    L.push(`- **Variant:** ${variant != null ? `\`${esc(variant)}\`` : (mutation != null ? `none (mutation ${esc(mutation)})` : 'none')}`);
+    L.push(`- **Plugin source:** ${pluginSource != null ? `\`${esc(renderPluginSource(pluginSource))}\`` : 'unknown'}`);
+    L.push(`- **Plugin digest:** ${pluginDigest != null ? `\`${esc(pluginDigest)}\`` : 'unknown'}`);
+    L.push(`- **Session options:** ${sessionOptions != null ? `\`${esc(JSON.stringify(sessionOptions))}\`` : 'unknown'}`);
+  } else {
+    const legacy = provenance === 'legacy-map';
+    if (legacy && pluginDirRecovered != null) {
+      L.push(`- **Plugin under test:** \`${esc(pluginDirRecovered)}\` (name: \`${pluginName ?? PLUGIN_NAME}\`; legacy map — pre-provenance bundle)`);
+    } else if (legacy) {
+      L.push('- **Plugin under test:** UNATTRIBUTED (pre-provenance bundle; legacy map — no path-bearing event)');
+    } else {
+      L.push('- **Plugin under test:** UNATTRIBUTED (pre-provenance bundle; cost-report --recover shows the loaded path)');
+    }
+    L.push(`- **Variant:** ${legacy ? `${esc(legacyArm ?? 'unknown')} (legacy map — pre-provenance bundle)` : 'unknown (pre-provenance bundle)'}`);
+    L.push('- **Plugin source:** unknown (pre-provenance bundle)');
+    L.push('- **Plugin digest:** unknown (pre-provenance bundle)');
+    L.push('- **Session options:** unknown (pre-provenance bundle)');
+  }
   L.push(`- **Copilot SDK (resolved):** \`${esc(sdkPath || 'n/a (not resolved)')}\``);
   // Stage-4 mode marker: a credit-free `--replay` run renders its source bundle; live stays plain.
   if (mode === 'replayed') L.push(`- **Mode:** replayed (from ${esc(replaySource ?? 'unknown')})`);
@@ -835,13 +1187,73 @@ export function persistTraceBundle(dest, { events, rundir, meta }) {
   return dest;
 }
 
+// The replay-meta.json object one drive persists (schema v2, G3 #122). PURE over its inputs so the key
+// order + null discipline are unit-testable without a live drive. R2.1 (strict compatibility): the 12
+// legacy keys come FIRST, in their historical order, with unchanged values; the v2 keys are appended
+// after `cost` in the R2.2 table order. Every value follows `x ?? fallback` — a minimal persistMeta (the
+// unit tests, a --mutation drive) never throws. persistMeta carries the repo-level values runLive
+// computed once (computeRunProvenance + env); the drive-level values arrive from driveOnce's locals.
+export function buildReplayMeta({ sc, runIndex, persistMeta, modelActual, cost, events, sessionOptions, sandboxSeeds }) {
+  return {
+    scenario: sc.id,
+    taskType: sc.taskType,
+    copilotVersion: persistMeta?.copilotVersion ?? null,
+    sdkPath: persistMeta?.sdkPath ?? null,
+    ts: persistMeta?.ts ?? null,
+    // #63 item 3: 1-based run index + N so an N>1 bundle self-identifies which drive it captured.
+    runIndex: persistMeta?.runIndex ?? runIndex,
+    runs: persistMeta?.runs ?? 1,
+    originalMode: 'live',
+    maisterVersion: persistMeta?.maisterVersion ?? null,
+    // Stage-5: persist the requested + actual model and the run's real cost so a --replay renders
+    // the SAME model/cost the live run showed (replay's res.usage is null — cost comes from meta).
+    model: persistMeta?.model ?? null,
+    modelActual: modelActual ?? 'unknown',
+    cost: cost ?? null,
+    // hook_effect(destructive_guard=ask) is NOT persisted as a sink — it replays directly from
+    // events.json (the persisted permission.requested carries kind:"hook" + the guard hookMessage),
+    // so the extractor re-derives it on replay with no separate observed-decision channel.
+    // ---- schema v2 (G3, #122): plugin identity + run provenance, appended AFTER the legacy keys (R2.2).
+    metaSchema: 2,
+    variant: persistMeta?.variant ?? null,               // COMPAT_VARIANT; null on a --mutation / plain drive (R2.5)
+    mutation: persistMeta?.mutation ?? null,             // COMPAT_MUTATION ('M1'..), else null
+    pluginDir: PLUGIN_DIR,                               // the tree this drive loaded, at drive time
+    pluginName: PLUGIN_NAME,
+    pluginDigest: persistMeta?.pluginDigest ?? null,     // digestTree(PLUGIN_DIR); never null on a live run
+    pluginSource: persistMeta?.pluginSource ?? { commit: null, commitRef: null, treeOid: null, forkVersion: null, method: 'working-tree' }, // the 5-key shape on EVERY v2 meta
+    sessionOptions: sessionOptions ?? null,              // EXACTLY the object spread into createSession
+    sandboxSeeds: sandboxSeeds ?? null,                  // { configYml, note, hookContextAppend }
+    referenceHash: persistMeta?.referenceHash ?? null,   // computeHash(reference) at drive time
+    cliVersion: normalizeCliVersion(persistMeta?.copilotVersion),
+    servedModels: servedModelsFromEvents(events),
+    armManifest: persistMeta?.armManifest ?? null,       // the parsed COMPAT_ARM_MANIFEST, verbatim
+  };
+}
+
 // persistDir: absolute destination for this run's replay bundle (null = do not persist). Decoupled from
 // readCostHere so N>1 can persist every drive (#63 item 3) while STILL leaving per-run cost null (the
 // aggregate is read once in runLive). readCostHere: read the per-run AIU cost here (N=1 only — the window
-// is known; N>1 reads the whole-run window once in runLive).
-export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir = null, persistMeta = null, model = null, readCostHere = false) {
+// is known; N>1 reads the whole-run window once in runLive). manifest (G6a, #122): the parsed arm manifest
+// (runLive's loadArmManifest) or null — supplies sessionOptions + sandboxSeeds; null = env seams/defaults.
+// resolved (fix pass 2, R2.4 literal): REQUIRED { sessionOptions, htmlOutput } — EXACTLY what runLive resolved
+// + validated BEFORE the credit-spend confirm (the unit tests build theirs from buildSessionOptions /
+// resolveHtmlOutput over an explicit env object). driveOnce never re-derives session/seed/model values from process.env
+// (its only remaining env reads are the documented COMPAT_PROMPT_FILE and COMPAT_KEEP_RUNDIR seams); the
+// requested model rides inside resolved.sessionOptions (conditional spread, absent when null).
+export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir = null, persistMeta = null, readCostHere = false, manifest = null, resolved = undefined) {
   const { CopilotClient, RuntimeConnection, approveAll } = sdk;
-  const rundir = makeFreshRundir(sc); // throws a precondition (exit 2) if the template is missing
+  if (resolved == null || typeof resolved !== 'object' || resolved.sessionOptions == null || typeof resolved.sessionOptions !== 'object' || typeof resolved.htmlOutput !== 'boolean') {
+    throw new Error('driveOnce: `resolved` { sessionOptions, htmlOutput } is required — runLive resolves it once before the credit-spend confirm');
+  }
+  // Throws a precondition (exit 2) if the template is missing or already ships .maister/config.yml.
+  const { rundir, seed } = makeFreshRundir(sc, resolved.htmlOutput);
+  // G6a (#122): the EXACT object spread into createSession beyond the fixed keys, built ONCE per run
+  // (runLive) and returned verbatim (res.sessionOptions) so the meta persists what the SDK actually
+  // received. `model` keeps its conditional-spread discipline (absent when null) — see buildSessionOptions.
+  const sessionOptions = resolved.sessionOptions;
+  // G6a (#122): what was seeded into the rundir (+ which manifest transform appended hook context), for
+  // the meta. hookContextAppend is the manifest transform id or null (no arm / no such transform).
+  const sandboxSeeds = { ...seed, hookContextAppend: manifest?.sandboxSeeds?.hookContextAppend ?? null };
   const recorded = [];
   const gateLog = []; // per-run deterministic-responder log -> report `## Gates` section
   let sessionId = null; // #63 item 5: SDK session id (captured from the input-handler ctx, best-effort)
@@ -859,12 +1271,15 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
     session = await client.createSession({
       workingDirectory: rundir,
       pluginDirectories: [PLUGIN_DIR],
-      // Stage-5 (M-1): thread the requested model DEFENSIVELY via a CONDITIONAL SPREAD so the key is
-      // ABSENT (never `model: null`) when no model is requested. driveOnce's outer try (below) is
-      // catch-less (only a `finally`), so a strict runtime-resolved SDK that rejects a null/unknown
-      // `model` key would throw and turn EVERY live run INCOMPLETE — the default (null) MUST omit the
-      // key entirely. Passed best-effort; NEVER asserted to take effect this stage (deferred paid confirm).
-      ...(model != null ? { model } : {}),
+      // Stage-5 (M-1) + G6a (#122): the resolved session options — skipCustomInstructions (ALWAYS present;
+      // true by default so the operator's ~/.copilot instructions never leak into a drive, ADR-001),
+      // excludedTools / reasoningEffort / model ONLY when resolved. Every key follows the CONDITIONAL-
+      // SPREAD rule: a null resolution is ABSENT (never `key: null`). driveOnce's outer try (below) is
+      // catch-less (only a `finally`), so a strict runtime-resolved SDK that rejects a null/unknown key
+      // would throw and turn EVERY live run INCOMPLETE — a null MUST omit the key entirely. Passed
+      // best-effort; an SDK that rejects a declared key -> INCOMPLETE (exit 2) is the wanted fail-closed
+      // outcome. The exact object is returned as res.sessionOptions (persisted in replay-meta.json).
+      ...sessionOptions,
       // LOAD-BEARING: onEvent is a SessionConfig FIELD so it registers BEFORE the create RPC.
       onEvent: (e) => { recorded.push(e); },
       // Gates FIRE and are ANSWERED (never suppressed via --no-ask-user; AC8) by the DETERMINISTIC
@@ -932,6 +1347,8 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
         startIso,
         endIso,
         cost,
+        sessionOptions,
+        sandboxSeeds,
       };
     }
     const endIso = new Date().toISOString();
@@ -978,26 +1395,7 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
     // Wrapped in try/catch; a persist failure logs to stderr and continues to the verdict.
     if (persistDir != null) {
       try {
-        const meta = {
-          scenario: sc.id,
-          taskType: sc.taskType,
-          copilotVersion: persistMeta?.copilotVersion ?? null,
-          sdkPath: persistMeta?.sdkPath ?? null,
-          ts: persistMeta?.ts ?? null,
-          // #63 item 3: 1-based run index + N so an N>1 bundle self-identifies which drive it captured.
-          runIndex: persistMeta?.runIndex ?? runIndex,
-          runs: persistMeta?.runs ?? 1,
-          originalMode: 'live',
-          maisterVersion: persistMeta?.maisterVersion ?? null,
-          // Stage-5: persist the requested + actual model and the run's real cost so a --replay renders
-          // the SAME model/cost the live run showed (replay's res.usage is null — cost comes from meta).
-          model: persistMeta?.model ?? null,
-          modelActual: modelActualResolved ?? 'unknown',
-          cost: cost ?? null,
-          // hook_effect(destructive_guard=ask) is NOT persisted as a sink — it replays directly from
-          // events.json (the persisted permission.requested carries kind:"hook" + the guard hookMessage),
-          // so the extractor re-derives it on replay with no separate observed-decision channel.
-        };
+        const meta = buildReplayMeta({ sc, runIndex, persistMeta, modelActual: modelActualResolved, cost, events, sessionOptions, sandboxSeeds });
         const dest = persistTraceBundle(persistDir, { events, rundir, meta });
         process.stderr.write(`L2: persisted replay trace: ${dest}\n`);
       } catch (persistErr) {
@@ -1007,9 +1405,9 @@ export async function driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir
 
     // MEDIUM-2 sanity floor: empty phases while artifacts exist -> INCOMPLETE, never a silent
     // all-phases-missing REGRESSED.
-    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual: modelActualResolved, startIso, endIso, cost };
+    if (ex.incomplete) return { status: 'incomplete', reason: ex.incompleteReason, ex, run: runIndex, usage, gateLog, modelActual: modelActualResolved, startIso, endIso, cost, sessionOptions, sandboxSeeds };
 
-    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual: modelActualResolved, startIso, endIso, cost };
+    return { status: 'ok', observed: normalize(ex.records), ex, rundir, run: runIndex, usage, gateLog, modelActual: modelActualResolved, startIso, endIso, cost, sessionOptions, sandboxSeeds };
   } finally {
     // Bounded per-run teardown: disconnect the session, THEN stop + forceStop THIS run's OWN client
     // (the SDK client spawned an app.js runtime subprocess whose IPC handles keep the event loop alive —
@@ -1082,11 +1480,36 @@ async function runLive(opts) {
         ? `mktemp rundir (provided by run.sh): ${process.env.COMPAT_RUNDIR}`
         : 'mktemp rundir (created by run.mjs direct-invocation fallback)');
 
+  // G6a (#122): the arm manifest (COMPAT_ARM_MANIFEST) is parsed FIRST — set-but-unreadable/invalid is a
+  // precondition (exit 2) before the reference check and long before any credit is spent. null = no arm.
+  const manifest = loadArmManifest(process.env.COMPAT_ARM_MANIFEST);
+
+  // Fix pass (R2.4 literal; verification W4): the env seams + manifest sessionOptions and html_output are
+  // RESOLVED AND VALIDATED here — a bad COMPAT_L2_SKIP_INSTR / COMPAT_L2_HTML_OUTPUT / manifest value is a
+  // precondition (exit 2) BEFORE the reference, the provenance and the confirm — and the resolved objects
+  // ride into every driveOnce unchanged (never re-derived per drive). Stage-5: the REQUESTED model is
+  // resolved once too (opts ?? COMPAT_L2_MODEL ?? scenario default) and merged in by conditional spread.
+  const model = resolveModel(opts, sc);
+  const resolved = {
+    sessionOptions: { ...buildSessionOptions(manifest, process.env), ...(model != null ? { model } : {}) },
+    htmlOutput: resolveHtmlOutput(manifest?.sandboxSeeds ?? null, process.env),
+  };
+
   // Reference must exist + be valid JSON before we spend a credit (precondition -> exit 2).
   const reference = loadReference(sc.id).reference;
 
-  // FAIL-CLOSED credit-spend confirmation (B) — AFTER the reference precondition, BEFORE any SDK import
-  // or driveOnce, so a refusal spends NOTHING. Credit-free paths (--check-reference, -h/--help) already
+  // G3 (#122, R2.4): the run's provenance — reference hash, plugin digest, tree oid / fork version — is
+  // computed ONCE here, AFTER the reference and BEFORE the credit-spend confirm. Every failure is a
+  // precondition (exit 2) that spends nothing; the values ride into each bundle's meta via persistMeta.
+  const variant = process.env.COMPAT_VARIANT || null;
+  const mutation = process.env.COMPAT_MUTATION || null;
+  const provenance = computeRunProvenance({
+    manifest, pluginDir: PLUGIN_DIR, // the manifest parsed ONCE above (fix pass 2: never re-read here)
+    commit: process.env.COMPAT_VARIANT_COMMIT || null, variant, reference,
+  });
+
+  // FAIL-CLOSED credit-spend confirmation (B) — AFTER the reference + provenance preconditions, BEFORE
+  // any SDK import or driveOnce, so a refusal spends NOTHING. Credit-free paths (--check-reference, -h/--help) already
   // returned in main() and never reach here.
   if (!(await confirmCreditSpend(opts, N, sc))) return EXIT.INCOMPLETE;
 
@@ -1111,15 +1534,19 @@ async function runLive(opts) {
   // run-<i>/ (INCOMPLETE drives included; the persist is BEFORE the sanity-floor early return in
   // driveOnce). Per-run cost stays N=1-only (readCostHere): the N>1 aggregate is read once below, so an
   // N>1 bundle records cost:null (honest — per-run cost is not separately measured).
-  // Stage-5: resolve the REQUESTED model ONCE (opts ?? COMPAT_L2_MODEL ?? scenario default), pass it
-  // into every driveOnce, and persist it in each bundle's replay-meta.
-  const model = resolveModel(opts, sc);
+  // Stage-5: the REQUESTED model (resolved once above with the session options) is passed into every
+  // driveOnce and persisted in each bundle's replay-meta.
   const results = [];
   for (let i = 0; i < N; i++) {
     const runIndex = i + 1;
     const persistDir = persistDirFor(REPORTS_DIR, ts, runIndex, N);
-    const persistMeta = { copilotVersion, sdkPath, maisterVersion, model, ts, runIndex, runs: N };
-    results.push(await driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir, persistMeta, model, /* readCostHere */ N === 1));
+    const persistMeta = {
+      copilotVersion, sdkPath, maisterVersion, model, ts, runIndex, runs: N,
+      // G3 (#122): repo-level provenance, computed once above (R2.2 / R2.5).
+      variant, mutation, pluginDigest: provenance.pluginDigest, pluginSource: provenance.pluginSource,
+      referenceHash: provenance.referenceHash, armManifest: provenance.armManifest,
+    };
+    results.push(await driveOnce(sdk, runtimePath, sc, opts, runIndex, persistDir, persistMeta, /* readCostHere */ N === 1, manifest, resolved));
   }
 
   // Stage-5 model/cost aggregate. N=1: the per-run readCost was done inside driveOnce (window known
@@ -1142,6 +1569,12 @@ async function runLive(opts) {
     reference, N, scenarioId: sc.id, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir: PLUGIN_DIR, pluginName: PLUGIN_NAME, sdkPath,
     model, modelActual, cost,
+    // G3 (#122, R3.3): the SAME provenance the bundles' meta v2 carries (computed once above; the
+    // sessionOptions object driveOnce actually passed to createSession), so a live report and the
+    // `--replay` of its bundle render identical Variant / Plugin source / digest / Session options lines.
+    provenance: 'meta', variant, mutation,
+    pluginSource: provenance.pluginSource, pluginDigest: provenance.pluginDigest,
+    sessionOptions: results.find((r) => r?.sessionOptions)?.sessionOptions ?? null,
   };
   return N === 1 ? finalizeSingleRun(results[0], ctx) : finalizeMultiRun(results, ctx);
 }
@@ -1152,8 +1585,12 @@ async function runLive(opts) {
 // Reconstructs the three extract() rundir inputs from the bundle and RE-RUNS the outcome oracle
 // against the persisted rundir copy (restaging from the committed sandbox template), then reuses
 // finalizeSingleRun (compare/report/exit-code) unchanged.
-function runReplay(opts) {
-  const dir = opts.replay;
+// G3 / R7.1 (#122): reconstruct one persisted bundle into a driveOnce-shaped result WITHOUT the SDK
+// (credit-free) — the shared front half of `--replay` and cost-report `--verdict`. Preconditions (missing
+// dir / meta / events) throw exit-2 errors. Returns { dir, meta, sc, events, ex, res }: `meta` verbatim
+// (any schema — readers use `meta.x ?? fallback`), `sc` the resolved scenario, `ex` the raw extract(),
+// `res` shaped exactly like driveOnce's return so deriveVerdict / finalizeSingleRun consume it unchanged.
+export function extractFromBundle(dir) {
   if (!isDir(dir)) throw preconditionError(`--replay directory not found: ${dir}`);
   const metaPath = path.join(dir, 'replay-meta.json');
   const eventsPath = path.join(dir, 'events.json');
@@ -1187,6 +1624,12 @@ function runReplay(opts) {
     ? { status: 'incomplete', reason: ex.incompleteReason, ex, run: 1, usage: null, gateLog: [] }
     : { status: 'ok', observed: normalize(ex.records), ex, rundir: taskDirRoot, run: 1, usage: null, gateLog: [] };
 
+  return { dir, meta, sc, events, ex, res };
+}
+
+function runReplay(opts) {
+  const { dir, meta, sc, res } = extractFromBundle(opts.replay);
+
   // Credit-free ctx (loadReference / readRepoMaisterVersion / osString only — NO SDK).
   const reference = loadReference(sc.id).reference;
   // ts for the replay report: a flat reports/<ts>/ bundle carries the ts in its basename; a per-run
@@ -1200,7 +1643,9 @@ function runReplay(opts) {
     maisterVersion: meta.maisterVersion ?? readRepoMaisterVersion(),
     osStr: osString(), ts,
     isolationNote: `replayed from ${dir}`,
-    pluginDir: PLUGIN_DIR, pluginName: PLUGIN_NAME,
+    // G3 (#122, R3.2): plugin identity + provenance from the PERSISTED meta (v2), else the committed
+    // legacy map, else UNATTRIBUTED — never the replaying process's live plugin-dir/name constants.
+    ...provenanceForReplay(meta, ts, loadLegacyArms()),
     sdkPath: meta.sdkPath ?? 'replayed',
     mode: 'replayed', replaySource: dir,
     // Stage-5: replay sources model/cost from the PERSISTED meta (res.usage is null on replay — a live
@@ -1212,45 +1657,24 @@ function runReplay(opts) {
   return finalizeSingleRun(res, ctx);
 }
 
-// N=1 finalizer — CURRENT behavior, preserved exactly: timeout / MEDIUM-2 sanity floor / widened-F3
-// floor / normal compare, each writing the same report + stdout line + exit code as before, now over
-// the single collected driveOnce result. finalN is always 1.
-export function finalizeSingleRun(res, ctx) {
-  const {
-    reference, scenarioId, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, sdkPath,
-  } = ctx;
-  const base = {
-    scenarioId, mode: ctx.mode ?? 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
-    pluginDir, pluginName, finalN: 1, sdkPath, replaySource: ctx.replaySource ?? null,
-    usage: res.usage ?? null, gateLog: res.gateLog ?? [],
-    // Stage-5: model/actual/cost threaded from ctx into EVERY branch's report + stdout via the shared
-    // base — so an INCOMPLETE (timeout / sanity-floor) run renders its real cost too (M-3), no per-branch change.
-    model: ctx.model ?? null, modelActual: ctx.modelActual ?? 'unknown', cost: ctx.cost ?? null,
-  };
-  // Stage-5: the model + session-store.db cost segment appended after usageSuffix on every stdout line.
-  const costSuffix = costModelSuffix({ model: base.model, modelActual: base.modelActual, cost: base.cost });
+// G3 / R7.1 (#122): the SINGLE N=1 verdict authority, PURE over (res, reference) — no report, no stdout,
+// no exit. finalizeSingleRun (live + --replay) and cost-report --verdict both consume it, so the two
+// surfaces cannot disagree. Returns { overall, counts, result, reason }:
+//   timeout / session error (status incomplete, no ex)  -> INCOMPLETE, zero counts, result null, reason
+//   MEDIUM-2 sanity floor (status incomplete, ex)       -> INCOMPLETE, zero counts, result null, reason
+//   widened-F3 floor (status ok, see below)             -> INCOMPLETE, zero counts, the compare result, reason
+//   otherwise                                           -> compare()'s overall + counts (skip 0), reason null
+export function deriveVerdict(res, reference) {
   const INCOMPLETE_COUNTS = { pass: 0, limitation: 0, skip: 0, fail: 0 };
 
   // Timeout / session error (driveOnce already abort()'d; no ex) — "no verdict".
   if (res.status === 'incomplete' && !res.ex) {
-    const rp = writeReport(buildReport({
-      ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
-      observed: null, result: null, incompleteReason: res.reason, parseWarnings: [],
-    }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (no verdict) — ${res.reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
-    return EXIT.INCOMPLETE;
+    return { overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS, result: null, reason: res.reason };
   }
 
   // MEDIUM-2 sanity floor (ex.incomplete): empty phases while artifacts exist.
   if (res.status === 'incomplete' && res.ex) {
-    const rp = writeReport(buildReport({
-      ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
-      observed: normalize(res.ex.records), result: null,
-      incompleteReason: res.reason, parseWarnings: res.ex.parseWarnings,
-    }), ts);
-    process.stdout.write(`\nL2: INCOMPLETE (sanity floor) — ${res.reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
-    return EXIT.INCOMPLETE;
+    return { overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS, result: null, reason: res.reason };
   }
 
   // status 'ok' — normalize -> compare vs the committed reference.
@@ -1295,23 +1719,79 @@ export function finalizeSingleRun(res, ctx) {
       'Verdict would be REGRESSED but every candidate regression is a MISSING state-sourced predicate ' +
       '(phase_completed / task_characteristic / task_status) while the state parser emitted warnings and ' +
       'task-tree artifacts exist — treat as a partial state-parse miss (INCOMPLETE), never a false REGRESSED.';
+    return { overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS, result, reason };
+  }
+
+  const counts = {
+    pass: result.counts.pass, limitation: result.counts.limitation, skip: 0, fail: result.counts.fail,
+  };
+  return { overall: result.overall, counts, result, reason: null };
+}
+
+// N=1 finalizer — CURRENT behavior, preserved exactly: the verdict comes from deriveVerdict (the single
+// authority, R7.1); this function keeps the per-branch report + stdout line + exit-code mapping over the
+// single collected driveOnce result. finalN is always 1.
+export function finalizeSingleRun(res, ctx) {
+  const {
+    reference, scenarioId, copilotVersion, maisterVersion, osStr, ts, isolationNote,
+    pluginDir, pluginName, sdkPath,
+  } = ctx;
+  const base = {
+    scenarioId, mode: ctx.mode ?? 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
+    pluginDir, pluginName, finalN: 1, sdkPath, replaySource: ctx.replaySource ?? null,
+    usage: res.usage ?? null, gateLog: res.gateLog ?? [],
+    // G3 (#122, R3.3): the provenance lines, threaded from ctx (live or --replay) into every branch's report.
+    ...headerProvenance(ctx),
+    // Stage-5: model/actual/cost threaded from ctx into EVERY branch's report + stdout via the shared
+    // base — so an INCOMPLETE (timeout / sanity-floor) run renders its real cost too (M-3), no per-branch change.
+    model: ctx.model ?? null, modelActual: ctx.modelActual ?? 'unknown', cost: ctx.cost ?? null,
+  };
+  // Stage-5: the model + session-store.db cost segment appended after usageSuffix on every stdout line.
+  const costSuffix = costModelSuffix({ model: base.model, modelActual: base.modelActual, cost: base.cost });
+  const verdict = deriveVerdict(res, reference);
+  const { overall, counts, result, reason } = verdict;
+
+  // Timeout / session error (driveOnce already abort()'d; no ex) — "no verdict".
+  if (res.status === 'incomplete' && !res.ex) {
     const rp = writeReport(buildReport({
-      ...base, overall: 'INCOMPLETE', counts: INCOMPLETE_COUNTS,
+      ...base, overall, counts,
+      observed: null, result, incompleteReason: reason, parseWarnings: [],
+    }), ts);
+    process.stdout.write(`\nL2: INCOMPLETE (no verdict) — ${reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
+    return EXIT.INCOMPLETE;
+  }
+
+  // MEDIUM-2 sanity floor (ex.incomplete): empty phases while artifacts exist.
+  if (res.status === 'incomplete' && res.ex) {
+    const rp = writeReport(buildReport({
+      ...base, overall, counts,
+      observed: normalize(res.ex.records), result,
+      incompleteReason: reason, parseWarnings: res.ex.parseWarnings,
+    }), ts);
+    process.stdout.write(`\nL2: INCOMPLETE (sanity floor) — ${reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
+    return EXIT.INCOMPLETE;
+  }
+
+  // status 'ok' — deriveVerdict already ran normalize -> compare (and the widened-F3 floor, below).
+  const { observed, ex } = res;
+
+  // WIDENED + WITNESS-AWARE SANITY FLOOR (F3, Stage 4) — decided inside deriveVerdict; an INCOMPLETE on
+  // a status:'ok' result is exactly that floor (the reason names it): render it, never a false REGRESSED.
+  if (overall === 'INCOMPLETE') {
+    const rp = writeReport(buildReport({
+      ...base, overall, counts,
       observed, result, incompleteReason: reason, parseWarnings: ex.parseWarnings,
     }), ts);
     process.stdout.write(`\nL2: INCOMPLETE (widened sanity floor) — ${reason}${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`);
     return EXIT.INCOMPLETE;
   }
 
-  const counts = {
-    pass: result.counts.pass, limitation: result.counts.limitation, skip: 0, fail: result.counts.fail,
-  };
   const rp = writeReport(buildReport({
-    ...base, overall: result.overall,
+    ...base, overall,
     counts, observed, result, incompleteReason: null, parseWarnings: ex.parseWarnings,
   }), ts);
   process.stdout.write(
-    `\nL2: ${result.overall} — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
+    `\nL2: ${overall} — ${counts.pass} PASS · ${counts.limitation} LIMITATION · ` +
     `${counts.fail} FAIL${usageSuffix(res.usage)}${costSuffix}\nReport: ${rp}\n`,
   );
   return result.exitCode; // 0 AS-EXPECTED / 1 REGRESSED
@@ -1338,6 +1818,8 @@ function finalizeMultiRun(results, ctx) {
   const base = {
     scenarioId, mode: 'live', reference, copilotVersion, maisterVersion, osStr, ts, isolationNote,
     pluginDir, pluginName, finalN: N, sdkPath, usageTotal,
+    // G3 (#122, R3.3): the provenance lines, from runLive's ctx (same values every bundle's meta carries).
+    ...headerProvenance(ctx),
     // Stage-5: the whole-run model/cost aggregate (from runLive's ctx) threaded into the N>1 report + stdout.
     model: ctx.model ?? null, modelActual: ctx.modelActual ?? 'unknown', cost: ctx.cost ?? null,
   };

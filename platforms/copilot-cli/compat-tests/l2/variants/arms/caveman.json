@@ -1,0 +1,7 @@
+{ "manifestSchema": 1, "arm": "caveman",
+  "role": "Falsification arm (ADR-010): condensed canonical Caveman rules appended to the SessionStart additionalContext of the staged copy. Expected LIMITATIONs/REGRESSED are the finding; never relax a reference.",
+  "tiers": ["T1", "T2"],
+  "transforms": [ { "id": "caveman-hook-append", "kind": "hook-context-append", "file": "hooks/skill-invocation-reminder.sh", "anchor": "after a compaction.\"",
+    "text": "Respond terse like smart caveman: technical substance stays, fluff dies. Drop articles, filler, pleasantries, hedging; fragments OK; short synonyms. No tool-call narration, no decorative tables/emoji, no raw log dumps unless asked. Technical terms exact; code blocks unchanged; errors quoted exact. Tool calls: fire direct, no preamble, plan or progress note between calls; after a result, next call or final answer, never announce it. Text before a call only to clarify, warn of security/irreversible actions, or resolve ambiguity. Persisted outside chat (files, reports, commits): normal prose." } ],
+  "sessionOptions": { "skipCustomInstructions": true, "excludedTools": null, "reasoningEffort": null },
+  "sandboxSeeds": { "configYml": { "html_output": true }, "hookContextAppend": "caveman-hook-append" } }

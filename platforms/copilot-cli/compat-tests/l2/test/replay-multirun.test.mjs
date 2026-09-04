@@ -12,6 +12,9 @@
 //       (runIndex/runs). This is the "synthetic N=2 persist" the ticket calls for.
 //   (3) `node run.mjs --replay=<reports/<ts>/run-2/>` reproduces the recorded verdict credit-free — the
 //       real operator surface, proving replay resolves a per-run bundle (bogus sdkPath = never imported).
+//   (4) G3 (#122): buildReplayMeta (the production meta builder driveOnce persists) + persistTraceBundle
+//       round-trip a v2 meta: the 12 legacy keys come FIRST in their historical order, the new keys follow
+//       `cost`, metaSchema is 2 (R2.1/R2.2; audit W1).
 //
 // Zero-dependency: node: builtins only. Self-cleaning: os.tmpdir() mkdtemp tree + the two side-effect
 // reports removed in finally.
@@ -24,7 +27,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { persistDirFor, persistTraceBundle } from '../run.mjs';
+import { persistDirFor, persistTraceBundle, buildReplayMeta } from '../run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const L2_DIR = path.resolve(__dirname, '..');
@@ -132,5 +135,89 @@ test('T-REPLAY-N: node run.mjs --replay=<reports/<ts>/run-2/> reproduces the ver
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(reportPath, { force: true });
+  }
+});
+
+test('persistTraceBundle with a v2 meta round-trips; the first 12 keys are the legacy keys in order; new keys follow cost', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-meta-v2-'));
+  try {
+    const rundir = stageRundir(root);
+    const ts = '20990303T030303Z';
+    const events = [
+      { type: 'session.model_change', data: { source: 'startup', newModel: 'gpt-5.6-luna' } },
+      { type: 'subagent.started', data: { agentName: 'maister-copilot:research-planner', model: 'gpt-5.6-mini' } },
+    ];
+    const armManifest = { arm: 'lean', sessionOptions: { skipCustomInstructions: true }, sandboxSeeds: { hookContextAppend: 'lean-hook' } };
+    const meta = buildReplayMeta({
+      sc: { id: 'research', taskType: 'research' },
+      runIndex: 1,
+      persistMeta: {
+        copilotVersion: 'GitHub Copilot CLI 1.0.82.\nRun \'copilot update\' to check for updates.',
+        sdkPath: '/nonexistent/replay/sdk/must-never-be-imported.mjs',
+        maisterVersion: '0.0.0', model: 'gpt-5.6-luna', ts, runIndex: 1, runs: 1,
+        variant: 'lean', mutation: null,
+        pluginDigest: `sha256:${'a'.repeat(64)}`,
+        pluginSource: { commit: 'c'.repeat(40), commitRef: 'HEAD', treeOid: 't'.repeat(40), forkVersion: '2.2.3+fork.4', method: 'git-archive' },
+        referenceHash: 'r'.repeat(64),
+        armManifest,
+      },
+      modelActual: 'gpt-5.6-luna',
+      cost: { aiu: 1.5, weightedRequests: 8, source: 'session-store.db' },
+      events,
+      sessionOptions: { skipCustomInstructions: true, model: 'gpt-5.6-luna' },
+      sandboxSeeds: { configYml: { html_output: true, mockup_format: 'html' }, note: null, hookContextAppend: 'lean-hook' },
+    });
+
+    const dest = persistTraceBundle(persistDirFor(root, ts, 1, 1), { events, rundir, meta });
+    const json = JSON.parse(fs.readFileSync(path.join(dest, 'replay-meta.json'), 'utf8'));
+
+    // R2.1 (strict): the 12 legacy keys FIRST, in the historical :981-999 order (audit W1).
+    const LEGACY = ['scenario', 'taskType', 'copilotVersion', 'sdkPath', 'ts', 'runIndex', 'runs', 'originalMode', 'maisterVersion', 'model', 'modelActual', 'cost'];
+    assert.deepEqual(Object.keys(json).slice(0, 12), LEGACY, 'the first 12 keys are the legacy keys in their original order');
+    // Legacy VALUES unchanged: copilotVersion stays verbatim (the two-line string), cliVersion is the normalized twin.
+    assert.equal(json.copilotVersion, 'GitHub Copilot CLI 1.0.82.\nRun \'copilot update\' to check for updates.', 'copilotVersion stays verbatim');
+    assert.equal(json.originalMode, 'live', 'originalMode unchanged');
+    assert.deepEqual(json.cost, { aiu: 1.5, weightedRequests: 8, source: 'session-store.db' }, 'cost value unchanged');
+
+    // R2.2: the new keys follow `cost`, in the table order, with metaSchema 2.
+    const NEW = ['metaSchema', 'variant', 'mutation', 'pluginDir', 'pluginName', 'pluginDigest', 'pluginSource', 'sessionOptions', 'sandboxSeeds', 'referenceHash', 'cliVersion', 'servedModels', 'armManifest'];
+    assert.deepEqual(Object.keys(json).slice(12), NEW, 'the new keys follow cost in the R2.2 table order');
+    assert.equal(json.metaSchema, 2, 'metaSchema is the const 2');
+    assert.equal(json.variant, 'lean', 'variant from persistMeta');
+    assert.equal(json.mutation, null, 'no --mutation -> null');
+    assert.equal(typeof json.pluginDir, 'string', 'pluginDir is the drive-time PLUGIN_DIR');
+    assert.ok(path.isAbsolute(json.pluginDir), 'pluginDir is absolute');
+    assert.equal(json.pluginName, 'maister-copilot', 'pluginName const');
+    assert.equal(json.pluginDigest, `sha256:${'a'.repeat(64)}`, 'pluginDigest passed through verbatim');
+    assert.deepEqual(json.pluginSource, { commit: 'c'.repeat(40), commitRef: 'HEAD', treeOid: 't'.repeat(40), forkVersion: '2.2.3+fork.4', method: 'git-archive' }, 'pluginSource verbatim');
+    assert.deepEqual(Object.keys(json.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method'], 'pluginSource carries the 5-key shape (commitRef included) on every v2 meta');
+    assert.deepEqual(json.sessionOptions, { skipCustomInstructions: true, model: 'gpt-5.6-luna' }, 'sessionOptions = the createSession spread, verbatim');
+    assert.deepEqual(json.sandboxSeeds, { configYml: { html_output: true, mockup_format: 'html' }, note: null, hookContextAppend: 'lean-hook' }, 'sandboxSeeds round-trip');
+    assert.equal(json.referenceHash, 'r'.repeat(64), 'referenceHash verbatim');
+    assert.equal(json.cliVersion, '1.0.82', 'cliVersion = normalizeCliVersion(copilotVersion)');
+    assert.deepEqual(json.servedModels, { main: 'gpt-5.6-luna', 'maister-copilot:research-planner': 'gpt-5.6-mini' }, 'servedModels derived from the persisted events');
+    assert.deepEqual(json.armManifest, armManifest, 'armManifest = the parsed manifest, verbatim');
+
+    // R2.5: a --mutation drive records mutation, variant:null, working-tree, armManifest:null; minimal
+    // persistMeta (the null discipline) never throws and every new key is present.
+    const m1 = buildReplayMeta({
+      sc: { id: 'development', taskType: 'development' }, runIndex: 2,
+      persistMeta: { mutation: 'M1', pluginSource: { commit: null, commitRef: null, treeOid: null, forkVersion: '2.2.3+fork.4', method: 'working-tree' } },
+      modelActual: 'unknown', cost: null, events: [], sessionOptions: { skipCustomInstructions: true }, sandboxSeeds: { configYml: null, note: null, hookContextAppend: null },
+    });
+    assert.deepEqual(Object.keys(m1), [...LEGACY, ...NEW], 'mutation drive: identical key set + order');
+    assert.equal(m1.mutation, 'M1', 'mutation recorded');
+    assert.equal(m1.variant, null, 'mutation drive: variant null');
+    assert.equal(m1.pluginSource.method, 'working-tree', 'mutation drive: working-tree');
+    assert.deepEqual(Object.keys(m1.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method'], 'mutation drive: the same 5-key pluginSource shape');
+    // The buildReplayMeta DEFAULT (no pluginSource in persistMeta at all) has the same 5-key shape too.
+    const bare = buildReplayMeta({ sc: { id: 'development', taskType: 'development' }, runIndex: 1, persistMeta: {}, modelActual: 'unknown', cost: null, events: [], sessionOptions: null, sandboxSeeds: null });
+    assert.deepEqual(bare.pluginSource, { commit: null, commitRef: null, treeOid: null, forkVersion: null, method: 'working-tree' }, 'default pluginSource: 5 keys, all null, working-tree');
+    assert.equal(m1.armManifest, null, 'mutation drive: no arm manifest');
+    assert.equal(m1.runIndex, 2, 'runIndex falls back to the drive index when persistMeta omits it');
+    assert.equal(m1.cliVersion, null, 'no copilotVersion -> cliVersion null (never a string)');
+    assert.deepEqual(m1.servedModels, { main: null }, 'no events -> servedModels { main: null }');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

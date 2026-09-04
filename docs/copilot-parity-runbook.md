@@ -123,12 +123,14 @@ Copilot CLI version alongside the positive run. This is formalized and extended 
 
 ### Cost
 
+*(All figures in this section are pre-hygiene — instructions leaked; pre-#120 hook — see ADR 0007; not back-filled.)*
 The validated M2/research (agent-file rename) run cost **14.79 AIU / 60 weighted requests**. The
 full Stage-1 negative-control exploration cost **~39.97 AIU / 180 requests across 4 runs**
 (M1 1.44, M2 v1 13.91, M2 v2 9.83, M2 v3 14.79). Measure future negative-control runs with the query in
 [Cost — where to read it](#cost--where-to-read-it) — but record the ISO start AND end timestamps and
 bound the query at BOTH ends (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`); the base
-query bounds only the start and would sweep in later sessions.
+query bounds only the start and would sweep in later sessions. Since #122 the bundle is the primary source
+(`cost-report.mjs reports/<ts>`) and the query is the cross-check.
 
 > **Research cost is highly variable — do NOT budget `N × single-run`.** A `research` drive that
 > *skips* brainstorming/design (a "narrow investigation" the model self-routes past) costs ~13–14 AIU;
@@ -136,8 +138,11 @@ query bounds only the start and would sweep in later sessions.
 > but a `--runs=3` noise calibration (2026-08-30, Copilot 1.0.82) cost **275.14 AIU / 244 req** because
 > 1 of the 3 drives went deep (`gate_count(ask)=9`, full brainstorming+design). Estimate research N>1
 > against the **deep-run** cost (~90–100 AIU/run), not the skip-run cost, and gate the spend accordingly.
-> The re-run rule ("after any grammar change and on each new CLI version") also states: N>1 does **not**
-> persist a replay trace, so there is no credit-free re-score of an N>1 run.
+> N>1 **does** persist one replay bundle per run — `reports/<ts>/run-<i>/` (`run.mjs` `persistDirFor`;
+> `test/replay-multirun.test.mjs`) — but its `replay-meta.json` carries `cost: null` (the DB window read is
+> per sweep, not per run). Per-run cost and verdict come credit-free from the bundle:
+> `node platforms/copilot-cli/compat-tests/l2/tools/cost-report.mjs reports/<ts>/run-<i> [--verdict]`
+> (or `run.mjs --replay=reports/<ts>/run-<i>`). *(The pre-#122 text here said N>1 does not persist; it did.)*
 
 ## L2 re-run cadence policy
 
@@ -202,23 +207,71 @@ Clone/edit the wiki: `git clone https://github.com/robmar-net/maister.wiki.git`.
 
 ## Cost — where to read it
 
-Copilot's SDK/CLI usage is NOT in `~/.copilot/data.db` (`sessions` is empty there). The authoritative
-per-request cost is:
+**Bundle-first (#122, ADR 0007).** Every L2 drive persists its typed trace in `reports/<ts>/events.json`
+(or `reports/<ts>/run-<i>/` for N>1), and each `assistant.usage` event carries `copilotUsage.totalNanoAiu`
+plus a per-class `tokenDetails[]` with the price actually charged. The cost of a bundle is therefore
+derivable **exactly, credit-free, from the bundle alone** — proven on `20260903T000910Z`: Σ `totalNanoAiu`
+/ 1e9 = **36.99498 AIU** = the DB window read = `session.usage_checkpoint`, Δ 0.000000.
 
-- **`~/.copilot/session-store.db` → `assistant_usage_events`** — one row per request; **AIU = `total_nano_aiu` / 1e9**, weighted premium requests ≈ `SUM(request_multiplier)`; scope by `created_at` (ISO).
+```bash
+node platforms/copilot-cli/compat-tests/l2/tools/cost-report.mjs <bundle> [--json] [--recover] [--verdict]
+```
+- default: markdown — AIU total / by class (`input`, `cache_read`, `cache_write`, `output`) / by model / by
+  agent, the covariates (`systemTokensInitial`, `toolDefinitionTokens`, reads, skill bytes, cache breaks,
+  gates, hook fires, wall minutes, served models), the cross-check rows against `meta.cost` and the
+  checkpoint, and the bundle's provenance (arm, digest, source commit, or the legacy-map row). Every metric
+  is `null` when its source event is absent — never 0.
+- `--json`: the same as one deterministic object. `--recover`: the plugin dir the drive actually loaded,
+  read from `skill.invoked.data.path` (for pre-provenance bundles; `null` + reason when there is no
+  path-bearing event). `--verdict`: one line `verdict: <AS-EXPECTED|REGRESSED|INCOMPLETE> PASS n ·
+  LIMITATION n · SKIP n · FAIL n (scenario <id>, reference <hash8>[, reason])`, exit 0/1/2 — the same derivation
+  `--replay` uses, **without writing a report** (it does restage `rundir/run-tests.sh` for the outcome
+  oracle — an mtime bump, bytes identical; [#127](https://github.com/robmar-net/maister/issues/127)).
+- Read-only: `cost-report.mjs` never writes into the bundle.
+
+**Cross-check (was the source of truth before #122).** Copilot's SDK/CLI usage is NOT in
+`~/.copilot/data.db` (`sessions` is empty there); the billing record is
+**`~/.copilot/session-store.db` → `assistant_usage_events`** — one row per request; **AIU =
+`total_nano_aiu` / 1e9**, weighted premium requests ≈ `SUM(request_multiplier)`; scope by `created_at`
+(ISO). Use it to confirm a bundle total or to cost a session that left no bundle — the bundle wins on any
+disagreement, because the DB window can sweep in other sessions (see "Scope by `session_id`" below).
 ```bash
 sqlite3 ~/.copilot/session-store.db \
   "SELECT printf('%.1f',SUM(total_nano_aiu)/1e9) AIU, printf('%.0f',SUM(request_multiplier)) req \
    FROM assistant_usage_events WHERE created_at >= '<ISO-start>';"
 ```
-- L2 reports say "AIU: unknown" because 1.0.75+ SDK sessions carry no `session.shutdown` usage — read the DB instead.
+- Pre-#122 L2 reports say "AIU: unknown" because 1.0.75+ SDK sessions carry no `session.shutdown` usage;
+  `meta.cost` on a persisted bundle is that DB window read (null on N>1 per-run bundles) — run
+  `cost-report.mjs` on the bundle instead.
 
 ### AIU is an exact linear function of tokens (#110)
 
-`total_nano_aiu` is not opaque. Fitting it against `(fresh_input, cache_read, output)` per model over
-6,555 local 1.0.82 requests recovers a price table, and predicting from that table reproduces the
-recorded value with a **mean absolute error of 0.00000 AIU/request for `gpt-5.4` (n=1162) and
-`gpt-5.4-mini` (n=530)** (0.001–0.002 for the smaller Claude samples):
+`total_nano_aiu` is not opaque: it is Σ over four token classes of `tokenCount × price`. **The primary
+source of the price is the bundle itself** — each `assistant.usage` event's
+`copilotUsage.tokenDetails[] {tokenType, tokenCount, costPerBatch, batchSize}` records the rate actually
+charged for that request (`costPerBatch / batchSize × 1e6 / 1e9` = AIU per 1 M tokens), and
+`cost-report.mjs` re-reads it **per event**, so a mid-sweep re-pricing cannot skew a total. The table
+below is the `KNOWN_RATES` constant it cross-checks against (`price check` column: `ok` /
+`drift: <class> observed X expected Y` / `unknown-model`) — a cross-check that **may disagree** and never
+enters a total:
+
+| model | `input` | `cache_read` | `cache_write` | `output` | (AIU per 1 M tokens) |
+|---|---|---|---|---|---|
+| `gpt-5.6-luna` | 20 | 2 | 25 | 120 | observed on all six 1.0.82 bundles |
+| `gpt-5.4-mini` | 75 | 7.5 | 0 | 450 | observed (`explore` subagents) |
+| `claude-haiku-4.5` | 100 | 10 | 125 | 500 | from the 2026-08 DB fit (below) |
+| `claude-sonnet-4.6` | 300 | 30 | 375 | 1500 | from the 2026-08 DB fit (below) |
+
+Note the fourth class: **`cache_write`** is billed (luna 25 vs 20 for fresh input) — the earlier 3-class
+fit folded it into `fresh_in`, which is why that fit could only match models whose cache-write rate
+equals the input rate.
+
+**History — the 3-class per-1k fit (2026-08).** Before the bundle carried `tokenDetails`, the table was
+recovered by fitting `total_nano_aiu` against `(fresh_input, cache_read, output)` per model over 6,555
+local 1.0.82 requests in `session-store.db`; predicting from it reproduced the recorded value with a
+**mean absolute error of 0.00000 AIU/request for `gpt-5.4` (n=1162) and `gpt-5.4-mini` (n=530)**
+(0.001–0.002 for the smaller Claude samples). Kept as the record of how the linearity was first shown;
+the per-1k rates are the per-1M rates above ÷ 1000:
 
 ```
 AIU = fresh_in/1000 * r_f  +  cache_read/1000 * r_c  +  output/1000 * r_o
@@ -254,7 +307,8 @@ Two cautions, both load-bearing:
   worth reporting), NOT the token-metered AIU this runbook treats as authoritative. Reasoning from the
   docs alone leads to the wrong conclusion that output length is free.
 
-Re-derive the table from the local store (credit-free — reads only, no session is driven):
+Cross-check the table against the local store (credit-free — reads only, no session is driven); the
+bundle's `tokenDetails` remain the primary source:
 
 ```bash
 sqlite3 ~/.copilot/session-store.db \
@@ -292,7 +346,9 @@ sqlite3 ~/.copilot/session-store.db \
 > separately by the multi-session read above (160 vs 292 AIU). The item-5 gap is now fully closed; the
 > schema-probe still degrades safely on any future name change.
 - Rough guide: `research` L2 ≈ tens of AIU; `development` L2 ≈ a few hundred AIU (~1-2 dev runs can dent a monthly quota). Prefer credit-free checks; run live only when you must.
-  **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81; AIU weighting and request
+  **Caveat:** these figures were measured on Copilot 1.0.74–1.0.81 and are **pre-hygiene (instructions
+  leaked; pre-#120 hook)** — every drive before #122 carried the operator's custom instructions
+  (≈ 15 K tokens per main prompt, ADR 0007); they are NOT back-filled or corrected. AIU weighting and request
   multipliers change across CLI versions, and per-run vs per-arc figures are NOT directly
   comparable — the `session-store.db` query above is the source of truth.
 
@@ -305,7 +361,9 @@ sqlite3 ~/.copilot/session-store.db \
   Going forward the single source of truth is the `session-store.db` query above, **bounded at BOTH
   ends** (`created_at >= '<ISO-start>' AND created_at <= '<ISO-end>'`) — the start-only base query
   sweeps in later sessions and overcounts. Record the ISO window with each live run and read the cost
-  from the DB; do not carry historical figures forward.
+  from the DB; do not carry historical figures forward. All figures on this page dated before #122
+  (2026-09-04) are **pre-hygiene (instructions leaked; pre-#120 hook)**; the first `plain` drive of #123 is
+  the new baseline and nothing older is back-filled against it.
 
 ### Pinning the model (`COMPAT_L2_MODEL`) + deferred live confirmation
 
@@ -338,6 +396,103 @@ sqlite3 ~/.copilot/session-store.db \
   committed fixture DB + unit tests; this live pin+read is the only item that consumes a seat and is
   therefore held back.
 
+### A/B arms (#122, ADR 0007) — staged from a pinned commit, self-describing bundles
+
+```bash
+bash platforms/copilot-cli/compat-tests/l2/run.sh --variant=<arm> --commit=<sha> [--scenario=<id>]   # SPENDS AI CREDITS
+```
+`--variant=<arm>` stages a THROWAWAY copy of `plugins/maister-copilot` from **`git archive <sha>`**
+(never the working tree — another session switching branches cannot contaminate an arm) via
+`l2/variants/variant.sh`, applies the arm's manifest transforms to that copy, and drives it. The pin is
+mandatory: `--commit=<sha>` or env `COMPAT_VARIANT_COMMIT` (the flag wins). Pin for a sweep, always:
+`COMPAT_L2_MODEL=gpt-5.6-luna`, Copilot CLI **1.0.82**, an explicit commit, and the same reference hash
+across arms (recorded per bundle as `referenceHash`).
+
+**Env the harness accepts** (each is persisted in the bundle's `replay-meta.json`):
+
+| env | set by | meaning |
+|---|---|---|
+| `COMPAT_VARIANT_COMMIT` | operator (or `--commit`) | commit the arm is staged from; ignored without `--variant` |
+| `COMPAT_L2_HTML_OUTPUT` | operator, `0` \| `1` | `html_output` seeded into `<rundir>/.maister/config.yml` (every scenario but `init`); manifest wins, else this, else `1`; `run.sh` resolves it once and re-exports it normalized so its mirror rundir and `run.mjs`'s agree; anything but `0`/`1` → exit 2 |
+| `COMPAT_L2_SKIP_INSTR` | operator, `0` \| `1` | `createSession` `skipCustomInstructions`; manifest wins, else this, else **`1`** (hygiene default) |
+| `COMPAT_L2_EXCLUDED_TOOLS` | operator, comma list | `createSession` `excludedTools` (e.g. `mcp:playwright`); manifest wins, else this, else absent |
+| `COMPAT_L2_EFFORT` | operator | `createSession` `reasoningEffort` (e.g. `low`); manifest wins, else this, else absent |
+| `COMPAT_VARIANT`, `COMPAT_ARM_MANIFEST`, `COMPAT_VARIANT_COMMIT` | **exported by `run.sh`** on a `--variant` run | arm name, path to `l2/variants/arms/<arm>.json`, pin — never set by hand |
+| `COMPAT_MUTATION` | **exported by `run.sh`** on a `--mutation` run | mutant id (mutants self-describe too) |
+| `COMPAT_ARMS_DIR` | `variants.test.mjs` only | manifest-dir seam of `variant.sh`; `run.sh` never sets it |
+
+**The five manifests** (`l2/variants/arms/<arm>.json`, `manifestSchema: 1`; every arm states
+`skipCustomInstructions` explicitly):
+
+| arm | role |
+|---|---|
+| `plain` | hygiene-corrected control for every delta — the new reference baseline (no transforms) |
+| `plain-legacy` | `plain` with the custom-instruction leak re-admitted (`skipCustomInstructions: false`): quantifies the leak once and bridges `20260831T022952Z` informationally |
+| `lean` | low-risk product bundle: `excludedTools: ["mcp:playwright"]` + `html_output: false` + the leaf-worker guard appended to **all 25** `agents/*.md` (ADR 0007 Decision 7) |
+| `caveman` | falsification arm: the condensed Caveman rules spliced into the SessionStart `additionalContext` of the staged copy; expected LIMITATIONs/REGRESSED are the finding — never relax a reference |
+| `terse` | round 2 (#125), staged not scheduled: the narrowed no-narration rule; enters only if `caveman` moves T1 AIU beyond the `plain` spread |
+
+**`variant.sh <arm> --commit=<sha>`** (`bash l2/variants/variant.sh -h`): stdout is exactly one line —
+the staged path; the final stderr line is `variant.sh: <arm> staged from <commit> (tree <oid>) digest
+sha256:<…> at <path>`. Exit **2** = usage / unknown arm / missing `--commit` / bad manifest / unknown
+commit or no plugin tree — **nothing created**; exit **1** = archive, anchor or verification miss — the
+partial copy is **removed**; exit **0** = extracted, transformed, every invariant verified against a second
+pristine extraction. `run.mjs` is the sole authority for the persisted `pluginDigest` / `treeOid` /
+`referenceHash` (computed before the credit-spend confirm — `variant.sh`'s stderr digest is informational,
+not a second channel); any provenance failure is exit 2 and spends nothing.
+
+**Parse-time rejects, credit-free.** Unknown arm (`--variant=bogus`), `--variant` with `--mutation`
+(mutually exclusive), `--variant` without a pin, `--commit` without `--variant` — all exit 2 in `run.sh`
+**before** `--check-reference`, the sandbox allowlist and the seat preflight. The credit-freeness of
+`--variant=bogus` comes from that parse-time reject, NOT from `NO_COPILOT_PATH` (which `run.sh` ignores).
+`--keep-rundir` / `COMPAT_KEEP_RUNDIR` do **not** retain a staged arm (same as mutants).
+`--check-reference` is unaffected by `COMPAT_L2_HTML_OUTPUT`.
+An invalid arm name — path-shaped, dot-leading or dash-leading (`--variant=../plain`, `.plain`, `-x`),
+or any character outside letters, digits, `. _ -` (matched under `LC_ALL=C`) — is the fifth parse-time
+reject, before the manifest lookup; `run.sh`'s rule is a superset of the charset rule `variant.sh` applies
+(which does not need the leading-dash case: its own arg parser already refuses `-`-prefixed tokens).
+A sixth exit-2 path guards case-insensitive filesystems: when `--variant=PLAIN` resolves to `plain.json`
+on APFS, the manifest read compares `arm` with the typed name and exits 2 with
+`arm/manifest name mismatch` — still before the seat preflight, the trap and the de-shadow.
+
+**Env hygiene before a sweep.** `env | grep COMPAT_L2_` must be **empty except `COMPAT_L2_MODEL`**: an
+ambient `COMPAT_L2_SKIP_INSTR` / `COMPAT_L2_HTML_OUTPUT` / `COMPAT_L2_EXCLUDED_TOOLS` / `COMPAT_L2_EFFORT`
+silently alters a `plain` arm (it is recorded in the bundle's `sessionOptions` / `sandboxSeeds`, but nothing
+compares it across arms). `run.mjs` resolves and validates every seam **once, before the credit-spend
+confirm** (a typo such as `COMPAT_L2_SKIP_INSTR=yes` is exit 2, nothing spent) and passes the resolved
+objects into every drive.
+
+**What the report header now says** (live and `--replay` render byte-identically for a v2 bundle):
+`Plugin under test` / `Variant` / `Plugin source` (`git-archive <oid8> (tree <oid8>, version <v>)` — the
+pin is resolved to its 40-hex commit oid at drive time and stored as `pluginSource.commit`, the operator's
+spelling kept as `pluginSource.commitRef` and shown as `(ref <spelling>; …)` only when it differs — or
+`working-tree (version <v>)`) / `Plugin digest` (`sha256:…`) / `Session options` (the exact object passed
+to `createSession`). For a `git-archive` bundle the `Plugin under test` line leads with the durable identity,
+`` `git-archive <oid8> (tree <oid8>)` (name: `maister-copilot`; staged at `<vanished mktemp path>`) ``; a
+working-tree bundle keeps the plain recorded path. A pre-provenance bundle (`metaSchema < 2`) listed in the committed
+`l2/variants/legacy-arms.json` renders `<legacyArm> (legacy map — pre-provenance bundle)` with the
+recovered plugin dir (or `UNATTRIBUTED (pre-provenance bundle; legacy map — no path-bearing event)`);
+one that is not listed renders `UNATTRIBUTED (pre-provenance bundle; cost-report --recover shows the
+loaded path)` and `unknown (pre-provenance bundle)`. The live `PLUGIN_DIR` is never read on the replay
+path. Never add a post-#122 ts to the legacy map — provenance must come from the bundle.
+
+**Attribution check** — `node platforms/copilot-cli/compat-tests/l2/tools/ab-compare.mjs <bundle-dir>... [--json] [--allow-mutants]`
+prints one row per bundle — `ts | scenario | arm | source (meta / legacy-map) | comparable (yes / no (legacy) /
+no (mutant)) | commit | AIU` — and **refuses** (one `REFUSED: <ts> — <reason>` line each, exit 2) anything it
+cannot attribute: `mutant <id> (pass --allow-mutants)`, `unattributed (driven without --variant)`,
+`pre-provenance bundle not in legacy-arms.json`, and — an amendment to spec R8's three reasons, so one
+broken directory in a glob does not abort the rest — `unreadable bundle: <detail>`. With `--allow-mutants`
+a mutant bundle (always `variant: null`, since `run.sh` forbids `--variant` with `--mutation`) is listed as a
+**visible** row, arm `mutant <id>`, source `meta`, comparable `no (mutant)`, commit from `pluginSource` — never
+hidden, never comparable. No ranking, Δ or tier logic lives here (#123). Today it lists the six persisted
+bundles as six `legacy-map` rows, exit 0.
+
+**Replay-overwrite caveat** ([#127](https://github.com/robmar-net/maister/issues/127), pre-existing):
+`--replay=reports/<ts>` writes `reports/l2-trace-equivalence-<ts>.md` — the **same file** the live drive
+wrote — so a replay replaces the live report of that ts (the bundle is untouched). First hit:
+`20260831T022952Z`. That is why the six real replays that prove #122's neutrality are run by the operator
+**last** (CALIBRATION #40), and why test replays only ever use 2099-series ts stamps.
+
 ## Gotchas & maintenance history (READ before debugging a red/incomplete L2)
 
 - **Copilot serializes `orchestrator-state.yml` in ≥3 shapes** (inherent LLM non-determinism). `extractor.parseState` needs a fallback per shape; a shape it can't parse trips the sanity floor to a **false INCOMPLETE** (not a regression). Known variants:
@@ -354,12 +509,17 @@ sqlite3 ~/.copilot/session-store.db \
 
 **These rows are HISTORICAL live verdicts at the stated CLI version** — the per-scenario PASS counts
 predate the **#63 gate-witness recalibration** (why the current credit-free *effective-required* counts
-differ: development 37, research 15 effective). What is **CURRENT** today is the credit-free conformance:
-`--check-reference` **×4** (development / research / quick-bugfix / **destructive-guard**) + the full
-pipeline / replay / cost unit suite, all green (**workflow-model v6**, after the #76 WP-D grammar-head
-bump). **#76 WP-D live sweep (2026-08-30, Copilot 1.0.82, ~39.5 AIU total):** all four scenarios driven
-live on the WP-D/WP-D2 harness — `destructive-guard`, `research` clean; `quick-bugfix` and `development`
-each caught a real harness modeling gap (fixed credit-free, PRs #81/#82) then replay-confirmed AS-EXPECTED.
+differ: development 37, research 15 effective), and every one of them is **pre-hygiene (instructions
+leaked; pre-#120 hook)** — ADR 0007; not back-filled. What is **CURRENT** today is the post-#122
+credit-free state: `--check-reference` **×6** (development / research / quick-bugfix / **destructive-guard**
+/ work / init) CURRENT (**workflow-model v6**, hash-neutral — no reference JSON edited), the full
+pipeline / replay / cost / provenance / variants / ab-compare unit suite green (230 tests / 228 pass / 0 fail /
+2 skipped, 2026-09-04 after the verification fix passes — recorded in CALIBRATION #40 and its amendment), `make build` byte-identical (`2.2.3+fork.4` unchanged), and the six persisted
+bundles replaying to the CALIBRATION #39 verdicts with their legacy-map arm in the header (verified 2026-09-04
+in the isolated worktree on copies of the bundles — CALIBRATION #40; the replay-overwrite caveat is #127). **#76 WP-D live sweep (2026-08-30, Copilot 1.0.82, ~39.5 AIU total):** all four
+scenarios driven live on the WP-D/WP-D2 harness — `destructive-guard`, `research` clean; `quick-bugfix` and
+`development` each caught a real harness modeling gap (fixed credit-free, PRs #81/#82) then replay-confirmed
+AS-EXPECTED.
 
 | Layer / scenario | Copilot CLI | Verdict |
 |---|---|---|

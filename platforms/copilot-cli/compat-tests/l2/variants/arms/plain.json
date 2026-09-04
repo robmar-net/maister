@@ -1,0 +1,5 @@
+{ "manifestSchema": 1, "arm": "plain",
+  "role": "Hygiene-corrected control for every delta; the new reference baseline.",
+  "tiers": ["T1", "T2", "T3"], "transforms": [],
+  "sessionOptions": { "skipCustomInstructions": true, "excludedTools": null, "reasoningEffort": null },
+  "sandboxSeeds": { "configYml": { "html_output": true }, "hookContextAppend": null } }
