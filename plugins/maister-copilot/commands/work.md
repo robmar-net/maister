@@ -12,7 +12,7 @@ Auto-classifies tasks and routes to the appropriate workflow orchestrator. Suppo
 ## Usage
 
 ```bash
-/work [task description | task folder path | issue identifier]
+/maister-copilot:work [task description | task folder path | issue identifier]
 ```
 
 ### Input Types
@@ -31,18 +31,18 @@ Auto-classifies tasks and routes to the appropriate workflow orchestrator. Suppo
 
 ```bash
 # Resume existing task
-/work ".maister/tasks/development/2025-10-23-login-timeout"
-/work "2025-10-26-user-auth"
+/maister-copilot:work ".maister/tasks/development/2025-10-23-login-timeout"
+/maister-copilot:work "2025-10-26-user-auth"
 
 # New task (auto-classifies)
-/work "Fix login timeout error on mobile devices"
-/work "Add user authentication with email/password"
-/work "Improve dashboard loading performance"
+/maister-copilot:work "Fix login timeout error on mobile devices"
+/maister-copilot:work "Add user authentication with email/password"
+/maister-copilot:work "Improve dashboard loading performance"
 
 # From issue tracker
-/work "#456"
-/work "PROJ-123"
-/work "AB#789"
+/maister-copilot:work "#456"
+/maister-copilot:work "PROJ-123"
+/maister-copilot:work "AB#789"
 ```
 
 ## How It Works
@@ -219,7 +219,7 @@ Display:
 "Task cancelled. You can:
 - Run /work again when ready
 - Use specific workflow commands directly:
-  /development, /performance, etc."
+  /maister-copilot:development, /maister-copilot:performance, etc."
 ```
 
 ---
@@ -240,7 +240,7 @@ Display:
 
 ### With Task Classifier
 
-The `/work` command delegates classification to the task-classifier subagent via task tool, which:
+The `/maister-copilot:work` command delegates classification to the task-classifier subagent via task tool, which:
 - Fetches issue details from GitHub/Jira/Azure DevOps (via MCP, CLI tools, or WebFetch)
 - Analyzes codebase context for better classification
 - Uses confidence-based user confirmation

@@ -16,9 +16,13 @@
 > - New project → `Initialize the maister framework in this project` (bootstraps `.maister/docs/**`).
 > - A task → `Use the maister work entry point for this task: <describe it>` (auto-classifies + routes to the right workflow).
 >
+> Or use the slash form the CLI offers you: type `/` and pick from the completion list —
+> `/maister-copilot:work`, `/maister-copilot:development`, `/maister-copilot:init`, … The plain-language
+> phrasing above is what every L2 conformance scenario drives, so it is the form with live evidence behind it.
+>
 > **Why this build vs installing straight from upstream:** the stock upstream variant ships **no hooks at all** (no skill-routing reminder, no destructive-command guard), no `mcpServers` declaration (MCP never loads after install), Claude-only task tools and single-select-only gates — verified diffs with evidence: [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
 >
-> Slash commands do not exist on Copilot CLI — describe the task in plain language (e.g. *"Run the maister development workflow to add …"*) and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/README.md`](platforms/copilot-cli/README.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
+> Slash commands **are** namespaced by plugin id on Copilot CLI — type `/maister-copilot:development`, `/maister-copilot:work`, `/maister-copilot:reviews-code` (the bare `/development` is not offered). Plain language works too — *"Run the maister development workflow to add …"* — and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/README.md`](platforms/copilot-cli/README.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
 >
 > *Everything below is the upstream Claude Code documentation, kept verbatim.*
 

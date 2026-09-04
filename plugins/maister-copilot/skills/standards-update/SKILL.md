@@ -11,9 +11,9 @@ Update or create standards in `.maister/docs/standards/` based on conversation c
 ## Usage
 
 ```bash
-/standards-update                                    # Detect from conversation
-/standards-update "always use React.memo for lists"  # From description
-/standards-update --from=/path/to/other-project      # Sync from another project
+/maister-copilot:standards-update                                    # Detect from conversation
+/maister-copilot:standards-update "always use React.memo for lists"  # From description
+/maister-copilot:standards-update --from=/path/to/other-project      # Sync from another project
 ```
 
 ---
@@ -26,7 +26,7 @@ When `--from=PATH` is provided, the skill switches to **sync mode** — importin
 
 1. Resolve the path (absolute or relative to cwd)
 2. Check `PATH/.maister/docs/standards/` exists. If not, inform the user and stop.
-3. Check `.maister/docs/standards/` exists in the current project. If not, offer to run `/init` first.
+3. Check `.maister/docs/standards/` exists in the current project. If not, offer to run `/maister-copilot:init` first.
 
 ### SYNC STEP 2: Analyze Differences
 
@@ -148,4 +148,4 @@ Wait for docs-operator to complete, then immediately proceed to Phase 5.
 
 ## Prerequisites
 
-If `.maister/docs/` doesn't exist, offer to run `/init` first.
+If `.maister/docs/` doesn't exist, offer to run `/maister-copilot:init` first.

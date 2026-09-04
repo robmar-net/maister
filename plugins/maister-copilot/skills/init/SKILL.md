@@ -127,7 +127,7 @@ Wait for docs-operator to complete, then immediately proceed to Phase 6.
 html_output: true
 
 # mockup_format — how UI mockups are rendered when a workflow generates them
-# (development Phase 4, product-design Phase 7, or /mockup-studio).
+# (development Phase 4, product-design Phase 7, or /maister-copilot:mockup-studio).
 #   html  (default): rendered HTML/CSS via the visual companion (browser preview, saved as .html).
 #   ascii          : terminal ASCII mockups via the ascii-mockup-generator agent (no Node/browser needed).
 # Auto-falls back to ascii when Node.js is unavailable. Default: html.
@@ -178,7 +178,7 @@ Wait for docs-operator to complete, then immediately continue with Step 2.
 - Next steps:
   1. Review generated documentation
   2. Customize for your team
-  3. Start development with `/work`
+  3. Start development with `/maister-copilot:work`
   4. Keep documentation current
 
 ---

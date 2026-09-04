@@ -56,20 +56,6 @@ perl -0777 -i -pe '
   END { exit($c == 1 ? 0 : 1) }
 ' "$OUT/hooks/hooks.json" || { echo "FAIL: WS2d: SessionStart compact block not found exactly once in \$OUT/hooks/hooks.json (source drift?)" >&2; exit 1; }
 
-# WS2e (#95): normalize the model-facing nomenclature inside the SessionStart hooks' injected
-# `additionalContext` to Copilot terms — the SAME two rewrites the *.md pipeline applies
-# (AskUserQuestion -> ask_user, step 7; /maister:* -> /*, step 4e). The hooks are the only
-# plugin->model channel not otherwise transformed (they are copied verbatim above), so without
-# this the injected reminder shipped in Claude source nomenclature (`AskUserQuestion`, `/maister:*`)
-# while the rest of the variant said `ask_user` / `/*` — a silent source-vs-generated drift, and
-# the "no maister: in output" guards were *.md-scoped so they never caught it (issue #95).
-# SAFE as a file-level sed: these two tokens appear ONLY in the injected additionalContext string,
-# never in the maintainer comments (which intentionally contrast Claude vs Copilot and must stay).
-# Guarded by `make validate` (WS5.15). Claude source hooks are untouched (only $OUT is edited).
-for f in "$OUT"/hooks/*.sh; do
-  sedi -e 's/AskUserQuestion/ask_user/g' -e 's|/maister:\*|/*|g' "$f"
-done
-
 # 1. Update plugin.json name + description (targeted string edits only — NO jq/python JSON
 #    round-trip, so key order and byte-identity are preserved; keeps CI auto-commit a no-op).
 sedi -e 's/"name": "maister"/"name": "maister-copilot"/' \
@@ -124,10 +110,18 @@ done
 # 4. Kind-aware reference rewrite (registry-driven prose classification).
 #    Replaces the former flat `s/maister:/maister-/g`, which mangled all three
 #    entity kinds. Runs AFTER the name-strip steps (2-3) so `name:` frontmatter
-#    is already bare. Reference-Naming Contract (live-verified, Copilot 1.0.73):
-#      agent  maister:<name> -> <PLUGIN_ID>:<name>   (plugin-id auto-prefix)
-#      skill  maister:<name> -> <name>               (bare; `skill` tool)
-#      cmd    maister:<name> -> <name>               (bare; flat command)
+#    is already bare. Reference-Naming Contract (live-verified, Copilot 1.0.73;
+#    the slash forms added from a live 1.0.82 observation — issue #132):
+#      agent   maister:<name> -> <PLUGIN_ID>:<name>  (plugin-id auto-prefix)
+#      skill   maister:<name> -> <name>              (bare; the `skill` tool + <available_skills>)
+#      cmd     maister:<name> -> <name>              (bare; flat command)
+#      /skill  /maister:<name> -> /<PLUGIN_ID>:<name> (USER-facing slash completion)
+#      /cmd    /maister:<name> -> /<PLUGIN_ID>:<name> (same namespace)
+#    The last two are the #132 correction: a slash-prefixed token is what a HUMAN types,
+#    and Copilot's completion offers only `/<plugin-id>:<name>`. Note it offers that for
+#    SKILLS too, not just `commands/` — `development` has no command file yet appears as
+#    `/maister-copilot:development`. Model-facing and user-facing names differ; the leading
+#    slash is the discriminator.
 #    Exclusions are automatic (the pattern requires the `maister:` colon form):
 #      maister-copilot (plugin id), .maister/ paths, maister-plugins marketplace.
 
@@ -168,7 +162,25 @@ perl_prog=$(
     if [ "$kind" = "A" ]; then
       printf 's/\\bmaister:\\Q%s\\E(?![a-z0-9-])/%s:%s/g;\n' "$name" "$PLUGIN_ID" "$name"
     else
-      printf 's/\\bmaister:\\Q%s\\E(?![a-z0-9-])/%s/g;\n' "$name" "$name"
+      # TWO ROLES, TWO FORMS (#132). A skill/command name appears both as a MODEL-facing
+      # registry reference (`Skill tool - \`maister:codebase-analyzer\``) and as a USER-facing
+      # slash command (`/maister:development [task-path]`). Copilot uses a different name in
+      # each: the model calls `skill(skill: "development")` and sees `<available_skills>` with
+      # BARE names, while the CLI's slash completion advertises the PLUGIN-ID-PREFIXED form
+      # `/maister-copilot:development` (verified live on 1.0.82 — `/development` is not offered
+      # and `development` exists only as a skill, so Copilot surfaces SKILLS as slash commands
+      # too, not just `commands/`). The leading slash is the discriminator.
+      # ORDER MATTERS: the slash rule must precede the bare rule, or `/maister:x` would first
+      # collapse to `/x`. After the slash rule fires the token reads `maister-copilot:` — which
+      # contains no `maister:` — so the bare rule can no longer touch it.
+      printf 's{/maister:\\Q%s\\E(?![a-z0-9-])}{/%s:%s}g;\n' "$name" "$PLUGIN_ID" "$name"
+      printf 's/\\bmaister:\\Q%s\\E(?![a-z0-9-])/%s/g;\n'    "$name" "$name"
+      # Third form: the source writes a few slash commands WITHOUT the `maister:` prefix
+      # (all 12 occurrences today are `/work`), so neither rule above sees them and they
+      # would ship as a bare `/work` the CLI does not offer. Anchored to a line start or an
+      # opening backtick so it can only match a command form — never the `/name` segment of
+      # a path such as `.maister/tasks/development/`, which is preceded by a letter.
+      printf 's{(^|`)/\\Q%s\\E(?![a-z0-9-])}{$1/%s:%s}gm;\n' "$name" "$PLUGIN_ID" "$name"
     fi
   done
 )
@@ -182,12 +194,16 @@ done
 #     slash-command glob, and any illustrative COMPOUND `maister:<x>:<y>` token.
 #     A compound is never a real reference (references are single-segment), so it
 #     is an illustrative example — e.g. product-design's `/maister:feature:new`
-#     "does-not-exist" counter-example. Stripping the `maister:` prefix here keeps
-#     the Claude source 100% untouched (zero-touch) while clearing the token from
-#     the Copilot output (satisfies the no-`maister:`-in-output contract).
+#     "does-not-exist" counter-example. Keeps the Claude source 100% untouched
+#     (zero-touch) while clearing the token from the Copilot output (satisfies the
+#     no-`maister:`-in-output contract).
+#     Same slash discriminator as 4d (#132): a SLASH-prefixed form is a user-facing
+#     command and takes the plugin-id prefix; a bare one is a model-facing reference
+#     and loses it. The slash rules therefore run BEFORE the bare strip.
 find "$OUT" -name "*.md" | while read f; do
   sedi -e 's|maister:\[orchestrator-name\]|[orchestrator-name]|g' \
-       -e 's|/maister:\*|/*|g' \
+       -e "s|/maister:\\*|/$PLUGIN_ID:*|g" \
+       -e "s|/maister:\\([a-z][a-z0-9-]*:[a-z][a-z0-9-]*\\)|/$PLUGIN_ID:\\1|g" \
        -e 's|maister:\([a-z][a-z0-9-]*:[a-z][a-z0-9-]*\)|\1|g' "$f"
 done
 
@@ -200,6 +216,26 @@ if [ -n "$residual" ]; then
   echo "$residual" >&2
   exit 1
 fi
+
+# WS2e (#95, corrected by #132): normalize the model-facing nomenclature inside the SessionStart
+# hooks' injected `additionalContext` to Copilot terms — the SAME rewrites the *.md pipeline
+# applies (AskUserQuestion -> ask_user, step 7; /maister:* -> /<plugin-id>:*, steps 4d/4e). The
+# hooks are the only plugin->model channel not otherwise transformed (they are copied verbatim
+# near the top), so without this the injected reminder shipped in Claude source nomenclature
+# (`AskUserQuestion`, `/maister:*`) while the rest of the variant said `ask_user` / the prefixed
+# slash form — a silent source-vs-generated drift, and the "no maister: in output" guards were
+# *.md-scoped so they never caught it (issue #95).
+# RUNS HERE, not next to the WS2b/WS2c overlays: the slash rewrite needs $PLUGIN_ID, which 4c
+# derives from the GENERATED plugin.json (written by step 1). Moving it up would hardcode the id.
+# #132: the glob used to become a bare `/*`, which told the model the user types `/development`.
+# Copilot's slash completion advertises `/<plugin-id>:<name>` and does NOT offer the bare form
+# (verified live on 1.0.82), so the reminder must say `/maister-copilot:*`.
+# SAFE as a file-level sed: these two tokens appear ONLY in the injected additionalContext string,
+# never in the maintainer comments (which intentionally contrast Claude vs Copilot and must stay).
+# Guarded by `make validate` (WS5.15 + WS5.22). Claude source hooks are untouched (only $OUT).
+for f in "$OUT"/hooks/*.sh; do
+  sedi -e 's/AskUserQuestion/ask_user/g' -e "s|/maister:\\*|/$PLUGIN_ID:*|g" "$f"
+done
 
 # 5. (removed) Multi-select downgrade — NO LONGER APPLIED.
 #    This step used to rewrite "multi-select" -> "sequential single-select" on the assumption
@@ -323,35 +359,22 @@ find "$OUT" -name "*.md" ! -name "CLAUDE.md" | while read f; do
   perl -i -pe 's/\bClaude\b/Copilot/g' "$f"
 done
 
-# 8b. Reframe the standalone review workflows for the Copilot invocation surface.
-#     Copilot surfaces a plugin's `commands/*.md` as SKILLS, not slash commands
-#     (live-verified, 1.0.73: `copilot skill list` shows reviews-*/work as
-#     source:plugin, path:.../commands, enabled). The Claude source presents them as
-#     `/reviews-*` slash commands with a Usage column — correct on Claude, a
-#     non-existent surface on Copilot. Rewrite ONLY the "Review & Audit Commands"
-#     section (anchored on its unique heading, up to the next `### `) into skill form,
-#     and drop the `/work` slash. Claude source ($CORE) is untouched — this operates on
-#     $OUT only. Guard: the perl sub must match exactly once, else the build fails loudly
-#     (a source reword must not silently drop this transform). The wider slash-vs-skill
-#     framing of the other command tables is intentionally out of scope here (epic follow-up).
-perl -0777 -i -pe '
-  $c = s{### Review & Audit Commands\n.*?\n(\n### )}{### Review & Audit Skills
+# 8b. (#132) REMOVED — this rewrote the "Review & Audit Commands" section into "Review & Audit
+#     Skills" with the framing "these are skills …, not slash commands". The premise was wrong:
+#     Copilot's slash completion DOES offer a plugin's entries as `/<plugin-id>:<name>` (verified
+#     live 1.0.82 — `/maister-copilot:development` is offered and runs, while a bare `/development`
+#     is not offered at all). Both surfaces exist: the model calls `skill(skill: "<name>")` with the
+#     BARE name, the user types the PREFIXED slash form. The source's command table is therefore
+#     correct as written once step 4d prefixes its slash tokens, so there is nothing to reframe —
+#     and a hardcoded replacement table is one more thing to drift out of sync with upstream.
+#     (The observation that `copilot skill list` shows reviews-*/work as source:plugin remains
+#     true; it is just not evidence that the slash surface is absent.)
 
-On Copilot CLI these are **skills** (auto-registered from the plugin `commands/` files, not slash commands). Invoke by naming the skill, e.g. "use the `reviews-code` skill".
-
-| Skill | Arguments | Purpose |
-|-------|-----------|---------|
-| `reviews-code` | `[path] [--scope=SCOPE]` | Automated code quality, security, performance analysis |
-| `reviews-pragmatic` | `[path]` | Detect over-engineering, ensure code matches project scale |
-| `reviews-spec-audit` | `[spec-path]` | Independent spec audit for completeness and clarity |
-| `reviews-reality-check` | `[task-path]` | Validate work actually solves the problem |
-| `reviews-production-readiness` | `[path] [--target=ENV]` | Pre-deployment verification with GO/NO-GO recommendation |
-$1}s;
-  END { exit($c == 1 ? 0 : 1) }
-' "$OUT/CLAUDE.md" || { echo "FAIL: step 8b: 'Review & Audit Commands' section not found exactly once in \$OUT/CLAUDE.md (source drift?)" >&2; exit 1; }
-
-# 8c. Drop the `/work` slash reference (Copilot: `work` is a skill, not a slash command).
-sedi 's#`/work`#`work`#g' "$OUT/CLAUDE.md"
+# 8c. (#132) REMOVED — this used to strip the slash from `/work` on the belief that Copilot has
+#     no slash commands for plugins. It does: the CLI's completion offers `/<plugin-id>:<name>`
+#     for a plugin's skills AND commands (verified live 1.0.82). Step 4d now rewrites every
+#     slash form to `/$PLUGIN_ID:<name>`, including the bare `/work` the source writes without a
+#     prefix, so there is nothing left to strip here.
 
 # 8d. Remove the "GitHub Copilot CLI Documentation" section (the blind URL-swap produced 404
 #     links — docs.github.com/copilot/docs/en/... — and the "built-in tools" gist it cites is a
@@ -405,7 +428,7 @@ cat >> "$OUT/CLAUDE.md" << 'EOF'
 This is the Copilot CLI variant. Key differences from Claude Code:
 - **Structured `ask_user` forms**: `ask_user` takes a `requestedSchema` (JSON Schema) whose `properties` map allows **several fields (questions) in one call** and **multi-select** array fields (rendered as "select zero or more"). Group related decisions into one form; use a multi-select field for genuinely non-exclusive choices — do NOT downgrade to sequential single-select.
 - **Command names**: No plugin prefix in names (e.g., `development`); the plugin system adds the plugin-id prefix automatically
-- **Commands as skills**: plugin `commands/*.md` files are surfaced as **skills** (auto-registered from the `commands/` directory), not slash commands, on Copilot CLI. Invoke a workflow by naming its skill (e.g. the `work` skill, or a `reviews-*` skill) rather than as a slash command.
+- **Invoking a workflow — two names, two surfaces**: the MODEL calls a skill by its BARE name (`skill(skill: "development")`; Copilot lists them in `<available_skills>`). YOU type the PLUGIN-ID-PREFIXED slash form — `/maister-copilot:development`, `/maister-copilot:work`, `/maister-copilot:reviews-code` — which is what the CLI's `/` completion offers. The unprefixed slash form (`/` + the bare name) is **not** offered and does not run. Plain language works too ("Run the maister development workflow to …"). Note the slash surface covers **skills** as well as `commands/*.md`: `development` has no command file yet is still offered as `/maister-copilot:development`.
 - **Project instructions file**: Use `.github/copilot-instructions.md` instead of `CLAUDE.md`. If the project uses `AGENTS.md`, support that as well.
 - **User questions**: Use `ask_user` tool instead of `AskUserQuestion`
 - **Delegation to agents**: Use the `task` tool with `agent_type: "maister-copilot:<agent>"` (Copilot's delegation tool; there is no `Task`/`subagent_type` call). Copilot infers and runs the named custom agent.

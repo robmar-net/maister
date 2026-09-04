@@ -359,10 +359,10 @@ Use ask_user with relevant options
 ## Integration Points
 
 **With /work Command**:
-1. `/work` parses arguments and task description
+1. `/maister-copilot:work` parses arguments and task description
 2. Invokes this agent directly via task tool
 3. Agent performs classification and returns result
-4. `/work` routes to appropriate orchestrator
+4. `/maister-copilot:work` routes to appropriate orchestrator
 
 **Classification Routes**:
 - **development** → development orchestrator

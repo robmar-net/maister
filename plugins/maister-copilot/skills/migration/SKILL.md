@@ -395,8 +395,8 @@ options:
 ## Command Integration
 
 Invoked via:
-- `/migration [description] [--type=TYPE] [--sequential]` (new)
-- `/migration [task-path] [--from=PHASE] [--sequential]` (resume)
+- `/maister-copilot:migration [description] [--type=TYPE] [--sequential]` (new)
+- `/maister-copilot:migration [task-path] [--from=PHASE] [--sequential]` (resume)
 
 Flags:
 - `--type=TYPE`: Migration category (e.g. database, api, framework)

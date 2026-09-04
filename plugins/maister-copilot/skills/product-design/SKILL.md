@@ -80,7 +80,7 @@ Cross-cutting rules from `orchestrator-patterns.md` (same as the development and
 
 Use for **product and feature design**: defining what to build before building it. Greenfield products, new features, enhancements, API designs, workflow designs.
 
-**DO NOT use for**: Implementation tasks (use `/development`), pure research (use `/research`), bug fixes, performance optimization, migrations.
+**DO NOT use for**: Implementation tasks (use `/maister-copilot:development`), pure research (use `/maister-copilot:research`), bug fixes, performance optimization, migrations.
 
 **When to use this vs development orchestrator**: If you need to explore the problem space, evaluate alternatives, and define requirements interactively before any code is written, use this. If you already know what to build and need to plan and execute, use development.
 
@@ -644,13 +644,13 @@ ask_user — with options:
 
 6. On approval, update task status and suggest next steps.
 
-   Output this message EXACTLY — do NOT invent alternative commands (e.g. `/feature:new` does not exist):
+   Output this message EXACTLY — do NOT invent alternative commands (e.g. `/maister-copilot:feature:new` does not exist):
 
 ```
 Product brief approved and saved to: [task-path]/outputs/product-brief.md
 
 To start development based on this design, clear context first or start a new session, then run:
-/development [task-path]
+/maister-copilot:development [task-path]
 ```
 
 **Output**: `outputs/product-brief.md`
@@ -760,8 +760,8 @@ options:
 ## Command Integration
 
 Invoked via:
-- `/product-design [description] [--no-visual] [--research=PATH]` (new)
-- `/product-design [task-path] [--from=PHASE]` (resume)
+- `/maister-copilot:product-design [description] [--no-visual] [--research=PATH]` (new)
+- `/maister-copilot:product-design [task-path] [--from=PHASE]` (resume)
 
 **Flags**:
 | Flag | Effect |
@@ -783,7 +783,7 @@ Task directory: `.maister/tasks/product-design/YYYY-MM-DD-task-name/`
 The product brief and mockups are consumed by the development orchestrator. Pass the product-design task path directly:
 
 ```
-/development .maister/tasks/product-design/YYYY-MM-DD-task-name/
+/maister-copilot:development .maister/tasks/product-design/YYYY-MM-DD-task-name/
 ```
 
 The development orchestrator auto-detects the product-design task path during initialization (Step 4: Ingest Design Context) and copies:
@@ -799,7 +799,7 @@ It then generates `analysis/design-context/INDEX.md` (screen/component inventory
 A completed research workflow can feed into product design:
 
 ```
-/product-design "Design feature X" --research=.maister/tasks/research/YYYY-MM-DD-research/
+/maister-copilot:product-design "Design feature X" --research=.maister/tasks/research/YYYY-MM-DD-research/
 ```
 
 Research findings are imported into `context/research-context/` and synthesized alongside other context sources in Phase 1.

@@ -114,7 +114,7 @@ Use this when a project doesn't have `.maister/docs/` or needs documentation for
 
      *Not initialized for this project. If you need frontend standards, you can:*
      - *Add them manually using the docs-manager skill*
-     - *Run `/standards-discover --scope=frontend` to auto-discover*
+     - *Run `/maister-copilot:standards-discover --scope=frontend` to auto-discover*
      ```
 6. **MANDATORY - Update .github/copilot-instructions.md:**
    - Check if `.github/copilot-instructions.md` exists in the project root; if not, ask the user if they want to create it
@@ -137,7 +137,7 @@ Use this when a project doesn't have `.maister/docs/` or needs documentation for
 
 **Note on Skipped Standards**: If standard categories are skipped during initialization, teams can add them later using:
 - "Add Documentation File" operation to add specific standards
-- `/standards-discover` command to auto-discover standards from codebase
+- `/maister-copilot:standards-discover` command to auto-discover standards from codebase
 
 ---
 

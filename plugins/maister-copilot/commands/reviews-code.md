@@ -54,17 +54,17 @@ The code-reviewer subagent will:
 
 **Example 1**: Review specific task
 ```
-User: /reviews-code .maister/tasks/development/2025-10-24-auth/
+User: /maister-copilot:reviews-code .maister/tasks/development/2025-10-24-auth/
 ```
 
 **Example 2**: Review with specific scope
 ```
-User: /reviews-code src/api/ --scope=security
+User: /maister-copilot:reviews-code src/api/ --scope=security
 ```
 
 **Example 3**: Review entire project
 ```
-User: /reviews-code src/
+User: /maister-copilot:reviews-code src/
 ```
 
 ## What to Expect
