@@ -124,6 +124,15 @@ Some incoming upstream changes need a Copilot-side adaptation to land *before* t
 introduce a silent parity gap. Treat each tripwire below as a **STOP** during a sync: if the incoming
 merge carries the trigger, pause, finish the linked adaptation, then merge.
 
+### `CLAUDE.md` overwritten — the `@AGENTS.md` import (ALWAYS check)
+
+This file only reaches an agent because `CLAUDE.md` imports it (see the note at the top).
+`CLAUDE.md` is **upstream-owned**, so any merge that touches it can drop the import — and nothing
+will error, because absent instructions raise nothing. `make validate` (**WS5.23**) fails loudly if
+the import is gone; run it after every sync and restore the `@AGENTS.md` block at the top of
+`CLAUDE.md` if it fails. This tripwire is unlike the others: it does not gate one feature, it gates
+whether *any* rule in this document still applies.
+
 ### `model:` per-agent tiering — issue #86 (RESOLVED — block lifted, residual guard stays)
 
 Upstream carries a live `feat/model-tiering` branch that sets **per-agent `model:` frontmatter**
