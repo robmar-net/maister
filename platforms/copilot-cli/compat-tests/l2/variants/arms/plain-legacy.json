@@ -1,0 +1,5 @@
+{ "manifestSchema": 1, "arm": "plain-legacy",
+  "role": "T1 control with the custom-instruction leak re-admitted: quantifies the leak (~0.6 of 1.5 AIU) and bridges 20260831T022952Z. Differs from plain in exactly one lever (skipCustomInstructions). config.yml html_output:true like plain (operator D-I1).",
+  "tiers": ["T1"], "transforms": [],
+  "sessionOptions": { "skipCustomInstructions": false, "excludedTools": null, "reasoningEffort": null },
+  "sandboxSeeds": { "configYml": { "html_output": true }, "hookContextAppend": null } }

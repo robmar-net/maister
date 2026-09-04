@@ -1,0 +1,7 @@
+{ "manifestSchema": 1, "arm": "lean",
+  "role": "Low-risk product bundle: Playwright tool-definition exclusion + html_output:false + leaf-worker guard. Levers separated post hoc by cost-report covariates (ADR-004). Guard scope = ALL agents/*.md — a refinement of HLD 'non-orchestrating agents': grep shows no plugin agent invokes any of the six workflow skills, so every agent is a leaf (recorded in ADR 0007).",
+  "tiers": ["T1", "T2", "T3"],
+  "transforms": [ { "id": "leaf-worker-guard", "kind": "append-eof", "files": "agents/*.md",
+    "text": "LEAF WORKER RULE (Copilot): you were dispatched by an orchestrator that owns the workflow. Never invoke the workflow skills development, migration, performance, research, product-design or work from inside this agent; do the task you were given and return." } ],
+  "sessionOptions": { "skipCustomInstructions": true, "excludedTools": ["mcp:playwright"], "reasoningEffort": null },
+  "sandboxSeeds": { "configYml": { "html_output": false }, "hookContextAppend": null } }

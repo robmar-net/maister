@@ -1,0 +1,7 @@
+{ "manifestSchema": 1, "arm": "terse",
+  "role": "Round 2 (#125), staged not scheduled: M1 narrowed no-narration rule with carve-outs. Enters only if caveman moves T1 AIU beyond the plain spread.",
+  "tiers": ["T1", "T2", "T3"],
+  "transforms": [ { "id": "terse-hook-append", "kind": "hook-context-append", "file": "hooks/skill-invocation-reminder.sh", "anchor": "after a compaction.\"",
+    "text": "Between tool calls emit no progress narration or plans; go straight to the next call or the final answer. This never applies to ask_user question text, to executive summaries the workflow asks you to display, or to any file you write." } ],
+  "sessionOptions": { "skipCustomInstructions": true, "excludedTools": null, "reasoningEffort": null },
+  "sandboxSeeds": { "configYml": { "html_output": true }, "hookContextAppend": "terse-hook-append" } }

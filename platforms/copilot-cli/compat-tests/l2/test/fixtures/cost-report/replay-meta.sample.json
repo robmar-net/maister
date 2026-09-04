@@ -1,0 +1,32 @@
+{
+  "scenario": "development",
+  "taskType": "development",
+  "copilotVersion": "GitHub Copilot CLI 1.0.82.\nRun 'copilot update' to check for updates.",
+  "sdkPath": "/Users/robmar/.copilot/pkg/darwin-arm64/1.0.82/copilot-sdk/index.js",
+  "ts": "20260903T000910Z",
+  "runIndex": 1,
+  "runs": 1,
+  "originalMode": "live",
+  "maisterVersion": "2.2.3+fork.2",
+  "model": null,
+  "modelActual": "gpt-5.4-mini+gpt-5.6-luna",
+  "cost": {
+    "aiu": 36.99498,
+    "weightedRequests": 151.94,
+    "source": "session-store.db",
+    "sessionFiltered": true,
+    "models": [
+      {
+        "model": "gpt-5.4-mini",
+        "aiu": 8.407545,
+        "weightedRequests": 5.94
+      },
+      {
+        "model": "gpt-5.6-luna",
+        "aiu": 28.587435,
+        "weightedRequests": 146
+      }
+    ],
+    "modelActual": "gpt-5.4-mini+gpt-5.6-luna"
+  }
+}
