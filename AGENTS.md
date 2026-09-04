@@ -3,6 +3,13 @@
 Instructions for AI agents (Claude Code, GitHub Copilot CLI, etc.) working in this repository.
 See also `CLAUDE.md` (Claude-specific project docs).
 
+> **How this file reaches an agent — do not break it.** Claude Code auto-loads only the repo-root
+> `CLAUDE.md`; it does **not** read `AGENTS.md` on its own. `CLAUDE.md` therefore opens with an
+> `@AGENTS.md` import. If that line is dropped (an upstream merge overwriting `CLAUDE.md` is the
+> likely way), every rule here goes silently unenforced for Claude Code sessions — the failure mode
+> is invisible, because nothing errors. **After any upstream merge that touches `CLAUDE.md`,
+> re-check that the import survived** (`grep -n '@AGENTS.md' CLAUDE.md`).
+
 ## Direction — BINDING, not negotiable
 
 **We are a DOWNSTREAM fork. The direction of contribution is one-way: upstream → us. It is
@@ -131,6 +138,46 @@ falls back to the default model. `build.sh` (step 3b) now **maps** the aliases t
 - **Residual guard (keep):** a `model:` value the map does not know **fails the build** on purpose. If
   an upstream merge introduces a *new* alias, the build stops — add it to the step-3b map (a Copilot
   catalog id) before completing the merge. That build-fail is the tripwire now, not a manual STOP.
+
+## One ticket = one branch = one worktree (BINDING)
+
+**Never work on a ticket in the shared main checkout.** Every ticket gets its own branch **and its
+own `git worktree` directory**:
+
+```bash
+git worktree add .worktrees/<ticket> -b <branch> master   # e.g. .worktrees/132 -b fix/132-...
+cd .worktrees/<ticket>                                    # do ALL the work here
+git worktree remove .worktrees/<ticket>                   # when the PR is merged
+```
+
+`.worktrees/` is already git-ignored (`.gitignore:12`). The main checkout at the repo root stays on
+`master` and is used only for reading, syncing and merging — never for authoring a change.
+
+**Why this is binding, not a style preference.** Two agent sessions sharing one working tree
+corrupted each other's work on 2026-09-03/04, in two ways — one loud, one silent:
+
+- **Loud:** stray duplicates appeared and disappeared mid-session — `SKILL (1).md` inside the
+  *generated* tree broke `make validate` outright, `scenarios/work (1).mjs` still breaks
+  `run.test.mjs`'s on-disk scenario enumeration, and a `replay-provenance.test.mjs` materialised
+  and vanished between two consecutive checks.
+- **Silent, and worse:** PR #126's edits were swept into PR **#128** by the other session's
+  `git add -A` before #126's own branch committed them. The change shipped correctly but under the
+  wrong PR, so **commit attribution in that window is not trustworthy**. #126 had to be closed as
+  superseded by content it had authored. A silent cross-branch leak like this is exactly the class
+  of failure the rest of this document exists to prevent — it can just as easily carry a *wrong*
+  change into someone else's green PR.
+
+Rules that follow from it:
+
+- **Stage explicitly.** Prefer `git add <paths>` over `git add -A` / `git commit -a`. In a shared
+  tree `-A` is how one session's work ends up in another's commit; even in a clean worktree it
+  hides strays.
+- **`make build` writes into `plugins/maister-copilot/**`,** which is per-worktree — so parallel
+  builds do not collide *provided* each session is in its own worktree. In a shared tree they do.
+- **Check before you start:** `git worktree list`. If a worktree for this ticket already exists,
+  use it — do not create a second one, and do not fall back to the main checkout.
+- **`make validate` failing on a file you did not write** is a symptom of tree sharing, not a bug in
+  the generator. Confirm with `git status --porcelain` and `git worktree list` before "fixing" it.
 
 ## Remotes — identify by repo SLUG, not by remote name
 
