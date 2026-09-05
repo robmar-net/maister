@@ -169,3 +169,51 @@ test('development gateMap: Phase-11 exit gate maps for BOTH the literal-12 and t
     'the fix-loop question must not map to phase 12',
   );
 });
+
+// =========================================================================
+// #131 — QUALIFIER TOLERANCE in the "continue to <phase noun>" gate family.
+//
+// SKILL.md gives each of these gates a verbatim question (e.g. :296 → "Continue to specification
+// audit?"). The model routinely inserts a qualifier taken from SKILL.md's OWN phase headings
+// between "Continue to" and the noun — "Continue to *the recommended* specification audit?",
+// Phase 6 being titled "Specification Audit (Recommended)". The mandatory gate HAS fired; only the
+// literal regex missed it, and the phase token then read as a regression.
+//
+// Measured on three otherwise-identical 1.0.82 development drives: 2 of 3 lost
+// `gate_fired_at(phase-5)` exactly this way (reports 20260904T212138Z / 213801Z vs 214857Z).
+// The questions below are those runs' verbatim gate text, kept here as a REGRESSION FIXTURE — the
+// observed wording belongs in a test, never in a reference (AGENTS.md: never fit a predicate to a run).
+test('#131 gateMap tolerates a qualifier between "continue to" and the phase noun, and still steals nothing', () => {
+  const gm = scenario.gateMap;
+  const place = (q) => { const hit = gm.find((g) => g.re.test(q)); return hit ? hit.phase : null; };
+
+  // The two drives that regressed, and the one that did not — all three are the SAME Phase-5 gate.
+  assert.equal(
+    place('Specification complete: it defines the exact greeting output, quoted-name preservation, missing-name usage error, documentation updates, and three required test cases. Continue to the recommended specification audit?'),
+    5,
+    '20260904T212138Z Phase-5 exit gate must place on phase 5 despite the inserted "the recommended"',
+  );
+  assert.equal(
+    place('Specification complete: it covers exact output, quoted multi-word names, missing-name error semantics, documentation, and existing shell tests. Continue to the recommended specification audit?'),
+    5,
+    '20260904T213801Z Phase-5 exit gate must place on phase 5',
+  );
+  assert.equal(
+    place('Specification complete: scope is the existing POSIX CLI, one `cmd_greet` dispatch branch, help/README updates, and shell tests. Continue to specification audit?'),
+    5,
+    '20260904T214857Z (the drive that passed) must keep placing on phase 5 — the fix is additive',
+  );
+
+  // The tolerance must not let phase 5 swallow phase 6's own gate: that question also contains
+  // "specification audit", but BEFORE "continue to", and `[^?]*` cannot cross the '?'.
+  assert.equal(
+    place('Specification audit passed with minor concerns: the edge cases are implementable. Continue to implementation planning?'),
+    6,
+    'phase-6 exit gate stays on phase 6 even though it mentions "specification audit"',
+  );
+
+  // The rest of the family keeps its own gate under the same tolerance.
+  assert.equal(place('Implementation plan complete: two sequential groups. Continue to implementation?'), 7);
+  assert.equal(place('Implementation complete: both test runners pass. Continue to verification?'), 8);
+  assert.equal(place('Gap analysis complete: low-risk enhancement. Continue to Phase 5: technical approach?'), 2);
+});

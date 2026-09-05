@@ -126,10 +126,25 @@ const gateMap = [
   { phase: 2, re: /continue to phase [345]:/i },
   { phase: 3, re: /tdd red gate complete/i },
   { phase: 4, re: /ui mockups complete/i },
-  { phase: 5, re: /continue to specification audit/i },
-  { phase: 6, re: /continue to implementation planning/i },
-  { phase: 7, re: /continue to implementation\?/i },
-  { phase: 8, re: /continue to verification/i },
+  // QUALIFIER TOLERANCE (#131). SKILL.md gives each of these gates a verbatim question — e.g. :296
+  // 'Format as brief overview then "Continue to specification audit?"'. The model routinely inserts a
+  // qualifier drawn from SKILL.md's OWN phase headings between "Continue to" and the phase noun:
+  // "Continue to **the recommended** specification audit?" (Phase 6 is titled "Specification Audit
+  // (Recommended)"), "Continue to **the mandatory** codebase-analysis phase?". That is a faithful
+  // paraphrase of the documented gate, not a different gate — the mandatory exit gate DID fire — but a
+  // literal regex silently fails to place it, and the phase token then reads as a REGRESSION.
+  // Measured: 2 of 3 identical development drives on 1.0.82 lost `gate_fired_at(phase-5)` this way
+  // (bundles 20260904T212138Z / 213801Z vs 214857Z). This is the SECOND instance of the class — #75
+  // widened phase-11 for the same reason — so the tolerance is applied to the whole
+  // "continue to <phase noun>" family, not just to the one phase we happened to observe.
+  // The anchor stays the SKILL.md noun; `[^?]*` cannot cross a '?', so a qualifier is tolerated while
+  // a DIFFERENT question can never be stolen: phase 6's own gate reads "Specification audit passed …
+  // Continue to implementation planning?" — its "specification audit" precedes "continue to", so
+  // phase 5 cannot match it. Order still matters (6 before 7) for the same reason as before.
+  { phase: 5, re: /continue to\b[^?]*\bspecification audit/i },
+  { phase: 6, re: /continue to\b[^?]*\bimplementation planning/i },
+  { phase: 7, re: /continue to\b[^?]*\bimplementation\?/i },
+  { phase: 8, re: /continue to\b[^?]*\bverification/i },
   { phase: 9, re: /tdd gate passed/i },
   { phase: 10, re: /which standard verifications|enable e2e|generate user documentation/i },
   // Phase 11 (Verification & Issue Resolution) exit gate. SKILL.md:436 makes it "Continue to Phase 12?"

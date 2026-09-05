@@ -893,3 +893,53 @@ reference JSON edited); `make validate` "All checks passed", `make build` byte-i
 unchanged, `2.2.3+fork.4` unchanged), `make check-deterministic` PASS.
 
 Amended 2026-09-04 after the verification fix pass: suite 230 / 228 / 0 / 2 (×2, no flakes), `make validate` green — measured in `verification/test-suite-results.md`.
+
+### 41 — GATE DETECTION, not a gate: `gate_fired_at(phase-5)` flapped on wording (issue #131, cf. #75)
+
+**Scenario-only (development `gateMap`). No reference edit, no hash change, no schema/wm bump.**
+
+Three otherwise-identical development drives on 1.0.82 (pin 8767245, same scenario, same answers) split
+2–1 on a **required** predicate:
+
+| bundle | arm | verdict |
+|---|---|---|
+| `20260904T212138Z` | plain | REGRESSED 37·6·1 — `gate_fired_at(phase-5)` missing |
+| `20260904T213801Z` | lean | REGRESSED 37·7·1 — `gate_fired_at(phase-5)` missing |
+| `20260904T214857Z` | plain | AS-EXPECTED 38·9·0 — present |
+
+**The gate fired in all three.** Reading the persisted `## Gates` tables, every run asked its Phase-5
+exit question; the two that "regressed" phrased it *"Continue to **the recommended** specification
+audit?"* while the third said *"Continue to specification audit?"*. The regex was the literal
+SKILL.md:296 text (`/continue to specification audit/i`), so it placed the gate only in the third run.
+
+So this was **a detector miss, not a missing gate** — a false red, and the class AGENTS.md warns about
+from the other side: we must not report a divergence that is not there any more than we may hide one
+that is. It would have been wrong to relax the predicate to `optional`; the predicate is correct and
+the orchestrator obeyed it.
+
+**Why the model paraphrases.** The qualifier is not invention — it is lifted from SKILL.md's own phase
+heading (`### Phase 6: Specification Audit (Recommended)`). The same insertion was observed as
+*"Continue to the mandatory codebase-analysis phase?"*. Sweeping all 40 gate questions across the three
+reports against the full `gateMap` found **no other unmapped phase-exit gate**, so phase 5 was the only
+live miss — but the mechanism is general.
+
+**Change.** Tolerate a qualifier between `continue to` and the SKILL.md noun across the whole
+`continue to <phase noun>` family (phases 5, 6, 7, 8): `/continue to\b[^?]*\b<noun>/i`. The anchor stays
+the documented noun, so this is not fitted to a run; `[^?]*` cannot cross a `?`, so no question can be
+stolen — phase 6's own gate ("Specification audit passed … Continue to implementation planning?") keeps
+its phase because its "specification audit" precedes "continue to". Verified against all six real gate
+wordings plus the family's own gates.
+
+**This is the second instance of the class** — [#75](https://github.com/robmar-net/maister/issues/75)
+widened phase-11 for the same reason (entry (2) above), and ADR 0004 already records that phases 10 and
+14 "inherit gateMap wording sensitivity". A question-text detector is inherently paraphrase-fragile;
+this entry widens the family rather than the single observed phase, but the class stays open.
+
+**Regression fixture.** The three verbatim questions are locked in `test/scenario.test.mjs` (#131 test),
+which is where observed wording belongs — never in a reference.
+
+**Evidence caveat.** Only `20260904T214857Z`'s bundle still exists; the two REGRESSED bundles (and every
+`20260831*`/`20260903*` bundle) were deleted before this analysis, so the finding rests on their
+persisted `.md` reports — which do carry the full `## Gates` table and the classified diff, and were
+sufficient here. It is worth noting that the credit-free `--replay` story assumes those bundles survive;
+they did not.
