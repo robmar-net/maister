@@ -1,4 +1,4 @@
-.PHONY: build validate check-deterministic test-copilot test-hooks test-l2 bundle-archive clean watch
+.PHONY: build validate check-deterministic test-copilot test-hooks test-l2 test-l2-unit bundle-archive sweep clean watch
 
 build:
 	bash platforms/copilot-cli/build.sh
@@ -132,6 +132,28 @@ test-l2:
 # COMPAT_L2_ARCHIVE overrides the destination. See l2/tools/bundle-archive.sh -h.
 bundle-archive:
 	bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh $(ARGS)
+
+# The L2 unit suite — every credit-free node:test file under l2/test/. This is NOT `test-l2` above:
+# that one runs l2/run.sh, which REBUILDS the plugin and DRIVES A LIVE COPILOT SESSION (credits). This
+# target spends nothing, needs no seat, and is the gate to run before every push.
+#   make test-l2-unit
+test-l2-unit:
+	node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs
+
+# Cost sweep — drive one scenario across several A/B arms under a cumulative credit budget, writing a
+# manifest + per-drive logs. The repo-resident promotion of the three off-repo #123 tier runners.
+#
+# !!  CONSUMES AI CREDITS once it starts driving. Plan first: `--plan` prints the matrix and the
+#     estimate, spends nothing and creates nothing. The seed estimate is MEASURED, from
+#     l2/reference/cost-bands.json — a design-document estimate was 7.8x wrong for `research` (#110).
+#
+# ARGS passes through VERBATIM — this target pins no subset of the script's flags, so anything the
+# script grows works here on day one. Run it with no ARGS for the usage line.
+#   make sweep ARGS="--tier=round1 --scenario=quick-bugfix --arms=plain,lean --runs=3 --cap=25 --plan"
+#   make sweep ARGS="--tier=t3 --scenario=development --arms=plain,lean --runs=2 --cap=220 --gate-max=80 --pin=8767245"
+# See platforms/copilot-cli/compat-tests/l2/sweep.sh -h for both budget flags and the env hygiene rule.
+sweep:
+	bash platforms/copilot-cli/compat-tests/l2/sweep.sh $(ARGS)
 
 clean:
 	rm -rf plugins/maister-copilot/

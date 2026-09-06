@@ -1063,3 +1063,51 @@ Suite **255 tests / 253 pass / 0 fail / 2 skipped** (`node --test platforms/copi
 2026-09-06; +5 over entry 43's 250 — all 5 in the new `bundle-archive.test.mjs`);
 `--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT,
 `make validate` green, `make build` byte-identical, `make check-deterministic` PASS.
+
+### 45 — one repo command for a budgeted cost sweep: `sweep.sh` + a MEASURED `cost-bands.json` (issue #138 WP2)
+
+**New script + reference table + tests, one test-filter edit, two Makefile targets. No reference JSON
+edit, no hash change, no schema/wm bump, no `+fork.N` bump** (a `compat-tests/`-only change plus two
+`Makefile` targets is not something an installer receives).
+
+The three tier runners written for #123 lived off-repo under
+`.maister/tasks/research/2026-09-03-copilot-cost-savings/sweeps/{round1,tier2,tier3}/` and diverged
+from each other in every detail that mattered — round 1 checked its cap *after* each drive, tier 3
+*before*; only tier 3 had a first-drive circuit breaker; each re-derived the AIU arithmetic. `l2/sweep.sh`
+promotes them into one command with the two budget flags kept **distinct**, because conflating them is
+the bug: `--cap` is the CUMULATIVE budget checked before every drive, and it has two different
+outcomes — pre-first-drive is a **precondition refusal** (exit 2, nothing created, empty stdout: it was
+never affordable), mid-sweep is a **clean stop** (exit 0, manifest and logs intact: the budget worked,
+and a partial corpus is the deliverable — tier 3 is one, stopping at `cum 151.843044` against `cap 220`).
+`--gate-max` is the FIRST-DRIVE circuit breaker against the *measured* cost; credits are already spent
+when it fires, so it is exit 1, never 2, and on a pass it re-seeds the per-drive estimate to
+`ceil(measured × 1.4)` so every later cap check uses a measured band rather than the seed.
+
+**The seed is measured, and now checkably so.** `l2/reference/cost-bands.json` is the only input to
+that estimate, and every one of its 22 observations cites a `reports/<ts>` bundle or a
+`sweeps/<tier>/manifest.tsv#<idx>` row — a shape a test asserts, so a hand-added design estimate reds a
+test instead of passing review. All 22 were also resolved by hand against the two absolute paths they
+name (the shared checkout's `reports/` and the off-repo `sweeps/`): 22/22 matched to 6 dp. `research`
+carries the caveat #110's table lacked — **one** drive, 7.8× its 13.5-AIU design estimate, and the tier
+stopped there, so its band is a **floor, not a range**.
+
+`--plan` is credit-free *structurally*, not by luck with `PATH`: it is a parse-time short-circuit above
+the first `mktemp`, the same ordering that makes `run.sh --check-reference` (`:243-249`, above the seat
+preflight at `:306`) credit-free. Round 1 is reproducible as **one** `--plan` invocation whose 12
+`(idx, arm)` rows `diff` identically against the archived `round1/manifest.tsv`. That acceptance is
+scoped to round 1 deliberately: tier 2's corpus is 1 drive / 1 log and tier 3 is missing `4-lean.log`,
+so "reproduce all three tiers" is not honestly checkable and is not claimed.
+
+**The one silent hazard, closed.** `run-sh.test.mjs:200`'s residue filter listed only `l2-variant-` and
+`l2-mutant-`; the sweep mktemps `l2-sweep-<tier>-XXXXXX` into the same `TMPDIR`, so a leaked sweep tree
+would have been **invisible to a residue assertion** rather than loud. Proven by forced red: injecting an
+`l2-sweep-leaked-XXXX` directory into a V-case's private TMPDIR fails V1 with the prefix added (10 tests,
+1 fail) and passes 10/10 without it. `variants.test.mjs:72` and `mutations.test.mjs:107` needed **zero**
+edits — they compute their own before/after baselines and tolerate a new prefix; only `:200` is an
+assertion.
+
+Suite **262 tests / 260 pass / 0 fail / 2 skipped** (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`,
+2026-09-06; +7 over entry 44's 255 — all 7 in the new `sweep-sh.test.mjs`);
+`--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT,
+`make validate` "All checks passed", `make build` byte-identical, `make check-deterministic` PASS,
+main checkout `git status --porcelain` empty.
