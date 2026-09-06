@@ -221,6 +221,14 @@ node platforms/copilot-cli/compat-tests/l2/tools/cost-report.mjs <bundle> [--jso
   gates, hook fires, wall minutes, served models), the cross-check rows against `meta.cost` and the
   checkpoint, and the bundle's provenance (arm, digest, source commit, or the legacy-map row). Every metric
   is `null` when its source event is absent — never 0.
+- **`aiu.onPin`** (#138) — the AIU that was actually served **on** the session pin (`COMPAT_L2_MODEL`); the
+  complement of the off-pin AIU that ADR 0008's per-subagent override carries away. `null` when the model
+  mix is unknown, never 0 — an unknown pin split must not read as a clean one.
+- **`route`** (#138) — the **raw** route covariates only: `basis <b> · gates <n> · subagents <n> — raw
+  covariates, not a route class`. There is deliberately **no** route class, no `verdict` and no `phases`
+  here (D9). `basis` is printed *beside* the numbers so no route figure can be quoted without it; today it
+  is always `basis: 'events'`, and a future witness-based basis can be added without a schema break.
+  Read the standing warning in [Route is a comparability filter, never a cost explanation](#route-is-a-comparability-filter-never-a-cost-explanation) before citing any of it.
 - `--json`: the same as one deterministic object. `--recover`: the plugin dir the drive actually loaded,
   read from `skill.invoked.data.path` (for pre-provenance bundles; `null` + reason when there is no
   path-bearing event). `--verdict`: one line `verdict: <AS-EXPECTED|REGRESSED|INCOMPLETE> PASS n ·
@@ -488,14 +496,32 @@ combined. `ab-compare` therefore **refuses** two bundles whose served-model sets
 `no (model mix)` under a warning), and `cost-report`'s `## Model mix` section shows the pin, the verdict
 (`on-pin` / `off-pin`) and the off-pin AIU with the agent and `subagent.configured` model that carried it.
 
-**Attribution check** — `node platforms/copilot-cli/compat-tests/l2/tools/ab-compare.mjs <bundle-dir>... [--json] [--allow-mutants] [--allow-model-mix]`
+**Attribution check** — `node platforms/copilot-cli/compat-tests/l2/tools/ab-compare.mjs <bundle-dir>... [--json] [--allow-mutants] [--allow-model-mix] [--normalize=shared] [--same-route]`
 prints one row per bundle — `ts | scenario | arm | source (meta / legacy-map) | comparable (yes / no (legacy) /
-no (mutant) / no (model mix)) | commit | AIU | models` — and **refuses** (one `REFUSED: <ts> — <reason>` line
+no (mutant) / no (model mix)) | commit | AIU | models | origin` — and **refuses** (one `REFUSED: <ts> — <reason>` line
 each, exit 2) anything it cannot attribute: `mutant <id> (pass --allow-mutants)`,
 `unattributed (driven without --variant)`,
 `pre-provenance bundle not in legacy-arms.json`, `served-model mismatch: <set> vs <majority set>` (#129,
 pass `--allow-model-mix`), and — an amendment to spec R8's three reasons, so one
-broken directory in a glob does not abort the rest — `unreadable bundle: <detail>`. With `--allow-mutants`
+broken directory in a glob does not abort the rest — `unreadable bundle: <detail>`.
+
+**The two #138 comparison flags** (both are *filters and framings*, never re-pricings):
+- `--normalize=shared` — adds a `sharedAiu` column: each row's AIU restricted to **S**, the *intersection*
+  of the served-model sets across the listed bundles, plus the `droppedAiu` it excluded. The `shared:` line
+  naming S and the dropped figure are **always** printed alongside, so a bare normalized number is never
+  emitted. If S is empty the tool **refuses** (`no shared model across the listed bundles … there is
+  nothing to normalize on`) rather than inventing a basis.
+- `--same-route` — keeps only the rows sharing the **majority** route class and refuses the rest
+  (`route <cls> vs majority <majority>`). A bundle whose route cannot be witnessed from its rundir is
+  refused as `route class unknown (no rundir witness)` — an unwitnessed route is **refused, never silently
+  kept**. This flag owns the route *witness*; `cost-report`'s `route` block deliberately does not classify.
+  Route selects *what is comparable*. It never explains a cost — see the standing warning below.
+- `origin` column — `fork` / `upstream` / empty, taken from the recorded `pluginSource.origin` on a live
+  row. For the six pre-provenance bundles it is derived from the legacy map's two arm tokens, which already
+  *are* the origin: `upstream-control` → `upstream`, `fork-legacy` → `fork`. An `origin` never upgrades a
+  row's `comparable`; a legacy row stays `no (legacy)`.
+
+With `--allow-mutants`
 a mutant bundle (always `variant: null`, since `run.sh` forbids `--variant` with `--mutation`) is listed as a
 **visible** row, arm `mutant <id>`, source `meta`, comparable `no (mutant)`, commit from `pluginSource` — never
 hidden, never comparable. No ranking, Δ or tier logic lives here (#123). Today it lists the six persisted
@@ -506,6 +532,151 @@ bundles as six `legacy-map` rows, exit 0.
 wrote — so a replay replaces the live report of that ts (the bundle is untouched). First hit:
 `20260831T022952Z`. That is why the six real replays that prove #122's neutrality are run by the operator
 **last** (CALIBRATION #40), and why test replays only ever use 2099-series ts stamps.
+
+### The `upstream` control arm — staging and driving it (#138 WP1)
+
+The upstream build is now an **arm like any other**, staged through the same verified `git archive` path
+as every fork arm, with the same pin discipline and the same self-describing bundle:
+
+```bash
+bash platforms/copilot-cli/compat-tests/l2/run.sh \
+  --variant=upstream --commit=f75ef4f --scenario=<id>          # SPENDS AI CREDITS
+```
+
+The manifest is `l2/variants/arms/upstream.json`. Its `transforms` list is **empty** — that is the point:
+the arm is a *declared opt-out*, not a rewrite. `expects.hooksDir: false` is the assertion that the staged
+tree really is the pre-fork one (SkillPanel/maister @ `f75ef4f`), verified against the staged tree rather
+than trusted; a fork tree staged under this arm fails the expectation instead of quietly producing a bogus
+control.
+
+The arm id is **`upstream`**, not `upstream-control`. That token is already the `legacyArm` of three
+pre-provenance bundles, and one table printing the same word from two namespaces would be unreadable — see
+[ADR 0009 DIV-1](adr/0009-fork-vs-upstream-comparison-divergences.md).
+
+Bundles driven this way carry `pluginSource.origin: 'upstream'` in their meta, which is what surfaces as
+`ab-compare`'s `origin` column. The deeper `treeFacts` the staging step computes stay on `variant.sh`'s
+**stderr** — they are a staging diagnostic, not bundle meta (DIV-3).
+
+> **LIMITATION — this staging path is not exercised in CI today.** `l2-check.yml`'s checkout carries no
+> `fetch-depth`, so a depth-1 runner cannot resolve `f75ef4f` (153 commits back). The test that actually
+> stages the upstream tree (`variants.test.mjs` test 9) is skip-gated on
+> `git cat-file -e f75ef4f^{commit}`: it **runs and passes on a developer machine with full history**, and
+> **skips** on CI. What still runs there is test 6, which checks the manifest **schema** — and nothing
+> about staging. The headline capability of WP1 is therefore proven only locally. The one-line fix
+> (`fetch-depth: 0`) is tracked as [#145](https://github.com/robmar-net/maister/issues/145); until it
+> lands, a green CI says nothing at all about whether the upstream arm still stages.
+
+### How to read a cost comparison
+
+Always in this order. Stopping early is how #129 happened.
+
+1. **Model mix first.** Compare the served-model sets before anything else. Copilot re-decides the model
+   per delegation and ignores the pin (ADR 0008), and one `claude-sonnet-5` subagent outweighs every arm
+   lever combined. `ab-compare` refuses a mismatch by default; `cost-report`'s `## Model mix` and
+   `aiu.onPin` tell you how much of the total was even served on the pin. **A comparison across different
+   model mixes is not a weak result — it is an invalid one.**
+2. **Route second, and only as a filter.** `--same-route` decides *which drives are comparable*. It does
+   **not** explain the numbers. See the standing warning below.
+3. **N last.** Only once the mix and route are settled does run count mean anything. Do not budget
+   `N × single-run` (research varies ~7× between a skip route and a deep one), and prefer
+   `--normalize=shared` so the figures are computed over a stated common basis with the dropped AIU
+   visible beside them.
+
+### `sweep.sh` — the budgeted cost sweep (#138 WP2)
+
+```bash
+bash platforms/copilot-cli/compat-tests/l2/sweep.sh \
+  --tier=<name> --scenario=<id> --arms=a,b --runs=N --cap=<AIU> [--plan] [--gate-max=<AIU>] [--pin=<sha>]
+make sweep ARGS="--tier=t4 --scenario=quick-bugfix --arms=plain,lean --runs=3 --cap=20 --plan"
+```
+
+Drives one scenario across several arms under a cumulative credit budget, leaving a manifest plus per-drive
+logs. Drives are **interleaved** `arm × N` (a,b,a,b,…), never blocked by arm, so a mid-sweep stop still
+leaves a *balanced* corpus. `--plan` prints the matrix and the estimate and exits 0 — it spends nothing,
+stages nothing and needs no seat, and it is the credit-free way to discover a cap is too small.
+
+**The two budget flags are different mechanisms — conflating them is the bug the tool guards against:**
+
+| flag | when checked | against | trip outcome |
+|---|---|---|---|
+| `--cap=<AIU>` | **before every drive** (`cum + est > cap`) | the *cumulative* budget | **pre-first-drive** = precondition refusal, **exit 2**, nothing created, stdout empty (nothing was ever affordable). **mid-sweep** = clean stop, **exit 0**, manifest and logs intact — a partial corpus is a valid result (tier 3 is one, stopping at `cum 151.843044` against `cap 220`) |
+| `--gate-max=<AIU>` | **after drive 1 only** | that drive's *measured* cost | credits are already spent, so a trip is **exit 1**, never 2. On a **pass** it **re-seeds** the estimate from measurement (`EST = ceil(measured × 1.4)`), so every later `--cap` check uses a measured band rather than the seed |
+
+`--cap` is the one that fires in practice; `--gate-max` is the circuit breaker that stops a *wrong seed*
+from spending the whole cap before anyone notices — which is exactly what happened in #110.
+
+`--pin=<sha>` is the **git commit** staged for every drive (passed through to `run.sh --commit`, resolved
+once before the loop). It is **not** a model pin — the model is `COMPAT_L2_MODEL`.
+
+**Env hygiene:** the inherited `COMPAT_L2_*` set must be empty except `COMPAT_L2_MODEL` or the sweep
+refuses. A stray `COMPAT_L2_DEEP` silently changes what every arm measures, and a sweep that cannot be
+compared is spent credits with no deliverable.
+
+### `cost-bands.json` — the seed estimate is measured, never designed
+
+`l2/reference/cost-bands.json` is the **only** input to a sweep's seed estimate. Every entry cites a
+`reports/<ts>` bundle or a `sweeps/<tier>/manifest.tsv#<idx>` row; a scenario with no measured band
+**cannot be swept**. Each `estAiu` is the **maximum** of that scenario's observed drives — the worst
+measurement, so the cap is checked against the bad case rather than the average. Bands backed by a single
+drive say so in their `note` ("the band is a floor, not a range").
+
+### The evidence-archiving rule (#138 WP5)
+
+```bash
+bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh <bundle>...        # archive + manifest
+bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh <name>... --verify # re-check digests
+bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh --print-dest       # creates NOTHING
+make bundle-archive ARGS="reports/<ts>"
+```
+
+Bundles are the only credit-free source of truth we have, and a bundle that lives only in the working tree
+is one `git clean` away from being unreproducible evidence. `bundle-archive.sh` copies it out with a
+recorded digest; `--verify` re-extracts into a scratch tree (removed on every exit path) and exits non-zero
+**naming the offender**.
+
+`COMPAT_L2_ARCHIVE` overrides the destination root and **must be an absolute path**. The default is a
+**sibling of the main checkout**, deliberately **outside the repo tree** — so a destructive git operation,
+a branch switch or a worktree removal cannot take the evidence with it. Verify a copy landed *before*
+deleting any source. Exit 2 means a usage/precondition error with nothing created and stdout empty; exit 1
+means a post-staging miss (something could not be written, or a `--verify` mismatch).
+
+### Standing warning — design-document cost estimates are **not** budgets
+
+A per-scenario number with no measurement behind it is not a budget, and a design table that omits that
+caveat will be read as one.
+
+> **Evidence:** #110's design table budgeted `research` at **13.5 AIU**. It measured **105.006005 AIU** —
+> **7.8× over** — and nothing anywhere said the number had never been driven.
+
+This is why `cost-bands.json` exists and why it is the sole seed input. Never seed a cap from a design doc,
+a ticket, or this runbook's prose. Seed it from a cited measurement or do not sweep.
+
+### Route is a comparability filter, never a cost explanation
+
+Route (`skip` vs a deep route) is intuitively the thing that should explain why one drive cost more than
+another. **The project's only measured route classification falsifies that.**
+
+> **Evidence:** `20260904T205106Z` was classified **`skip`** — *correctly* — and still cost
+> **105.006005 AIU**. The cause was a **model**, not a route: `research-synthesizer` was served by
+> `claude-sonnet-5` (ADR 0008). A cheap route with an expensive subagent beats an expensive route every
+> time.
+
+So: `--same-route` selects *what may be compared*; it never justifies a number. `cost-report` publishes
+route as **raw covariates only** — no class, no verdict, no phases — because printing a route class beside
+an AIU figure would assert a relationship the measurement denies. **`basis: 'events'` stays visible beside
+any route figure**, and any route figure quoted without its basis should be treated as unsourced.
+
+An authoritative witness-based basis (`basis: 'witness'`) is tracked as
+[#144](https://github.com/robmar-net/maister/issues/144) — and it is gated on *validating* the predicate,
+not merely promoting it, for exactly the reason above.
+
+### New make targets
+
+| target | what it does | credits |
+|---|---|---|
+| `make test-l2-unit` | the L2 unit suite — every credit-free `node:test` file under `l2/test/`. **Not** `make test-l2`, which rebuilds the plugin and drives a **live** session | none |
+| `make sweep ARGS="…"` | `l2/sweep.sh` — budgeted cost sweep (`--plan` is credit-free) | live drives, capped |
+| `make bundle-archive ARGS="…"` | `l2/tools/bundle-archive.sh` — archive/verify persisted bundles | none |
 
 ## Gotchas & maintenance history (READ before debugging a red/incomplete L2)
 
@@ -574,5 +745,17 @@ required** (CALIBRATION #36) after a 2nd clean fork run each (research `20260831
 are the informational control, not counted toward promotion. See CALIBRATION #35/#36 +
 [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
 
-To reproduce the upstream side: `git archive` the upstream `plugins/maister-copilot` and drive with
-`COMPAT_PLUGIN_DIR` (procedure in the wiki's "How to repeat").
+**To reproduce the upstream side — use the automated path.** Since #138 WP1 the upstream build is a
+first-class arm, staged and *verified* through the same path as every fork arm:
+
+```bash
+bash platforms/copilot-cli/compat-tests/l2/run.sh --variant=upstream --commit=f75ef4f --scenario=<id>
+```
+
+See [The `upstream` control arm](#the-upstream-control-arm--staging-and-driving-it-138-wp1) for the
+manifest, the `origin` provenance it records, and the CI **LIMITATION**.
+
+> *Superseded:* the manual `git archive` + `COMPAT_PLUGIN_DIR` procedure (and the wiki's "How to repeat")
+> is how the 2026-08-31 control runs above were produced, and it is kept only to explain those bundles.
+> It hand-staged the tree with no recorded provenance, which is why those runs survive as
+> `legacyArm: upstream-control` rows that are **`comparable: no (legacy)`**. Do not use it for new work.
