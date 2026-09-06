@@ -72,7 +72,7 @@
       },
       {
         "name": "docs-manager",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "implementation-plan-executor",
@@ -84,7 +84,7 @@
       },
       {
         "name": "init",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "migration",
@@ -116,7 +116,7 @@
       },
       {
         "name": "quick-plan",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "research",
@@ -124,7 +124,7 @@
       },
       {
         "name": "standards-discover",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "standards-update",
@@ -154,7 +154,7 @@
       },
       {
         "name": "work",
-        "l2Evidence": false
+        "l2Evidence": true
       }
     ],
     "agents": [
@@ -180,7 +180,7 @@
       },
       {
         "name": "docs-operator",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "e2e-test-verifier",
@@ -212,7 +212,7 @@
       },
       {
         "name": "project-analyzer",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "reality-assessor",
@@ -244,7 +244,7 @@
       },
       {
         "name": "task-classifier",
-        "l2Evidence": false
+        "l2Evidence": true
       },
       {
         "name": "task-group-implementer",

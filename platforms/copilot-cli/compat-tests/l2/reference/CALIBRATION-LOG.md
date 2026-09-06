@@ -943,3 +943,37 @@ which is where observed wording belongs — never in a reference.
 persisted `.md` reports — which do carry the full `## Gates` table and the classified diff, and were
 sufficient here. It is worth noting that the credit-free `--replay` story assumes those bundles survive;
 they did not.
+
+### 42 — Parity-Map inventory snapshot regenerated; the CI guard now says which half drifted (issue #138 WP4)
+
+**Data regeneration + workflow message. No reference edit, no hash change, no schema/wm bump, no `+fork.N` bump.**
+
+`docs/parity/inventory.json` had exactly one commit in its history (`ea99c0b`, #78) and was never
+re-run. `parity-coverage.mjs:51` globs `reference/*.skeleton.json`, so #103's `work.skeleton.json`
+(`2539eaf`) and #104's `init.skeleton.json` (`f374d37`) grew the evidence surface while the committed
+snapshot stayed frozen — leaving `.github/workflows/l2-check.yml` red on `master` with nothing gating it.
+
+Regenerating flips exactly **8** `"l2Evidence": false → true` entries — 4 skills (`docs-manager`,
+`init`, `quick-plan`, `standards-discover`), **1 command** (`work` — a command, not a skill; the
+Phase-1 list said 9 and was wrong), 3 agents (`docs-operator`, `project-analyzer`, `task-classifier`),
+0 hooks. The `inventory` block is **byte-identical**, which is the positive evidence that the step's own
+`::error::` text — *"plugins/maister inventory changed"* — misdescribed its own failure: nothing in
+`plugins/maister/**` changed. **No change to `parity-coverage.mjs` was required or made.**
+
+`l2-check.yml`'s guard now classifies the two halves separately (`inventory` = upstream added/removed a
+behavior; `coverage` = the evidence surface moved) and emits a distinct `::error::` for each, with the
+coverage message naming all four kinds (skills, commands, agents, hooks). A coverage-only drift can no
+longer report itself as an upstream inventory change.
+
+`l2/test/parity-coverage.test.mjs` (4 tests) lands with it — `parity-coverage.mjs` was the only tool in
+`l2/tools/` without a test file, which is why this drift went unnoticed for two issues. The test spawns
+the tool rather than importing it (the tool has no exports and executes at import), mirroring
+`parity-evidence.test.mjs`.
+
+The credit-free ⚪ classification over all seven surviving bundles is recorded in
+`docs/parity/l2-evidence-dispositions.md`. It found **no** ⚪ inventory row closable from existing
+bundles, and one unexpected result: the surviving `destructive-guard` bundle (`20260831T022944Z`) does
+**not** witness `hook_effect(destructive_guard=ask)` — its `permission.requested` is `kind:"shell"`, the
+decision is `approved`, and the command ran to exit 0. Recorded there as F1, not resolved here.
+
+Amended 2026-09-06 after the WP4 regeneration: suite 242 / 240 / 0 / 2 (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`; +12 over the 230 of entry 41 — 4 from `parity-coverage.test.mjs`, 8 pre-existing on `master`), `--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT, `make validate` green, `make build` byte-identical, `make check-deterministic` PASS.
