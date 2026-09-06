@@ -530,3 +530,71 @@ test('#129 modelMix on the committed fixture: verdict is computed, byModel match
   assert.deepEqual(Object.keys(pinned.modelMix.offPin.byAgent), ['explore'], 'the off-pin AIU is attributed to the explore subagents');
   assert.equal(pinned.modelMix.offPin.byAgent.explore.configured, 'gpt-5.4-mini', 'subagent.configured recorded the same model the runtime served');
 });
+
+// ---------------------------------------------------------------- #138 WP3: aiu.onPin + raw route covariates
+// R6/R7 (`aiu.onPin`) and R8/R9 (`route`). Both are derived from figures computeMetrics has ALREADY
+// computed — there is no second pass over `usage` and no filesystem access — so both are exercised here
+// on the committed fixture and on synthetic event lists, never on `reports/` (audit #9 holds).
+
+test('#138 aiu.onPin null discipline: an unknown pin -> onPin null (never 0) even though usage IS observed, and the AIU table renders it', () => {
+  // The pin is null on FIVE of the seven surviving bundles (spec DIV-4) — the committed fixture is one of
+  // them (it is bundle 20260903T000910Z), so this is the COMMON case, not an edge case. It is also why
+  // normalization keys on the served-model intersection and not on the pin.
+  const m = metricsOfFixture();
+  assert.equal(m.modelMix.pin, null, 'guard: the fixture records no session model pin');
+  assert.equal(m.aiu.onPin, null, 'aiu.onPin is null (unknown) when the pin is unknown');
+  assert.notEqual(m.aiu.onPin, 0, 'null, NEVER a real 0 — 0 would assert "nothing ran off the pin", which is not known here');
+  near(m.aiu.total, 36.99498, 1e-9, 'the null is about the PIN, not about missing usage: the total is a real number');
+  assert.equal(m.modelMix.offPin.aiu, null, 'onPin mirrors offPin.aiu exactly (:257-262) — both null together');
+
+  const md = renderMarkdown(m);
+  assert.match(md, /^\| aiu\.onPin \| null \|$/m, 'the ## AIU table carries an aiu.onPin row rendering the honest null');
+  assert.ok(!md.includes('undefined'), 'markdown never renders undefined');
+});
+
+test('#138 aiu.onPin is a real number when the pin IS known: all-on-pin -> onPin = total with offPin.aiu a REAL 0; one off-pin delegation -> onPin = total - offPin', () => {
+  const pinned = { sessionOptions: { skipCustomInstructions: true, model: 'gpt-5.6-luna' } };
+
+  // (a) usage observed, none of it off-pin -> offPin.aiu is a real 0 (asserted the same way as :424) and
+  // onPin carries the whole total. This is the branch where 0 is the TRUTH, not the absence of knowledge.
+  const all = computeMetrics({
+    events: [usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 1e9 }), usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 3e9 })],
+    meta: pinned,
+    dir: MIX_DIR,
+  });
+  assert.equal(all.modelMix.offPin.aiu, 0, 'offPin.aiu is a REAL 0: usage was observed and none of it was off-pin');
+  assert.equal(all.aiu.onPin, 4, 'aiu.onPin is a real number — the whole 4 AIU drive ran on the pin');
+  assert.equal(all.aiu.onPin, all.aiu.total, 'onPin + offPin = total, and offPin is 0 here');
+
+  // (b) one off-pin delegation: the split is the SAME arithmetic modelMix already did, not a second pass.
+  const A = 'a0000000-0000-4000-8000-00000000000a';
+  const off = computeMetrics({
+    events: [
+      { type: 'subagent.started', agentId: A, timestamp: '2099-06-08T00:00:01.000Z', data: { agentName: 'explore', toolCallId: 'tc-1' } },
+      { type: 'subagent.configured', agentId: A, timestamp: '2099-06-08T00:00:02.000Z', data: { model: 'claude-sonnet-5' } },
+      usageEvent({ model: 'gpt-5.6-luna', nanoAiu: 1e9 }),
+      usageEvent({ model: 'claude-sonnet-5', nanoAiu: 3e9, agentId: A }),
+    ],
+    meta: pinned,
+    dir: MIX_DIR,
+  });
+  assert.equal(off.aiu.total, 4, 'drive total 4 AIU');
+  assert.equal(off.modelMix.offPin.aiu, 3, 'offPin.aiu 3');
+  assert.equal(off.aiu.onPin, 1, 'aiu.onPin = total - offPin.aiu, at the same 9-dp rounding');
+  assert.match(renderMarkdown(off), /^\| aiu\.onPin \| 1 \|$/m, 'the AIU table renders the real figure too');
+});
+
+test('#138 route covariates: metrics.route is { gates, subagents, basis } — NO verdict, NO phases — and `basis` is visible in ## Covariates (A3.5)', () => {
+  const m = metricsOfFixture();
+  assert.deepEqual(Object.keys(m.route), ['gates', 'subagents', 'basis'], 'route key order pinned: the two recorded covariate objects plus their basis');
+  assert.equal(m.route.basis, 'events', 'basis names where the covariates came from — the bundle events');
+  assert.ok(!('verdict' in m.route), 'NO route verdict (D9): the one measured route classification falsifies "route predicts cost" — 20260904T205106Z was correctly `skip` and still cost 105.006005 AIU, 7.8x its band, because of a MODEL');
+  assert.ok(!('phases' in m.route), 'NO phases: cost-report asserts no route class at all');
+  assert.deepEqual(m.route.gates, m.gates, 'route.gates IS the recorded gates covariate, not a re-derivation');
+  assert.deepEqual(m.route.subagents, m.subagents, 'route.subagents IS the recorded subagents covariate');
+
+  const md = renderMarkdown(m);
+  const cov = md.slice(md.indexOf('## Covariates'), md.indexOf('## Provenance'));
+  assert.match(cov, /^\| route \|.*basis/m, 'a `route` row in ## Covariates rendering basis — no published route figure can be read without its basis beside it');
+  assert.ok(!/\broute\b.*verdict/i.test(cov), 'the route row publishes no verdict');
+});

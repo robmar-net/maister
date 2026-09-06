@@ -90,7 +90,9 @@ export function loadBundle(dir) {
 const byType = (events, t) => events.filter((e) => e?.type === t);
 
 // ---------------------------------------------------------------- small pure helpers
-const round = (x, dp) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 10 ** dp) / 10 ** dp : null);
+// Exported so ab-compare's `--normalize=shared` projection reuses THIS rounding rule rather than inventing
+// a second one (#138 R11a): every AIU figure in either tool comes out of the same 9-dp convention.
+export const round = (x, dp) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 10 ** dp) / 10 ** dp : null);
 const nanoToAiu = (nano) => (nano == null ? null : round(nano / 1e9, 9));
 const sortedKeys = (obj) => Object.fromEntries(Object.keys(obj).sort().map((k) => [k, obj[k]]));
 const numSorted = (set) => [...set].sort((a, b) => a - b);
@@ -265,6 +267,14 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
       : { models: null, calls: null, aiu: null, share: null, byAgent: null },
     verdict: !mixKnown ? null : (offPinCalls > 0 ? 'off-pin' : 'on-pin'),
   };
+  // -- #138 R6/R7 `aiu.onPin`: the AIU that was served ON the session pin. It is the complement of the
+  // off-pin figure modelMix just computed — `nanoTotal - offPinNanoEff`, from values already in scope
+  // (:247-248). There is NO second pass over `usage`. Null discipline mirrors `modelMix.offPin.aiu`
+  // exactly (:257-262): null whenever the pin is unknown (measured: five of the seven surviving bundles,
+  // so this is the COMMON branch) or either side is unknown; a real 0 only when observed usage was
+  // entirely off-pin. This is also why `ab-compare --normalize=shared` keys on the served-model
+  // intersection and not on the pin — a pin-keyed normalization would be null on 71 % of the corpus.
+  const onPinAiu = !mixKnown || nanoTotal == null || offPinNanoEff == null ? null : nanoToAiu(nanoTotal - offPinNanoEff);
   const aiuByAgent = {};
   for (const k of Object.keys(byAgent).sort()) aiuByAgent[k] = { aiu: nanoToAiu(byAgent[k].aiu), calls: byAgent[k].calls, models: [...byAgent[k].models].sort() };
   const pricesObserved = {};
@@ -382,9 +392,20 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
   const metaWeighted = isNum(m.cost?.weightedRequests) ? m.cost.weightedRequests : null;
   const delta = (a, b) => (a == null || b == null ? null : round(a - b, 9));
 
+  // -- #138 R8/R9 route covariates. These are exactly the two covariate objects the tier runners already
+  // recorded (`gates` as `2m/2f`, `subagents` as count/byName) — hoisted so `route` publishes the SAME
+  // objects the top level does and the two can never drift apart.
+  const gatesCovariate = { total: gateReqs.length, mapped, fallback };
+  const subagentsCovariate = {
+    count: started.length,
+    byName: countBy(started, (e) => e?.data?.agentName ?? null),
+    byModel: countBy(started, (e) => e?.data?.model ?? null),
+    reasoningEfforts: [...new Set(configured.map((e) => e?.data?.reasoningEffort).filter((v) => typeof v === 'string'))].sort(),
+  };
+
   const metrics = {
     bundle: { dir: dir ?? null, ts, scenario: typeof m.scenario === 'string' ? m.scenario : null, events: evs.length },
-    aiu: { total: aiuTotal, byClass: classObj(nanoByClass, nanoToAiu), byModel: aiuByModel, byAgent: aiuByAgent },
+    aiu: { total: aiuTotal, onPin: onPinAiu, byClass: classObj(nanoByClass, nanoToAiu), byModel: aiuByModel, byAgent: aiuByAgent },
     tokens: { byClass: classObj(tokensByClass, (v) => v) },
     usageEvents: usage.length,
     modelMix,
@@ -410,13 +431,17 @@ export function computeMetrics({ events, meta = {}, dir = null, recover = false,
     reads,
     skillBytesInjected: { totalBytes: skillBytes, count: skills.length, bySkill: sortedKeys(bySkill), byInvoker: sortedKeys(byInvoker) },
     cacheBreaks: { count: breaks.length, reasons: breaks.map((e) => String(e?.data?.primaryReason ?? 'unknown')) },
-    gates: { total: gateReqs.length, mapped, fallback },
-    subagents: {
-      count: started.length,
-      byName: countBy(started, (e) => e?.data?.agentName ?? null),
-      byModel: countBy(started, (e) => e?.data?.model ?? null),
-      reasoningEfforts: [...new Set(configured.map((e) => e?.data?.reasoningEffort).filter((v) => typeof v === 'string'))].sort(),
-    },
+    gates: gatesCovariate,
+    // RAW route covariates — deliberately NO `verdict` and NO `phases` (#138 D9). The project's one
+    // measured route classification falsifies the premise that route predicts cost: tier 2's drive
+    // 20260904T205106Z was classified `skip` CORRECTLY and still cost 105.006005 AIU — 7.8x its 13.5
+    // band — because a subagent ran on claude-sonnet-5, i.e. because of a MODEL, not a route. Printing a
+    // route class beside an AIU figure would therefore assert a relationship the measurement denies.
+    // Route is a COMPARABILITY filter (ab-compare --same-route owns the witness), never a cost
+    // explanation. `basis` is the escape hatch: it says where these came from, and a future witness-based
+    // basis can be added without a schema break.
+    route: { gates: gatesCovariate, subagents: subagentsCovariate, basis: 'events' },
+    subagents: subagentsCovariate,
     hookFires: countBy(byType(evs, 'hook.start'), (e) => e?.data?.hookType ?? null),
     wallMinutes,
     servedModels: servedModelsFromEvents(evs),
@@ -477,6 +502,7 @@ export function renderMarkdown(mx) {
   L.push('');
   L.push('## AIU'); L.push(''); L.push('| metric | value |'); L.push('|---|---|');
   row('aiu.total', mx.aiu.total);
+  row('aiu.onPin', mx.aiu.onPin);
   for (const c of Object.keys(mx.aiu.byClass ?? {})) row(`aiu.byClass.${c}`, mx.aiu.byClass[c]);
   for (const c of Object.keys(mx.tokens.byClass ?? {})) row(`tokens.byClass.${c}`, mx.tokens.byClass[c]);
   row('weightedRequests (Σ usage.cost; not totalPremiumRequests)', mx.weightedRequests);
@@ -525,6 +551,9 @@ export function renderMarkdown(mx) {
   row('cacheBreaks', `${mx.cacheBreaks.count} (${fmt(mx.cacheBreaks.reasons)})`);
   row('gates', `${mx.gates.total} total · mapped ${fmt(mx.gates.mapped)} · fallback ${fmt(mx.gates.fallback)}`);
   row('subagents', `${mx.subagents.count} · byName ${fmt(mx.subagents.byName)} · byModel ${fmt(mx.subagents.byModel)} · reasoningEfforts ${fmt(mx.subagents.reasoningEfforts)}`);
+  // The basis is printed WITH the covariates, so no route figure can be cited without it visible beside it.
+  // No class, no verdict: route does not predict cost (see the `route` comment in computeMetrics).
+  row('route', `basis ${mx.route.basis} · gates ${mx.route.gates.total} · subagents ${mx.route.subagents.count} — raw covariates, not a route class`);
   row('hookFires', mx.hookFires);
   row('wallMinutes', mx.wallMinutes);
   L.push('');

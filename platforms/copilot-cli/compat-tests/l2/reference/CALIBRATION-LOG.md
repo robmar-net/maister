@@ -977,3 +977,45 @@ bundles, and one unexpected result: the surviving `destructive-guard` bundle (`2
 decision is `approved`, and the command ran to exit 0. Recorded there as F1, not resolved here.
 
 Amended 2026-09-06 after the WP4 regeneration: suite 242 / 240 / 0 / 2 (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`; +12 over the 230 of entry 41 — 4 from `parity-coverage.test.mjs`, 8 pre-existing on `master`), `--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT, `make validate` green, `make build` byte-identical, `make check-deterministic` PASS.
+
+### 43 — `aiu.onPin` + raw `route` covariates; `--normalize=shared` + `--same-route` (issue #138 WP3)
+
+**Tool code + tests only. No reference edit, no hash change, no schema/wm bump, no `+fork.N` bump.**
+
+`cost-report.mjs` gains `aiu.onPin` (inside the existing `aiu:` literal, derived from the `mixKnown` /
+`nanoTotal` / `offPinNanoEff` already computed for `modelMix` — no second pass over `usage`) and
+`route { gates, subagents, basis: 'events' }` beside `gates`. `computeMetrics` stays filesystem-free.
+`ab-compare.mjs` gains `--normalize=shared` and `--same-route`.
+
+**Normalization keys on the served-model INTERSECTION, not on the model pin.** Measured across all seven
+surviving bundles: `modelMix.pin` is `null` for **five**, including *both* halves of the struck pair; only
+`20260904T214857Z` carries one (`gpt-5.6-luna`). A pin-keyed flag would be inert on 71 % of the corpus and,
+by the null discipline `onPin` itself obeys, would emit `null`. Measured on `20260904T214857Z`, the one
+bundle that does carry a pin: `aiu.total 47.476803 = onPin 42.325233 + offPin 5.151570`.
+
+**Route ships without a verdict (D9).** The project's one measured route classification falsifies the
+premise that route predicts cost: tier 2's drive `20260904T205106Z` was classified `skip` **correctly** and
+still cost **105.006005 AIU — 7.8x its 13.5 band**, because `research-synthesizer` ran on `claude-sonnet-5`.
+The cause was a *model*, not a route. So `cost-report` asserts no route class; `--same-route` owns the
+witness (promoted from `sweeps/tier2/sweep-tier2.sh:31-36`) and is a comparability filter only.
+
+**Measured on the struck pair** (`20260831T024753Z` vs `20260903T000910Z`, both `source: legacy-map`,
+`comparable: no (legacy)` — the caveat travels with the figures): raw `72.579689` / `36.994980`;
+`--normalize=shared` over `gpt-5.4-mini+gpt-5.6-luna` gives **`28.588154` vs `36.994980`**, dropping
+`claude-sonnet-4.6` at `43.991535` from the first row and `0` from the second — 61 % of that drive's total,
+on a model its counterpart never served. The `34.78` of #138's text is unreproducible and appears nowhere
+outside it. Note `28.588154` (row 1's shared subset) is **not** `28.587435` (row 2's luna-alone figure);
+they differ by 0.0007 and belong to different bundles.
+
+`applyModelMixGuard` is **byte-unchanged**. Its documented property, restated rather than discovered: it
+filters to `comparable === 'yes'`, so it can never fire on the struck pair — both rows classify through the
+`legacy-map` branch, and their non-comparability is already reported by a *stronger* rule.
+
+Measured on the surviving corpus: **all seven bundles are route class `skip`**, so `--same-route` is a no-op
+over them — route is not a confounder in the existing corpus. Its filtering behaviour (majority kept,
+differing class and unknown class both refused) is proven on synthetic bundles in `ab-compare.test.mjs`.
+
+Suite **250 tests / 248 pass / 0 fail / 2 skipped** (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`,
+2026-09-06; +8 over entry 42's 242 — 3 in `cost-report.test.mjs`, 5 in `ab-compare.test.mjs`);
+`--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT,
+`make validate` green, `make build` byte-identical, `make check-deterministic` PASS.
