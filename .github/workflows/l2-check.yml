@@ -52,11 +52,49 @@ jobs:
       # Parity-Map coverage guard (#76 WP-F): regenerate the source-inventory snapshot and fail if it
       # drifted from the committed one — an upstream skill/agent/command/hook added or removed must be
       # absorbed into the Parity-Map (wiki) before merge, so the map cannot silently omit a behavior.
+      #
+      # The snapshot has TWO independent halves and they fail for entirely different reasons (#138 WP4):
+      #   `inventory` — what exists in plugins/maister/**. Drift = upstream added or removed a behavior.
+      #   `coverage`  — which of those have L2 evidence. Drift = the evidence surface moved, typically
+      #                 because a reference/*.skeleton.json gained or lost tokens (parity-coverage.mjs:51
+      #                 globs that directory; #103's work.skeleton.json and #104's init.skeleton.json are
+      #                 how this last fired).
+      # Reporting both halves with a single inventory-only message is what let a benign coverage-only
+      # drift be misread as an upstream inventory change for two issues' worth of time, so each half now
+      # gets its own ::error:: naming what actually moved.
       - name: Parity-Map inventory snapshot is current
         run: |
+          set -euo pipefail
           node platforms/copilot-cli/compat-tests/l2/tools/parity-coverage.mjs --json > docs/parity/inventory.json
-          git diff --exit-code -- docs/parity/inventory.json \
-            || { echo "::error::plugins/maister inventory changed — regenerate docs/parity/inventory.json and update the Parity-Map wiki page"; exit 1; }
+          if git diff --exit-code -- docs/parity/inventory.json; then
+            echo "Parity-Map inventory snapshot is current (inventory and coverage both match)."
+            exit 0
+          fi
+          git show HEAD:docs/parity/inventory.json > "$RUNNER_TEMP/inventory-committed.json"
+          drift=$(node -e '
+            const fs = require("node:fs");
+            const committed = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const fresh = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+            const halves = [];
+            if (!eq(committed.inventory, fresh.inventory)) halves.push("inventory");
+            if (!eq(committed.coverage, fresh.coverage)) halves.push("coverage");
+            if (halves.length === 0) halves.push("other");
+            process.stdout.write(halves.join(" "));
+          ' "$RUNNER_TEMP/inventory-committed.json" docs/parity/inventory.json)
+          case " $drift " in
+            *" inventory "*)
+              echo "::error::plugins/maister source inventory drifted — a skill, command, agent or hook was added or removed upstream. Regenerate docs/parity/inventory.json and absorb the new or removed behavior into the Parity-Map wiki page before merge." ;;
+          esac
+          case " $drift " in
+            *" coverage "*)
+              echo "::error::L2 evidence surface drifted in the snapshot's coverage half (kinds: skills, commands, agents, hooks) — a reference/*.skeleton.json gained or lost invoked_skill/delegated tokens. Regenerate docs/parity/inventory.json and refresh the Parity-Map evidence column. This is NOT an upstream inventory change." ;;
+          esac
+          case " $drift " in
+            *" other "*)
+              echo "::error::docs/parity/inventory.json drifted outside both the inventory and coverage halves — the snapshot schema changed. Inspect the diff above before regenerating." ;;
+          esac
+          exit 1
 
       # Credit-free staleness/tamper verdict per scenario. `run.sh --check-reference` short-circuits
       # BEFORE the seat preflight (LOW-4), so it works with no seat and touches no operator config.
