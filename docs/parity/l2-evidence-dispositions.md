@@ -10,9 +10,10 @@ Thirteen inventory rows carry no L2 evidence. **None of them is closable from th
 bundles** — every one needs a drive, and this file names the verifying scenario for each. One row
 (`orchestrator-framework`) is *structurally* unevidenceable and should be re-classified rather than
 driven. Separately, the nine behavioral dimensions `parity-evidence.mjs` extracts are mostly already
-closed by the bundles; the two that are not are **compaction resume** and — unexpectedly —
-**`hook_effect(destructive_guard=ask)`**, which the one surviving `destructive-guard` bundle does *not*
-witness. See "Findings" for that last one; it is the only surprise in this pass.
+closed by the bundles; the two that are not are **compaction resume** and
+**`hook_effect(destructive_guard=ask)`** — the latter for a fully explained reason: the only surviving
+`destructive-guard` bundle is an **upstream-tree** drive, and upstream ships no `hooks/` at all, so
+there was no guard present to fire. See "Findings". Nothing in this pass is unexplained.
 
 ## Key Decisions
 
@@ -63,8 +64,9 @@ node platforms/copilot-cli/compat-tests/l2/tools/parity-coverage.mjs      # mark
 Source: `parity-coverage.mjs` markdown mode, run at this PR's tree. Counts are
 skills 10/17 evidenced, commands 6/6, agents 22/25, hooks 0/3.
 
-**Disposition legend** — `DRIVE` = needs a live run to close · `RE-DRIVE` = a scenario already exists,
-but no surviving bundle witnesses it · `RECLASSIFY` = cannot be evidenced by construction.
+**Disposition legend** — `DRIVE` = needs a live run to close · `RECLASSIFY` = cannot be evidenced by
+construction. (No row carries a "re-drive" disposition: every unevidenced row simply has not been
+driven on the fork tree yet — see F1 for why the one destructive-guard bundle is not a counter-example.)
 
 ### skills — 7 unevidenced
 
@@ -96,7 +98,7 @@ regeneration flipped, and it is a **command**, not a skill.
 
 | Row | In any bundle? | Disposition | Verifying scenario |
 |---|---|---|---|
-| `block-destructive-commands` | **no — see Findings** | **RE-DRIVE** | the `destructive-guard` scenario already exists and is designed to emit `hook_effect(destructive_guard=ask)`. The one surviving destructive-guard bundle does not witness it, so this needs a fresh drive, not a new scenario |
+| `block-destructive-commands` | **no — but see Findings; the reason is structural** | **DRIVE (fork tree)** | the `destructive-guard` scenario exists and is designed to emit `hook_effect(destructive_guard=ask)`. The one surviving destructive-guard bundle is an **`upstream-control`** drive — upstream ships **no `hooks/`**, so no guard existed to fire. Any drive on the **fork** tree evidences this row; it is not a re-drive of a failed run |
 | `post-compact-reminder` | no | **DRIVE** | needs a **compaction-inducing** drive; no scenario forces compaction today, and all seven bundles report "Compaction resume: ⚪ not observed". Note that any bundle older than `db6b052` (2026-09-03, #120) could not have evidenced it regardless — the `SessionStart` `additionalContext` was a silent no-op until that fix, so **six of the seven survivors predate the fix** |
 | `skill-invocation-reminder` | no (named in 1 bundle, as prompt text only) | **DRIVE** | drivable in principle on any skill-invoking scenario, **but the observability is an open question** — it is unclear which event a reminder injection surfaces as, if any. Resolve observability before spending a drive on it |
 
@@ -117,13 +119,13 @@ wiki refresh can cite the specific bundle rather than re-deriving.
 | Dashboard + HTML companions | ✅ **closable** | 3 of 7 carry `dashboard.html` + `dashboard-data.js` (`20260831T024753Z`, `20260903T000910Z`, `20260904T214857Z`) |
 | Gates (question text, in order) | ✅ **closable** | 6 of 7; 17 gates in `20260903T003148Z`, 16 in two development bundles |
 | **Compaction resume** | ⚪ **needs a drive** | 0 of 7. No `session.compaction_*` / truncation event in any bundle — no scenario induces compaction. Pairs with the `post-compact-reminder` hook row above; **one drive closes both** |
-| **`hook_effect(destructive_guard=ask)`** | ⚪ **needs a re-drive** | 0 of 1 destructive-guard bundle — see Findings |
+| **`hook_effect(destructive_guard=ask)`** | ⚪ **needs a fork-tree drive** | 0 of 1 destructive-guard bundle — and that bundle is an `upstream-control` drive with no `hooks/` in the tree, so it *could not* have witnessed the guard. See Findings |
 
 ---
 
 ## Findings
 
-### F1 — the surviving `destructive-guard` bundle does not witness the guard
+### F1 — the surviving `destructive-guard` bundle is an UPSTREAM drive, so no guard existed to fire
 
 `scenarios/destructive-guard.mjs` states its own contract: the guard's `ask` "surfaces LIVE as a
 `permission.requested` event whose `data.permissionRequest` carries `kind:"hook"` (an ordinary shell
@@ -135,22 +137,37 @@ In `$R/20260831T022944Z` — the only surviving destructive-guard bundle — the
 - `permission.completed` → `result.kind` is **`"approved"`**
 - `tool.execution_complete` → `success: true`, shell exit code **0**, output `.tmp-scratch removed`
 
-So the destructive command **ran**, and no `hook_effect` predicate could have been emitted from this
-bundle. The Copilot override (`hooks-overrides/block-destructive-commands.sh:54`) matches the command
-text unconditionally — there is no agent whitelist on the Copilot side — so caller identity does not
-explain it.
+So the destructive command **ran**. **The reason is structural, not a defect**, and it is settled by the
+bundle's own attribution:
 
-**This is recorded, not resolved.** It is out of WP4's scope, and it is deliberately not swept under the
-rug (AGENTS.md § "Parity, and honest knowledge of the gaps"). Two candidate explanations, neither
-verified here: the L2 rundir for that run did not install the plugin hooks, or the guard genuinely did
-not fire on `1.0.82` at `maisterVersion 2.2.3`. Note also that this bundle predates `db6b052` (#120),
-which fixed a *different* hook (`post-compact-reminder`) that had been a silent no-op — so a
-hook-delivery problem in that window is plausible but unproven.
+```
+$ node -e 'console.log(require("./l2/variants/legacy-arms.json").bundles["20260831T022944Z"])'
+{ legacyArm: 'upstream-control', scenario: 'destructive-guard', maisterVersion: '2.2.3', … }
 
-**Recommended follow-up:** a fresh credit-gated `destructive-guard` drive, checking specifically for
-`permissionRequest.kind === "hook"`. If the guard still does not fire, that is a live parity gap needing
-its own issue, and the currently-green `--check-reference` verdict for this scenario would be checking a
-reference against the workflow model while no run demonstrates the modelled behavior.
+$ git ls-tree f75ef4f plugins/maister-copilot/ --name-only | grep -c hooks
+0
+```
+
+That drive staged the **upstream** tree, and **upstream ships no `hooks/` directory at all** — so there
+was no `block-destructive-commands` hook present to intercept anything. The guard did not fail; it was
+not there.
+
+This is not a new discovery. It is one of the three structural facts issue **#138 itself** cites as the
+motivation for this fork (issue body, line 18): *"no `hooks/` ships upstream, **the `rm -rf` executed**,
+the deep loop drifts to a generic agent — because they are properties of the tree, not of a drive."*
+
+**The fork-side guard is separately known to work.** It was verified live during #113: on the fork tree
+the `preToolUse` hook denied `rm -rf` and echoed its own reason verbatim. So the correct reading of this
+bundle is the *intended* one — it is upstream-control evidence of the gap the fork closes.
+
+**No follow-up issue and no re-drive are warranted.** An earlier draft of this file recommended a
+credit-gated re-drive; that would have spent AI credits to re-discover a documented property of the
+upstream tree. What the row actually needs is a `destructive-guard` drive on the **fork** tree, which is
+ordinary ⚪-closing work in the same batch as every other drivable row — not a bug investigation.
+
+**Caveat worth keeping:** `--check-reference` being green for this scenario still only checks the
+reference against the workflow model; it does not demonstrate the modelled behavior fired in any
+surviving bundle. That distinction stands on its own merits, independent of F1.
 
 ### F2 — a drive-batching hint
 
@@ -163,7 +180,8 @@ The 12 drivable rows collapse into **6 drives**, not 12:
 5. `quick-dev` + `standards-update` (cheap, can share a sandbox) → closes both
 6. a compaction-inducing drive → closes `post-compact-reminder` + the compaction-resume dimension
 
-plus the `destructive-guard` **re-drive** (F1). `orchestrator-framework` needs no drive at all.
+plus a `destructive-guard` drive **on the fork tree** (F1 — an ordinary ⚪-closing drive, not a re-drive
+of a failed run). `orchestrator-framework` needs no drive at all.
 
 **Driving these costs credits and is explicitly out of #138's scope** — the spec excludes it as
 spend-gated ("WP4 step 2 — grouping 'needs a drive' ⚪ rows into batches and driving them"). This file is
