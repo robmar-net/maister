@@ -1,0 +1,60 @@
+{
+  "destructive-guard": {
+    "estAiu": 0.844275,
+    "note": "One measured drive. The band is a floor, not a range; a second drive may widen it.",
+    "observed": [
+      { "aiu": 0.844275, "evidence": "reports/20260831T022944Z" }
+    ]
+  },
+  "development": {
+    "estAiu": 72.579689,
+    "note": null,
+    "observed": [
+      { "aiu": 72.579689, "evidence": "reports/20260831T024753Z" },
+      { "aiu": 36.99498, "evidence": "reports/20260903T000910Z" },
+      { "aiu": 66.417379, "evidence": "sweeps/tier3/manifest.tsv#1" },
+      { "aiu": 37.948862, "evidence": "sweeps/tier3/manifest.tsv#2" },
+      { "aiu": 47.476803, "evidence": "sweeps/tier3/manifest.tsv#3" }
+    ]
+  },
+  "init": {
+    "estAiu": 25.138823,
+    "note": "One measured drive. The band is a floor, not a range; a second drive may widen it.",
+    "observed": [
+      { "aiu": 25.138823, "evidence": "reports/20260903T004846Z" }
+    ]
+  },
+  "quick-bugfix": {
+    "estAiu": 1.600507,
+    "note": null,
+    "observed": [
+      { "aiu": 1.504527, "evidence": "reports/20260831T022952Z" },
+      { "aiu": 1.012398, "evidence": "sweeps/round1/manifest.tsv#1" },
+      { "aiu": 1.600507, "evidence": "sweeps/round1/manifest.tsv#2" },
+      { "aiu": 1.037411, "evidence": "sweeps/round1/manifest.tsv#3" },
+      { "aiu": 1.140406, "evidence": "sweeps/round1/manifest.tsv#4" },
+      { "aiu": 1.03358, "evidence": "sweeps/round1/manifest.tsv#5" },
+      { "aiu": 1.584027, "evidence": "sweeps/round1/manifest.tsv#6" },
+      { "aiu": 1.041289, "evidence": "sweeps/round1/manifest.tsv#7" },
+      { "aiu": 1.031484, "evidence": "sweeps/round1/manifest.tsv#8" },
+      { "aiu": 1.004934, "evidence": "sweeps/round1/manifest.tsv#9" },
+      { "aiu": 1.583298, "evidence": "sweeps/round1/manifest.tsv#10" },
+      { "aiu": 1.030611, "evidence": "sweeps/round1/manifest.tsv#11" },
+      { "aiu": 1.011724, "evidence": "sweeps/round1/manifest.tsv#12" }
+    ]
+  },
+  "research": {
+    "estAiu": 105.006005,
+    "note": "ONE measured drive, and the tier stopped there — so this band is a FLOOR, not a range. That single drive came in at 7.8x the design estimate that budgeted it (13.5 AIU budgeted, 105.006005 measured, issue #110). The missing caveat on that design table is the reason this file exists: a per-scenario number with no measurement behind it is not a budget.",
+    "observed": [
+      { "aiu": 105.006005, "evidence": "sweeps/tier2/manifest.tsv#1" }
+    ]
+  },
+  "work": {
+    "estAiu": 18.922307,
+    "note": "One measured drive. The band is a floor, not a range; a second drive may widen it.",
+    "observed": [
+      { "aiu": 18.922307, "evidence": "reports/20260903T003148Z" }
+    ]
+  }
+}

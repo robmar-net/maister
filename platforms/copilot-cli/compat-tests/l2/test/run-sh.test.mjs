@@ -197,7 +197,11 @@ test('check 4 (AC9 partial): de-shadow then restore_config is byte-identical', (
 // mutate.sh all honor TMPDIR): node runs test files concurrently, so diffing the shared os.tmpdir()
 // would race against mutations.test.mjs / variants.test.mjs staging their own l2-mutant-* / l2-variant-*
 // dirs at the same moment.
-const stagedEntries = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('l2-variant-') || n.startsWith('l2-mutant-'));
+// `l2-sweep-` joins the filter with #138 WP2: sweep.sh mktemps its output tree as
+// ${TMPDIR}/l2-sweep-<tier>-XXXXXX, so a sweep that leaked into a run.sh spawn's TMPDIR would
+// otherwise be INVISIBLE here rather than loud — this filter is a residue ASSERTION, and a prefix it
+// does not know about simply stops being seen (spec A2.6).
+const stagedEntries = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('l2-variant-') || n.startsWith('l2-mutant-') || n.startsWith('l2-sweep-'));
 
 function runShVariant(args, cfgPath, extraEnv = {}) {
   const env = { ...process.env, PATH: NO_COPILOT_PATH, COPILOT_CONFIG: cfgPath, TMPDIR: path.dirname(cfgPath) };
