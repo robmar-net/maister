@@ -36,7 +36,7 @@
 #                                      # from the PINNED commit (git archive, never the working tree) via
 #                                      # variants/variant.sh, apply the arm's manifest transforms
 #                                      # (variants/arms/<arm>.json: plain | plain-legacy | lean | caveman |
-#                                      # terse) and drive that copy live. The pin may come from
+#                                      # terse | upstream) and drive that copy live. The pin may come from
 #                                      # COMPAT_VARIANT_COMMIT instead of --commit=<sha> (the flag wins).
 #                                      # --variant and --mutation are MUTUALLY EXCLUSIVE. All five
 #                                      # misuses — invalid arm name (charset / leading dot or dash),

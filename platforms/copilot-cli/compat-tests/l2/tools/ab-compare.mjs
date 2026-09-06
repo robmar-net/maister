@@ -64,7 +64,7 @@
 //                     set differs from the majority one -> REFUSE `served-model mismatch: <set> vs <majority>`
 //                     unless --allow-model-mix.
 //
-// Output: markdown table `ts | scenario | arm | source | comparable | commit | AIU | models` (AIU `unknown`
+// Output: markdown table `ts | scenario | arm | source | comparable | commit | AIU | models | origin` (AIU `unknown`
 // when null, 6 dp otherwise; commit = the 8-hex short oid, `unknown` when not recorded — the JSON keeps the
 // full oid; models = the served-model set, `+`-joined, shortened to the last dash-separated segment only
 // when that is unambiguous across the whole table — otherwise the full ids, and `unknown` for a bundle with
@@ -128,10 +128,17 @@ export function classifyBundle({ dir, events, meta }, { allowMutants = false, le
   let source;
   let comparable;
   let commit = null;
+  // R31 (#138): whose code the drive ran. Both branches derive it from what `prov` ALREADY carries —
+  // live rows from the recorded `pluginSource.origin` (itself a declaration, see run.mjs R29), legacy
+  // rows losslessly from the `legacyArm` token in the committed map. The meta is never re-read and
+  // legacy-arms.json gains nothing (D6). Unknown is `null`, never a guess from the arm name.
+  let origin = null;
   if (prov.provenance === 'meta') {
     const variant = prov.variant == null || prov.variant === '' ? null : String(prov.variant);
     source = 'meta';
     commit = typeof prov.pluginSource?.commit === 'string' && prov.pluginSource.commit ? prov.pluginSource.commit : null;
+    // Absent on every bundle driven before #138 — those read `null`, never `undefined`.
+    origin = prov.pluginSource?.origin === 'upstream' || prov.pluginSource?.origin === 'fork' ? prov.pluginSource.origin : null;
     if (prov.mutation != null) {
       // A mutant is a negative control, never an arm: listed only on --allow-mutants, always visibly
       // labelled and never comparable. variant is null on every real mutant (run.sh forbids the pair).
@@ -148,6 +155,12 @@ export function classifyBundle({ dir, events, meta }, { allowMutants = false, le
     arm = prov.legacyArm ?? 'unknown';
     source = 'legacy-map';
     comparable = 'no (legacy)';
+    // The map's two arm tokens already ARE the origin: `upstream-control` was a SkillPanel tree,
+    // `fork-legacy` one of ours. Deriving is lossless, so no field is added to legacy-arms.json (D6)
+    // — and run.test.mjs pins the exact row key set per row over all six rows, so adding one to the
+    // three upstream rows would fail outright.
+    if (prov.legacyArm === 'upstream-control') origin = 'upstream';
+    else if (prov.legacyArm === 'fork-legacy') origin = 'fork';
   } else {
     return refuse(REASON.unmapped);
   }
@@ -161,7 +174,7 @@ export function classifyBundle({ dir, events, meta }, { allowMutants = false, le
   const byModel = metrics.modelMix?.byModel ?? {};
   const models = Object.keys(byModel);
 
-  return { row: { ts, scenario, arm, mutation, source, comparable, commit, aiu, models, dir }, byModel };
+  return { row: { ts, scenario, arm, mutation, source, comparable, commit, aiu, models, origin, dir }, byModel };
 }
 
 // ---------------------------------------------------------------- route witness (#138 R11b, filesystem)
@@ -383,13 +396,15 @@ export function renderMarkdown({ rows, refused, warning = null, normalize = null
   if (normalize) { L.push(sharedNote(normalize)); L.push(''); }
   const label = modelLabeller(rows);
   // The raw AIU column STAYS; sharedAiu/droppedAiu are added columns, present only under --normalize=shared.
+  // #138 R31: `origin` is APPENDED as the last column, never inserted — every existing column keeps
+  // its position, so nothing that reads this table by index has to move.
   L.push(normalize
-    ? '| ts | scenario | arm | source | comparable | commit | AIU | sharedAiu | droppedAiu | models |'
-    : '| ts | scenario | arm | source | comparable | commit | AIU | models |');
-  L.push(normalize ? '|---|---|---|---|---|---|---|---|---|---|' : '|---|---|---|---|---|---|---|---|');
+    ? '| ts | scenario | arm | source | comparable | commit | AIU | sharedAiu | droppedAiu | models | origin |'
+    : '| ts | scenario | arm | source | comparable | commit | AIU | models | origin |');
+  L.push(normalize ? '|---|---|---|---|---|---|---|---|---|---|---|' : '|---|---|---|---|---|---|---|---|---|');
   for (const r of rows) {
     const norm = normalize ? `${fmtAiu(r.sharedAiu)} | ${fmtAiu(r.droppedAiu)} | ` : '';
-    L.push(`| ${r.ts ?? 'unknown'} | ${r.scenario} | ${fmtArm(r)} | ${r.source} | ${r.comparable} | ${fmtCommit(r.commit)} | ${fmtAiu(r.aiu)} | ${norm}${label(r.models)} |`);
+    L.push(`| ${r.ts ?? 'unknown'} | ${r.scenario} | ${fmtArm(r)} | ${r.source} | ${r.comparable} | ${fmtCommit(r.commit)} | ${fmtAiu(r.aiu)} | ${norm}${label(r.models)} | ${r.origin ?? 'unknown'} |`);
   }
   if (refused.length) {
     L.push('');

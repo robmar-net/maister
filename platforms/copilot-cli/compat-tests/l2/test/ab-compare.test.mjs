@@ -48,7 +48,7 @@ const RESEARCH_EVENTS = path.join(__dirname, 'fixtures', 'research', 'events.sam
 const LEGACY_MAP = JSON.parse(fs.readFileSync(path.join(L2_DIR, 'variants', 'legacy-arms.json'), 'utf8'));
 
 const MAPPED_TS = '20260831T022952Z'; // IS in the committed legacy map (upstream-control / quick-bugfix)
-const TABLE_HEADER = 'ts | scenario | arm | source | comparable | commit | AIU | models';
+const TABLE_HEADER = 'ts | scenario | arm | source | comparable | commit | AIU | models | origin';
 const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 
 function runTool(args, opts = {}) {
@@ -67,7 +67,7 @@ function stageBundle(root, ts, meta) {
 }
 
 // A v2 meta in the exact `buildReplayMeta` shape (legacy keys first, then the schema-2 block).
-function v2Meta(ts, { variant = 'plain', mutation = null, commit = COMMIT } = {}) {
+function v2Meta(ts, { variant = 'plain', mutation = null, commit = COMMIT, origin } = {}) {
   return {
     scenario: 'research', taskType: 'research', copilotVersion: '1.0.81',
     sdkPath: '/nonexistent/replay/sdk/must-never-be-imported.mjs',
@@ -75,7 +75,7 @@ function v2Meta(ts, { variant = 'plain', mutation = null, commit = COMMIT } = {}
     model: null, modelActual: 'unknown', cost: null,
     metaSchema: 2, variant, mutation,
     pluginDir: '/nonexistent/l2-variant-xxxx/plugins/maister-copilot', pluginName: 'maister-copilot',
-    pluginDigest: 'deadbeef', pluginSource: { commit, commitRef: null, treeOid: 'cafebabe', forkVersion: '2.2.3+fork.3', method: 'git-archive' },
+    pluginDigest: 'deadbeef', pluginSource: { commit, commitRef: null, treeOid: 'cafebabe', forkVersion: '2.2.3+fork.3', method: 'git-archive', ...(origin === undefined ? {} : { origin }) },
     sessionOptions: { skipCustomInstructions: true }, sandboxSeeds: null, referenceHash: null,
     cliVersion: '1.0.81', servedModels: {}, armManifest: null,
   };
@@ -128,7 +128,7 @@ test('v2 bundle with variant plain -> row source meta, comparable yes, commit fr
     assert.ok(r.stdout.includes(`| ${TABLE_HEADER} |`), `table header is "${TABLE_HEADER}"\n${r.stdout}`);
     const rows = tableRows(r.stdout);
     assert.equal(rows.length, 1, `exactly one data row\n${r.stdout}`);
-    assert.deepEqual(cells(rows[0]), [ts, 'research', 'plain', 'meta', 'yes', COMMIT.slice(0, 8), 'unknown', 'unknown'], 'row cells: ts, scenario, arm=variant, source meta, comparable yes, commit (8-hex short oid in the table), AIU unknown and models unknown (research events carry no assistant.usage at all)');
+    assert.deepEqual(cells(rows[0]), [ts, 'research', 'plain', 'meta', 'yes', COMMIT.slice(0, 8), 'unknown', 'unknown', 'unknown'], 'row cells: ts, scenario, arm=variant, source meta, comparable yes, commit (8-hex short oid in the table), AIU unknown, models unknown (research events carry no assistant.usage at all) and origin unknown (this fixture predates #138 and records none)');
     assert.equal(refusedLines(r.stdout).length, 0, 'no REFUSED line');
     const j = JSON.parse(runTool([dir, '--json']).stdout);
     assert.equal(j.rows[0].commit, COMMIT, 'JSON row commit = pluginSource.commit (the FULL oid; only the table shortens it)');
@@ -206,7 +206,7 @@ test('v2 mutant M1 (variant null, the shape the harness produces) -> REFUSED "mu
     assert.equal(refusedLines(a.stdout).length, 0, 'no REFUSED line with --allow-mutants (variant null is NOT "unattributed" on a mutant)');
     const rows = tableRows(a.stdout);
     assert.equal(rows.length, 1, 'one row with --allow-mutants');
-    assert.deepEqual(cells(rows[0]), [ts, 'research', 'mutant M1', 'meta', 'no (mutant)', COMMIT.slice(0, 8), 'unknown', 'unknown'], 'row: arm "mutant <id>" (visible), source meta, comparable "no (mutant)", commit (short oid) from pluginSource, models unknown');
+    assert.deepEqual(cells(rows[0]), [ts, 'research', 'mutant M1', 'meta', 'no (mutant)', COMMIT.slice(0, 8), 'unknown', 'unknown', 'unknown'], 'row: arm "mutant <id>" (visible), source meta, comparable "no (mutant)", commit (short oid) from pluginSource, models unknown, origin unknown (a mutation drive stages no arm)');
     const j = JSON.parse(runTool([dir, '--allow-mutants', '--json']).stdout);
     assert.equal(j.rows[0].arm, 'mutant M1', 'JSON arm = "mutant <id>"');
     assert.equal(j.rows[0].mutation, 'M1', 'JSON row carries the mutation id');
@@ -294,7 +294,7 @@ test('--json -> { rows, refused } deterministic (byte-identical, pinned keys, so
     assert.deepEqual(Object.keys(j), ['rows', 'refused'], 'top-level shape { rows, refused }');
     assert.deepEqual(j.rows.map((x) => x.ts), [MAPPED_TS, tsA], 'rows sorted by ts');
     assert.deepEqual(j.refused.map((x) => x.ts), [tsB, tsC], 'refused sorted by ts');
-    assert.deepEqual(Object.keys(j.rows[0]), ['ts', 'scenario', 'arm', 'mutation', 'source', 'comparable', 'commit', 'aiu', 'models', 'dir'], 'row key order pinned (models added by #129)');
+    assert.deepEqual(Object.keys(j.rows[0]), ['ts', 'scenario', 'arm', 'mutation', 'source', 'comparable', 'commit', 'aiu', 'models', 'origin', 'dir'], 'row key order pinned (models added by #129; origin appended after models by #138 — no existing key moves)');
     assert.deepEqual(Object.keys(j.refused[0]), ['ts', 'dir', 'reason'], 'refused key order pinned');
     assert.equal(j.rows[1].arm, 'lean', 'v2 lean row');
     assert.equal(j.refused[1].reason, 'mutant M1 (pass --allow-mutants)', 'mutant refusal reason verbatim');
@@ -303,7 +303,7 @@ test('--json -> { rows, refused } deterministic (byte-identical, pinned keys, so
     const lines = md.stdout.split('\n');
     const hi = lines.findIndex((l) => l === `| ${TABLE_HEADER} |`);
     assert.ok(hi >= 0, `table header line is exactly "| ${TABLE_HEADER} |"\n${md.stdout}`);
-    assert.match(lines[hi + 1], /^\|(---\|){8}$/, 'separator row has eight columns (models added by #129)');
+    assert.match(lines[hi + 1], /^\|(---\|){9}$/, 'separator row has nine columns (models added by #129, origin by #138)');
     assert.equal(tableRows(md.stdout).length, 2, 'two rows in markdown');
     assert.equal(refusedLines(md.stdout).length, 2, 'two REFUSED lines in markdown');
     assert.ok(lines.indexOf(refusedLines(md.stdout)[0]) > hi, 'REFUSED lines follow the table');
@@ -630,4 +630,74 @@ test('#138 flag parser (R12): --normalize=bogus -> exit 2 with a NAMED error, no
   assert.match(none.stderr, /^usage: /m, 'the no-arguments path still prints usage: on stderr');
   assert.match(none.stderr, /--normalize=shared/, 'usage() documents the new flag');
   assert.match(none.stderr, /--same-route/, 'usage() documents --same-route');
+});
+
+// ============================================================ #138 WP1 — the `origin` column
+// Declared at the foot of the file so no pinned line number above it moves.
+//
+// `origin` answers "whose code was this?" — upstream (SkillPanel) or the fork. It is derived from the
+// staged arm's DECLARATION, never from git topology: `f75ef4f` is an ancestor of the fork's master too
+// (153 commits back), so `git branch -r --contains` matches BOTH repositories and cannot discriminate.
+// Legacy rows derive it losslessly from the `legacyArm` token already in the committed map, which is
+// why legacy-arms.json gains nothing (D6).
+const LEGACY_UPSTREAM_TS = '20260831T022952Z'; // legacyArm "upstream-control" in the committed map
+const LEGACY_FORK_TS = '20260903T000910Z';     // legacyArm "fork-legacy" in the committed map
+
+// -------------------------------------------------------------------------- Test (A1.3)
+test('#138 origin column: an upstream-declared row renders "upstream", a fork row "fork", a mutant and a pre-WP1 meta null — no git needed', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-abtest-origin-'));
+  try {
+    const tsUp = '20990701T000000Z';
+    const tsFork = '20990701T000001Z';
+    const tsOld = '20990701T000002Z';
+    const tsMut = '20990701T000003Z';
+    const up = stageBundle(root, tsUp, v2Meta(tsUp, { variant: 'upstream', origin: 'upstream' }));
+    const fork = stageBundle(root, tsFork, v2Meta(tsFork, { variant: 'plain', origin: 'fork' }));
+    // A v2 bundle driven BEFORE this PR carries no `origin` key at all. It must read null — never
+    // `undefined`, never a guess, and never an inference from the arm name.
+    const old = stageBundle(root, tsOld, v2Meta(tsOld, { variant: 'plain' }));
+    const mut = stageBundle(root, tsMut, v2Meta(tsMut, { variant: null, mutation: 'M1', origin: null }));
+
+    const j = JSON.parse(runTool([up, fork, old, mut, '--allow-mutants', '--json']).stdout);
+    const byTs = Object.fromEntries(j.rows.map((r) => [r.ts, r]));
+    assert.equal(byTs[tsUp].origin, 'upstream', 'a row whose arm declared the upstream opt-out renders origin "upstream"');
+    assert.equal(byTs[tsFork].origin, 'fork', 'every other staged arm is fork code');
+    assert.equal(byTs[tsOld].origin, null, 'a pre-WP1 v2 meta has no origin key -> null, never undefined');
+    assert.ok('origin' in byTs[tsOld], 'the key is PRESENT and null (the null discipline), never absent');
+    assert.equal(byTs[tsMut].origin, null, 'a mutation drive is a negative control against the working tree: origin null');
+
+    const md = runTool([up, fork, old, mut, '--allow-mutants']);
+    assert.ok(md.stdout.includes(`| ${TABLE_HEADER} |`), `table header must carry the origin column\n${md.stdout}`);
+    const cellFor = (ts) => cells(tableRows(md.stdout).find((l) => cells(l)[0] === ts));
+    assert.equal(cellFor(tsUp).at(-1), 'upstream', 'markdown: the upstream row');
+    assert.equal(cellFor(tsFork).at(-1), 'fork', 'markdown: the fork row');
+    assert.equal(cellFor(tsOld).at(-1), 'unknown', 'markdown: an unknown origin renders "unknown" — the same null discipline as AIU and commit, never an empty cell');
+    assert.ok(!md.stdout.includes('undefined'), 'never renders undefined');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// -------------------------------------------------------------------------- Test (A1.4 / D6)
+test('#138 origin on legacy rows: derived from the committed legacyArm token — upstream-control -> upstream, fork-legacy -> fork — with legacy-arms.json gaining nothing', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-abtest-legacy-origin-'));
+  try {
+    const up = stageBundle(root, LEGACY_UPSTREAM_TS, legacyMeta(LEGACY_UPSTREAM_TS, 'quick-bugfix'));
+    const fk = stageBundle(root, LEGACY_FORK_TS, legacyMeta(LEGACY_FORK_TS, 'development'));
+    const j = JSON.parse(runTool([up, fk, '--json']).stdout);
+    const byTs = Object.fromEntries(j.rows.map((r) => [r.ts, r]));
+    assert.equal(byTs[LEGACY_UPSTREAM_TS].source, 'legacy-map', 'the attribution channel is still the legacy map');
+    assert.equal(byTs[LEGACY_UPSTREAM_TS].origin, 'upstream', 'legacyArm "upstream-control" -> origin upstream');
+    assert.equal(byTs[LEGACY_FORK_TS].origin, 'fork', 'legacyArm "fork-legacy" -> origin fork');
+    assert.equal(byTs[LEGACY_UPSTREAM_TS].comparable, 'no (legacy)', 'deriving origin changes NO row\'s comparable');
+
+    // D6: the derivation is lossless from what the map ALREADY records, so the map itself gains
+    // nothing. run.test.mjs:985 asserts the exact row key set per row over all six rows, so a field
+    // added to only the three upstream rows would fail outright.
+    for (const [ts, row] of Object.entries(LEGACY_MAP.bundles)) {
+      assert.ok(!('origin' in row), `${ts}: legacy-arms.json rows must NOT gain an origin field — it is derived from legacyArm`);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

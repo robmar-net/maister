@@ -39,10 +39,16 @@
 #   - FAIL-CLOSED: every anchor must match EXACTLY ONCE in the copy before editing, and every
 #     post-edit verification is MEASURED against a second, pristine extraction of the same archive
 #     (agent count, `model:` set, changed-line counts) — never hardcoded.
-#   - Invariants for ALL arms: the copy's .claude-plugin/plugin.json name stays "maister-copilot";
+#   - Invariants for EVERY arm: the copy's .claude-plugin/plugin.json name stays "maister-copilot",
+#     and the source repo's plugins/ tree is untouched (git status --porcelain).
+#   - The HOOK battery is conditional on the arm's DECLARED `expects.hooksDir` (#138 R-WP1 D4):
 #     hooks/skill-invocation-reminder.sh exits 0 and emits JSON with a TOP-LEVEL additionalContext
 #     (WS5.21, #113), no hookSpecificOutput, and hooks/*.sh carry no AskUserQuestion / maister:
-#     (WS5.15, #95); the source repo's plugins/ tree is untouched (git status --porcelain).
+#     (WS5.15, #95) — for every arm that does NOT declare `expects.hooksDir: false`. An arm that DOES
+#     declare it is staging a pre-hook upstream tree, so the opposite is asserted instead: hooks/ must
+#     be ABSENT. The opt-out is one-directional and fail-CLOSED (D8) — it removes "hooks must be
+#     present" and ADDS "hooks must be absent", so a manifest that declares the opt-out against a tree
+#     which DOES carry hooks/ is a hard failure, never a check that quietly did not run.
 #
 set -euo pipefail
 
@@ -118,11 +124,29 @@ ROWS="$(node -e '
   if (m.arm !== arm) bad("arm " + JSON.stringify(m.arm) + " != file basename " + JSON.stringify(arm));
   if (!Array.isArray(m.transforms)) bad("transforms must be an array");
   if (!m.sessionOptions || typeof m.sessionOptions.skipCustomInstructions !== "boolean") bad("sessionOptions.skipCustomInstructions must be an explicit boolean");
+  // #138 R-WP1: `expects` is OPTIONAL (only the upstream control declares it), but when present it
+  // must be an object with a boolean `hooksDir` — it decides which check battery runs below, so a
+  // misspelled or mistyped key must be a hard reject here, never a silently ignored declaration.
+  if ("expects" in m) {
+    const e = m.expects;
+    if (e === null || typeof e !== "object" || Array.isArray(e)) bad("expects must be an object when present");
+    if (typeof e.hooksDir !== "boolean") bad("expects.hooksDir must be an explicit boolean (got " + JSON.stringify(e.hooksDir) + ")");
+  }
   for (const t of m.transforms) {
     if (t === null || typeof t !== "object" || Array.isArray(t)) bad("every transform must be an object");
     process.stdout.write(JSON.stringify(t) + "\n");
   }
 ' "$MANIFEST" "$ARM")" || die2 "manifest unreadable or invalid: $MANIFEST"
+
+# The arm's DECLARED expectation about hooks/, read AFTER the validator above has already proved it is
+# an explicit boolean when present. Absent -> "true": every arm that says nothing keeps the full,
+# blocking hook battery. This is the ONLY input to that decision — never a resolved remote slug and
+# never git ancestry (#138 D4): f75ef4f is an ancestor of the fork's master too, so no topology query
+# can separate upstream from fork. The declaration is then CORROBORATED against the staged tree (D8).
+EXPECT_HOOKS_DIR="$(node -e '
+  const m = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  process.stdout.write(m.expects && m.expects.hooksDir === false ? "false" : "true");
+' "$MANIFEST")" || die2 "cannot read expects.hooksDir from the manifest: $MANIFEST"
 
 # tfield ROW FIELD — one string field of a JSON-lines row (node -e #2). Missing/non-string/empty ->
 # exit 3; a `text` carrying a double quote, backslash, tab, newline or any control character ->
@@ -316,27 +340,41 @@ if [ -n "$DIFFS" ]; then
 fi
 [ "$N_CHANGED" = "$N_TOUCHED" ] || fail "$N_CHANGED file(s) differ from the archive but $N_TOUCHED were transformed"
 
-# ---------------------------------------------------------------------------- all-arms invariants (R4.5)
+# ---------------------------------------------------------------------------- arm invariants (R4.5)
+# The plugin-name invariant and the untouched-source check below hold for EVERY arm, upstream control
+# included. The hook battery between them is conditional on the arm's DECLARED expects.hooksDir.
 grep -qE '"name"[[:space:]]*:[[:space:]]*"maister-copilot"' "$DEST/.claude-plugin/plugin.json" \
   || fail 'copy .claude-plugin/plugin.json name is no longer "maister-copilot"'
 
-HOOK="$DEST/hooks/skill-invocation-reminder.sh"
-[ -f "$HOOK" ] || fail "missing hooks/skill-invocation-reminder.sh in the copy"
-HOOK_OUT="$(bash "$HOOK")" || fail "hooks/skill-invocation-reminder.sh exited non-zero"
-# (a) parses as JSON, (b) TOP-LEVEL string additionalContext, (c) no hookSpecificOutput, and — when
-# a hook transform ran — the emitted context ENDS with "\n\n" + the manifest text (the JSON `\n\n`
-# escapes decode to real newlines).
-printf '%s\n' "$HOOK_OUT" | L2_HOOK_TEXT="$HOOK_TEXT" node -e '
-  const j = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-  if (typeof j.additionalContext !== "string") { console.error("no top-level string additionalContext"); process.exit(1); }
-  if ("hookSpecificOutput" in j) { console.error("hookSpecificOutput wrapper present"); process.exit(1); }
-  const t = process.env.L2_HOOK_TEXT;
-  if (t && !j.additionalContext.endsWith("\n\n" + t)) { console.error("additionalContext does not end with the manifest text"); process.exit(1); }
-' || fail "hook stdout failed the JSON / top-level additionalContext / no-hookSpecificOutput check"
-printf '%s\n' "$HOOK_OUT" | grep -qE '^[[:space:]]{0,2}"additionalContext":' \
-  || fail 'WS5.21: hook stdout has no TOP-LEVEL "additionalContext" key'
-if printf '%s\n' "$HOOK_OUT" | grep -q 'hookSpecificOutput'; then fail "hook stdout carries hookSpecificOutput (#113)"; fi
-if grep -nE 'AskUserQuestion|maister:' "$DEST"/hooks/*.sh >&2; then fail "WS5.15: source nomenclature (AskUserQuestion / maister:) in hooks/*.sh"; fi
+if [ "$EXPECT_HOOKS_DIR" = "false" ]; then
+  # D8 — the opt-out is ONE-DIRECTIONAL and fail-CLOSED. It removes "hooks must be present" and ADDS
+  # "hooks must be absent", so a manifest declaring expects.hooksDir:false against a tree that DOES
+  # carry hooks/ is a LYING declaration and a hard failure. This is the whole reason the declared-key
+  # design (D4) cannot fail open. It is written EXPLICITLY rather than left to the hooks/*.sh glob
+  # below, which would pass silently on an empty match: nullglob is set only inside resolve_glob's
+  # own subshell, so an unmatched glob reaches grep as a literal path and merely errors.
+  if [ -d "$DEST/hooks" ]; then
+    fail "manifest declares expects.hooksDir=false but the staged tree of $COMMIT_OID DOES contain hooks/ — the declaration contradicts the commit (a lying declaration is a hard failure, never a skipped check)"
+  fi
+else
+  HOOK="$DEST/hooks/skill-invocation-reminder.sh"
+  [ -f "$HOOK" ] || fail "missing hooks/skill-invocation-reminder.sh in the copy"
+  HOOK_OUT="$(bash "$HOOK")" || fail "hooks/skill-invocation-reminder.sh exited non-zero"
+  # (a) parses as JSON, (b) TOP-LEVEL string additionalContext, (c) no hookSpecificOutput, and — when
+  # a hook transform ran — the emitted context ENDS with "\n\n" + the manifest text (the JSON `\n\n`
+  # escapes decode to real newlines).
+  printf '%s\n' "$HOOK_OUT" | L2_HOOK_TEXT="$HOOK_TEXT" node -e '
+    const j = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+    if (typeof j.additionalContext !== "string") { console.error("no top-level string additionalContext"); process.exit(1); }
+    if ("hookSpecificOutput" in j) { console.error("hookSpecificOutput wrapper present"); process.exit(1); }
+    const t = process.env.L2_HOOK_TEXT;
+    if (t && !j.additionalContext.endsWith("\n\n" + t)) { console.error("additionalContext does not end with the manifest text"); process.exit(1); }
+  ' || fail "hook stdout failed the JSON / top-level additionalContext / no-hookSpecificOutput check"
+  printf '%s\n' "$HOOK_OUT" | grep -qE '^[[:space:]]{0,2}"additionalContext":' \
+    || fail 'WS5.21: hook stdout has no TOP-LEVEL "additionalContext" key'
+  if printf '%s\n' "$HOOK_OUT" | grep -q 'hookSpecificOutput'; then fail "hook stdout carries hookSpecificOutput (#113)"; fi
+  if grep -nE 'AskUserQuestion|maister:' "$DEST"/hooks/*.sh >&2; then fail "WS5.15: source nomenclature (AskUserQuestion / maister:) in hooks/*.sh"; fi
+fi
 
 [ "$(git -C "$REPO_ROOT" status --porcelain -- plugins)" = "$PORCELAIN_BEFORE" ] \
   || fail "the source repo's plugins/ tree changed during staging (git status --porcelain)"
@@ -344,6 +382,33 @@ if grep -nE 'AskUserQuestion|maister:' "$DEST"/hooks/*.sh >&2; then fail "WS5.15
 # ---------------------------------------------------------------------------- digest + summary (stderr only)
 # R2.3 shell idiom — the same shape run.mjs digestTree() must reproduce (sha256, LC_ALL=C sort).
 DIGEST="$(cd "$DEST" && find . -type f | LC_ALL=C sort | xargs shasum -a 256 | shasum -a 256 | cut -d' ' -f1)"
-echo "variant.sh: $ARM staged from $COMMIT_OID (tree $TREE_OID) digest sha256:$DIGEST at $DEST" >&2
+
+# #138 R-WP1: the repository SLUGS this clone can see, sorted, for a human reading the log — today
+# "SkillPanel/maister robmar-net/maister". It rides on STDERR and nowhere else: it never enters
+# replay-meta.json (D3) and is NEVER a control-flow input (D4). It could not be one even in principle
+# — the same slug set is visible whichever arm is staged. Unresolvable (no remotes, an unparsable URL,
+# git unavailable) records the literal `unresolved` and staging CONTINUES; the precedent is the
+# HEAD-vs---commit warning above, not the die2 pre-flight rejections, which name real failures.
+remote_slugs() {
+  local names n url slug out=""
+  names="$(git -C "$REPO_ROOT" remote 2>/dev/null)" || return 1
+  for n in $names; do
+    url="$(git -C "$REPO_ROOT" remote get-url "$n" 2>/dev/null | head -n 1)" || continue
+    case "$url" in
+      https://github.com/*) slug="${url#https://github.com/}" ;;
+      git@github.com:*)     slug="${url#git@github.com:}" ;;
+      *)                    continue ;;
+    esac
+    slug="${slug%.git}"
+    case "$slug" in */*) ;; *) continue ;; esac
+    out="$out$slug"$'\n'
+  done
+  [ -n "$out" ] || return 1
+  printf '%s' "$out" | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ *$//'
+}
+REMOTES="$(remote_slugs)" || REMOTES="unresolved"
+[ -n "$REMOTES" ] || REMOTES="unresolved"
+
+echo "variant.sh: $ARM staged from $COMMIT_OID (tree $TREE_OID) digest sha256:$DIGEST remotes: $REMOTES at $DEST" >&2
 # The ONLY stdout line: the absolute staged path (captured by run.sh via $(...)).
 echo "$DEST"

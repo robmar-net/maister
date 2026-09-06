@@ -235,7 +235,7 @@ function printUsage(stream = process.stdout) {
     '  COMPAT_L2_MODEL          Requested model for a live run (metadata; resolution opts ?? env ??',
     '                           scenario default). A --model= flag may be added later.',
     'A/B arm staging (#122; each is persisted in the bundle\'s replay-meta.json for provenance):',
-    '  COMPAT_VARIANT           Arm name (plain, plain-legacy, lean, caveman, terse) — set by run.sh',
+    '  COMPAT_VARIANT           Arm name (plain, plain-legacy, lean, caveman, terse, upstream) — set by run.sh',
     '                           --variant=<arm>; the plugin under test is the staged transformed copy.',
     '  COMPAT_ARM_MANIFEST      Path to the arm\'s l2/variants/arms/<arm>.json. When set it is parsed',
     '                           BEFORE any credit is spent: unreadable/invalid JSON -> exit 2. Supplies',
@@ -619,11 +619,20 @@ export function computeRunProvenance({ manifest, manifestPath, pluginDir, commit
     process.stderr.write(`L2: warning: forkVersion unreadable from ${pluginJson} (${err.message}) — recording null\n`);
   }
   const method = variant != null && variant !== '' ? 'git-archive' : 'working-tree';
+  // R29 (#138): WHOSE CODE this is — `upstream` or `fork` — derived from the staged arm's DECLARATION
+  // (`expects.hooksDir: false` is the upstream control's opt-out), never from git topology. Measured:
+  // f75ef4f is an ancestor of the fork's master too (153 commits back), so a remote-branch ancestry
+  // query lists FORK branches — it matches BOTH repositories and cannot discriminate. There is
+  // therefore no git query to add here, and adding one would produce a confident wrong answer. `null`
+  // on a working-tree or mutation drive: no arm was staged, so there is nothing to attribute.
+  const origin = method === 'git-archive'
+    ? (armManifest?.expects?.hooksDir === false ? 'upstream' : 'fork')
+    : null;
   return {
     armManifest,
     referenceHash,
     pluginDigest,
-    pluginSource: { commit: commitOid, commitRef: commit || null, treeOid, forkVersion, method },
+    pluginSource: { commit: commitOid, commitRef: commit || null, treeOid, forkVersion, method, origin },
   };
 }
 
@@ -1220,7 +1229,7 @@ export function buildReplayMeta({ sc, runIndex, persistMeta, modelActual, cost, 
     pluginDir: PLUGIN_DIR,                               // the tree this drive loaded, at drive time
     pluginName: PLUGIN_NAME,
     pluginDigest: persistMeta?.pluginDigest ?? null,     // digestTree(PLUGIN_DIR); never null on a live run
-    pluginSource: persistMeta?.pluginSource ?? { commit: null, commitRef: null, treeOid: null, forkVersion: null, method: 'working-tree' }, // the 5-key shape on EVERY v2 meta
+    pluginSource: persistMeta?.pluginSource ?? { commit: null, commitRef: null, treeOid: null, forkVersion: null, method: 'working-tree', origin: null }, // the 6-key shape on EVERY v2 meta (origin appended after method by #138 R30)
     sessionOptions: sessionOptions ?? null,              // EXACTLY the object spread into createSession
     sandboxSeeds: sandboxSeeds ?? null,                  // { configYml, note, hookContextAppend }
     referenceHash: persistMeta?.referenceHash ?? null,   // computeHash(reference) at drive time

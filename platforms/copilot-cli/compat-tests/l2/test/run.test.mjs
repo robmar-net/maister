@@ -742,7 +742,7 @@ test('computeRunProvenance: unreadable manifest / bad commit are preconditions b
     // (4) valid working-tree call (no variant, no commit): digest + pluginSource + referenceHash.
     const prov = computeRunProvenance({ manifestPath: null, pluginDir, commit: null, variant: null, reference });
     assert.equal(prov.pluginDigest, digestTree(pluginDir), 'pluginDigest = digestTree(pluginDir)');
-    assert.deepEqual(prov.pluginSource, { commit: null, commitRef: null, treeOid: null, forkVersion: '9.9.9+fork.1', method: 'working-tree' }, 'working-tree pluginSource shape (commitRef added by the fix pass)');
+    assert.deepEqual(prov.pluginSource, { commit: null, commitRef: null, treeOid: null, forkVersion: '9.9.9+fork.1', method: 'working-tree', origin: null }, 'working-tree pluginSource shape (commitRef added by the fix pass; origin appended after method by #138)');
     assert.equal(prov.referenceHash, computeHash(reference), 'referenceHash = compare.mjs computeHash(reference), never re-implemented');
     assert.equal(prov.armManifest, null, 'no manifest -> armManifest null');
     // variant set -> method git-archive; commit against the real repo -> a 40-hex tree oid.
@@ -761,7 +761,7 @@ test('computeRunProvenance: unreadable manifest / bad commit are preconditions b
       assert.equal(p2b.pluginSource.treeOid, p2.pluginSource.treeOid, 'same tree oid under either spelling');
       const p2c = computeRunProvenance({ manifestPath: null, pluginDir, commit: head.stdout.trim().slice(0, 7), variant: 'plain', reference });
       assert.equal(p2c.pluginSource.commit, head.stdout.trim(), 'a 7-hex prefix resolves to the full oid');
-      assert.deepEqual(Object.keys(p2b.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method'], 'pluginSource key order pinned');
+      assert.deepEqual(Object.keys(p2b.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method', 'origin'], 'pluginSource key order pinned (origin APPENDED after method — the existing keys never move)');
     }
     // (5) unreadable plugin.json -> forkVersion null (warning, NOT a precondition).
     fs.rmSync(path.join(pluginDir, '.claude-plugin', 'plugin.json'));
@@ -1051,5 +1051,38 @@ test('runLive: an invalid env seam (COMPAT_L2_SKIP_INSTR=yes / COMPAT_L2_HTML_OU
     assert.match(r.stderr, c.re, `${label}: stderr names the offending seam`);
     assert.doesNotMatch(r.stdout, /CONSUMES AI CREDITS|Proceed and spend|Refusing to spend/, `${label}: the credit-spend confirm text must NEVER appear — the seam is validated before the confirm`);
     assert.doesNotMatch(r.stdout, /AS-EXPECTED|REGRESSED/, `${label}: no verdict`);
+  }
+});
+
+// ============================================================ #138 WP1 (A1.6) — origin is DECLARED
+// Appended at the foot of the file so no pinned line number above it moves.
+test('#138: run.mjs derives pluginSource.origin from the arm DECLARATION — no git-topology query anywhere (A1.6)', () => {
+  const src = fs.readFileSync(path.join(L2_DIR, 'run.mjs'), 'utf8');
+  // `git branch -r --contains f75ef4f` is useless for origin attribution NOT because it is empty but
+  // because it matches BOTH repositories: f75ef4f is an ancestor of the fork's master too (153 commits
+  // back). Ancestry cannot discriminate upstream from fork, so any such query would be a confident
+  // wrong answer. The declaration is the only honest input; the staged tree then corroborates it (D8).
+  const topology = src.split('\n')
+    .map((line, i) => [i + 1, line])
+    .filter(([, line]) => /branch -r|--contains/.test(line));
+  assert.deepEqual(topology, [], `run.mjs must carry no git-topology origin query — found:\n${topology.map(([n, l]) => `${n}: ${l}`).join('\n')}`);
+
+  // The positive half: origin IS computed, and ONLY from the manifest's declared opt-out.
+  const reference = JSON.parse(fs.readFileSync(path.join(L2_DIR, 'reference', 'research.skeleton.json'), 'utf8'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-origin-'));
+  try {
+    const pluginDir = path.join(root, 'plugin');
+    fs.mkdirSync(path.join(pluginDir, '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'maister-copilot', version: '9.9.9+fork.1' }));
+    fs.writeFileSync(path.join(pluginDir, 'README.md'), 'plugin\n');
+    const originOf = (manifest, variant) => computeRunProvenance({ manifest, pluginDir, commit: null, variant, reference }).pluginSource.origin;
+    assert.equal(originOf({ arm: 'upstream', manifestSchema: 1, expects: { hooksDir: false } }, 'upstream'), 'upstream',
+      'an arm declaring expects.hooksDir:false is upstream code');
+    assert.equal(originOf({ arm: 'plain', manifestSchema: 1 }, 'plain'), 'fork', 'every other staged arm is fork code');
+    assert.equal(originOf({ arm: 'lean', manifestSchema: 1, expects: { hooksDir: true } }, 'lean'), 'fork',
+      'declaring hooksDir:true is still a fork arm — the opt-out is the ONLY upstream signal');
+    assert.equal(originOf(null, null), null, 'a working-tree drive stages no arm: origin null, never a guess');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

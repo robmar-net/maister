@@ -1111,3 +1111,58 @@ Suite **262 tests / 260 pass / 0 fail / 2 skipped** (`node --test platforms/copi
 `--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT,
 `make validate` "All checks passed", `make build` byte-identical, `make check-deterministic` PASS,
 main checkout `git status --porcelain` empty.
+
+### 46 — the `upstream` control arm: a DECLARED opt-out, verified against the staged tree (issue #138 WP1)
+
+**Harness + one new arm manifest. No reference edit, no hash change, no schema/wm bump, no `+fork.N` bump.**
+
+The upstream control (`SkillPanel/maister` @ `f75ef4f`) can now be staged by the same verified path as
+every fork arm, instead of the hand-rolled `COMPAT_PLUGIN_DIR` + `git archive` procedure. Two things had
+to be true at once: `variant.sh`'s hook battery must stop being unconditional (the pre-fork tree has no
+`hooks/` at all), and relaxing it must not open a hole.
+
+**Origin is a DECLARATION, never git topology — measured.** `f75ef4f` is an ancestor of the **fork's**
+`master` too (153 commits back), so a remote-branch ancestry query lists *fork* branches. It is useless
+for attribution not because it returns empty — the earlier claim, **false** — but because it matches
+**both** repositories. So `pluginSource.origin` is `upstream` iff the staged arm's manifest declares
+`expects: { hooksDir: false }`, `fork` for every other arm, `null` for working-tree and mutation drives.
+`grep -cE 'branch -r|--contains' l2/run.mjs` → **0**, asserted by a test.
+
+**The declaration is verified, not trusted (fail-CLOSED).** The opt-out is one-directional by
+construction: it *removes* "hooks must be present" and *adds* "hooks must be absent". An arm declaring
+`hooksDir: false` staged against a tree that **does** carry `hooks/` is a hard `fail` naming the
+contradiction — proven by staging a lying manifest against `HEAD`, whose tree has `hooks/`. It is
+written explicitly rather than left to the `hooks/*.sh` glob, which would pass **silently** on an empty
+match: `nullglob` is set only inside `resolve_glob`'s own subshell, so an unmatched glob reaches `grep`
+as a literal path and merely errors.
+
+**The skip gate names a SHA, never a branch.** `git cat-file -e f75ef4f^{commit}`. On a GitHub runner
+the `origin` remote is **the fork**, and `actions/checkout` creates a remote-tracking ref for the branch
+it builds — so a branch-keyed gate would have resolved to the *fork's* default branch, whose tree HAS
+`hooks/`, and staged it under an arm named `upstream`: the exact fail-open the declared-key design
+exists to prevent, reintroduced through the back door. `grep -c 'origin/master' l2/test/variants.test.mjs`
+→ **0**. The staging test additionally asserts the tree precondition — a staged `upstream` tree
+containing `hooks/` **fails**, it never skips.
+
+**LIMITATION (carried into the runbook and ADR 0009).** `l2-check.yml`'s checkout sets no `fetch-depth`,
+so on a runner the `f75ef4f` object is simply absent and the staging tests skip honestly. The manifest's
+**schema** is verified in CI (test 6 carries no `{ skip }`); **nothing** about staging is. WP1's headline
+capability is exercised only on a developer machine until the `fetch-depth: 0` follow-up lands.
+
+**`legacy-arms.json` gained nothing.** The three pre-provenance upstream bundles render `origin:
+upstream` derived from the `legacyArm` token already in the map — `run.test.mjs:985` asserts the exact
+row key set *per row over all six rows*, so a field added to only three of them would have failed
+outright. Verified live: `20260831T022944Z` / `022952Z` / `024753Z` all render `upstream`,
+`git diff --exit-code -- l2/variants/legacy-arms.json` → 0.
+
+**One honest gap in the acceptance set.** The live-fork half of A1.3 asks an existing bundle to render
+`origin: fork`; `20260904T214857Z` renders **`unknown`**, because it was driven before this change and
+its `pluginSource` carries no `origin`. That is the null discipline working — inferring `fork` from the
+arm name would be a guess, not a measurement — and it is recorded rather than papered over. The `fork` /
+`upstream` / `null` triple is proven on synthetic `v2Meta()` fixtures, which need no git and run in CI.
+
+Suite **268 tests / 266 pass / 0 fail / 2 skipped** (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`,
+2026-09-06; +6 over entry 45's 262 — 3 in `variants.test.mjs`, 2 in `ab-compare.test.mjs`, 1 in `run.test.mjs`);
+`--check-reference ×6` (default / research / quick-bugfix / destructive-guard / work / init) CURRENT,
+`make validate` "All checks passed", `make build` byte-identical, `make check-deterministic` PASS,
+main checkout `git status --porcelain` empty.
