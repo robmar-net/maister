@@ -1019,3 +1019,47 @@ Suite **250 tests / 248 pass / 0 fail / 2 skipped** (`node --test platforms/copi
 2026-09-06; +8 over entry 42's 242 — 3 in `cost-report.test.mjs`, 5 in `ab-compare.test.mjs`);
 `--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT,
 `make validate` green, `make build` byte-identical, `make check-deterministic` PASS.
+
+### 44 — evidence that outlives the worktree: `bundle-archive.sh` (issue #138 WP5)
+
+**New tool + tests, one AGENTS.md rule, one Makefile target. No reference edit, no hash change, no
+schema/wm bump, no `+fork.N` bump** (a `Makefile` target and an AGENTS.md rule are not something an
+installer receives).
+
+About **16 replay bundles were destroyed** by `git worktree remove` followed by a clean of ignored
+files, and entry 41 already had to fall back to persisted `.md` reports because the bundles they were
+derived from were gone. `compat-tests/reports/` is per-worktree **and** git-ignored
+(`reports/.gitignore:8` = `*/`), so nothing in git ever held them and nothing complained when they
+went. `l2/tools/bundle-archive.sh <ts>… [--verify]` writes a `.tar.gz` plus a sha256 manifest per
+bundle into a directory that survives both commands.
+
+**The destination is a SIBLING of the main checkout, outside the repository** (`--print-dest` resolves
+it; `COMPAT_L2_ARCHIVE` overrides it). The anchor is the **common git dir**, not the script's own path:
+five-ups self-location lands on `.worktrees/<ticket>/` inside a linked worktree, whose parent is still
+inside the repo and is itself removable. Placing the archive under `reports/` was considered and
+rejected — `reports/.gitignore`'s `*/` would auto-ignore a `reports/archive/` **subdirectory**, which
+is exactly what makes that option tempting and still wrong (a bare `reports/foo.tar.gz` **file** would
+instead be *tracked*). Either way it dies to the command the tool exists to survive.
+
+**`--verify` is the point, not the archive.** `git worktree remove` is irreversible and a silent
+partial copy looks exactly like a good one, so the AGENTS.md rule requires a **verified** copy, not
+merely a copy, before a worktree is removed. `--verify` re-checks the stored tar's digest AND the
+per-file digests of a scratch extraction, and **names the offending path** — proven both ways in
+`bundle-archive.test.mjs`: a flipped byte in the tar names the tar, and a tar rebuilt from a
+one-byte-different bundle names `./events.json`.
+
+Digests are the `variant.sh:346` idiom verbatim (`find . -type f | LC_ALL=C sort | xargs shasum -a 256
+| shasum -a 256 | cut -d' ' -f1`); the GNU spelling of that command appears **zero** times, and the test
+greps for it — BSD/macOS has no such binary. The script writes **nothing** beside a source bundle
+(hazard H8 held as a design constraint, `cost-report.test.mjs:337` unedited and passing): the source is
+read in place and `--verify` extracts into a mktemp tree removed on every exit path.
+
+**Measured end to end on real evidence** (S7, credit-free): `reports/20260904T214857Z` from the shared
+main checkout — 43 files, 25 MB — archived to `20260904T214857Z.tar.gz` (5.6 MB) with tree
+`sha256:a00303c8…3b8f9f`, and `--verify` re-derived that same tree digest **from a working directory
+outside the worktree**, exit 0. The source bundle's listing and mtimes were unchanged.
+
+Suite **255 tests / 253 pass / 0 fail / 2 skipped** (`node --test platforms/copilot-cli/compat-tests/l2/test/*.test.mjs`,
+2026-09-06; +5 over entry 43's 250 — all 5 in the new `bundle-archive.test.mjs`);
+`--check-reference ×6` (development / research / quick-bugfix / destructive-guard / work / init) CURRENT,
+`make validate` green, `make build` byte-identical, `make check-deterministic` PASS.
