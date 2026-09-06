@@ -40,14 +40,26 @@ deliberately not copied into the worktree (`compat-tests/reports/` is per-worktr
 
 ```
 R=/Users/robmar/Projects/Maister/maister/platforms/copilot-cli/compat-tests/reports
-$R/20260831T022944Z  destructive-guard   254 events    0 delegations
-$R/20260831T022952Z  quick-bugfix      1,530 events    0 delegations
-$R/20260831T024753Z  development      21,222 events   16 delegations
-$R/20260903T000910Z  development      26,655 events   19 delegations
-$R/20260903T003148Z  work             21,922 events   11 delegations
-$R/20260903T004846Z  init              8,188 events    8 delegations
-$R/20260904T214857Z  development      50,712 events   31 delegations
+                     ARM               SCENARIO           EVENTS   DELEGATIONS
+$R/20260831T022944Z  upstream-control  destructive-guard     254   0
+$R/20260831T022952Z  upstream-control  quick-bugfix        1,530   0
+$R/20260831T024753Z  upstream-control  development        21,222   16
+$R/20260903T000910Z  fork-legacy       development        26,655   19
+$R/20260903T003148Z  fork-legacy       work               21,922   11
+$R/20260903T004846Z  fork-legacy       init                8,188   8
+$R/20260904T214857Z  fork              development        50,712   31
 ```
+
+> **⚠️ Three of the seven are `upstream-control` drives — read every count below with that in mind.**
+> Arms come from `l2/variants/legacy-arms.json` (`legacyArm`) for the six pre-provenance bundles and
+> from `pluginSource.origin` for `20260904T214857Z`. This is the same derivation `ab-compare.mjs:132-135`
+> already implements; `parity-evidence.mjs` does **not** read it, so its per-bundle output carries no
+> arm and an unlabelled aggregation over "7 bundles" silently mixes fork and upstream evidence.
+>
+> **A fork-parity row cannot be closed by an upstream drive.** The distinction is not pedantic: it is
+> exactly why the one `destructive-guard` bundle shows the guard not firing (F1) — upstream ships no
+> `hooks/`. The same asymmetry runs the other way, so any ✅ below that rests **only** on a
+> `upstream-control` bundle is marked **⚠ upstream-only** rather than counted as fork evidence.
 
 Commands run (both read-only, both exit 0):
 
@@ -111,12 +123,12 @@ wiki refresh can cite the specific bundle rather than re-deriving.
 
 | Dimension | Status | Best evidence |
 |---|---|---|
-| Delegation + per-agent model | ✅ **closable** | 31 delegations in `20260904T214857Z`. Non-default models observed and attributed: `project-analyzer` → `claude-haiku-4.5` (`20260903T004846Z`), `spec-auditor` → `claude-sonnet-4.6` (`20260831T024753Z`), `explore` → `gpt-5.4-mini` throughout |
-| Parallel fan-out | ✅ **closable** | peak 10× concurrent `task` executions in `20260904T214857Z`; 6× in `20260903T000910Z`; 4× in `20260831T024753Z` and `20260903T004846Z` |
+| Delegation + per-agent model | ✅ **closable on fork evidence** | 31 delegations in `20260904T214857Z` (**fork**); `project-analyzer` → `claude-haiku-4.5` in `20260903T004846Z` (**fork-legacy**); `explore` → `gpt-5.4-mini` throughout. ⚠ **Excluded as upstream-only**: `spec-auditor` → `claude-sonnet-4.6` comes from `20260831T024753Z`, an **`upstream-control`** drive — and `claude-sonnet-4.6` is precisely the model *only* the upstream side served (the 43.991535 AIU `--normalize=shared` drops). It is not fork evidence and must not be cited as such |
+| Parallel fan-out | ✅ **closable on fork evidence** | peak 10× concurrent `task` executions in `20260904T214857Z` (**fork**); 6× in `20260903T000910Z` and 4× in `20260903T004846Z` (**fork-legacy**). The 4× in `20260831T024753Z` is **upstream-control** — consistent, but not counted toward fork parity |
 | Verification fan-out | 🟡 **closable as ADAPTED** | 4 bundles show review agents delegated *via the skill hop* — agents run, isolation kept, but reached through `invoked_skill(reviews-*)`. Widest set in `20260904T214857Z` (5 agents / 5 skills). This is the documented 🟡 delta, not a gap |
 | Task items (TaskCreate→todos) | ✅ **closable** | 5 of 7. Richest: `20260903T004846Z` (35 `session.todos_changed`, 13 `sql` calls) |
 | Standards lazy-load | ✅ **closable** | 6 of 7. Richest: `20260903T004846Z` (42 reads, including `vision.md` / `roadmap.md`, not just `INDEX.md`) |
-| Dashboard + HTML companions | ✅ **closable** | 3 of 7 carry `dashboard.html` + `dashboard-data.js` (`20260831T024753Z`, `20260903T000910Z`, `20260904T214857Z`) |
+| Dashboard + HTML companions | ✅ **closable on fork evidence** | **2 of the 4 fork drives** carry `dashboard.html` + `dashboard-data.js` (`20260903T000910Z`, `20260904T214857Z`). `20260831T024753Z` also does, but it is **upstream-control** — excluded from the fork count |
 | Gates (question text, in order) | ✅ **closable** | 6 of 7; 17 gates in `20260903T003148Z`, 16 in two development bundles |
 | **Compaction resume** | ⚪ **needs a drive** | 0 of 7. No `session.compaction_*` / truncation event in any bundle — no scenario induces compaction. Pairs with the `post-compact-reminder` hook row above; **one drive closes both** |
 | **`hook_effect(destructive_guard=ask)`** | ⚪ **needs a fork-tree drive** | 0 of 1 destructive-guard bundle — and that bundle is an `upstream-control` drive with no `hooks/` in the tree, so it *could not* have witnessed the guard. See Findings |

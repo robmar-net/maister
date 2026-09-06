@@ -29,6 +29,9 @@
 //        OWN `export COMPAT_L2_YES=1` does not trip its own check.
 //   T6 — cost-bands.json provenance (A2.4, regex half): every evidence string matches the provenance
 //        regex and every estAiu is derivable from that scenario's own observed array.
+//   T8 — --gate-max is FAIL-CLOSED on an unmeasured drive 1 (post-audit finding): a bundle with no
+//        cost.aiu must ABORT (exit 1) rather than pass the gate on a defaulted 0 and re-seed the
+//        per-drive estimate to 0, which would disarm --cap for the rest of the sweep.
 //   T7 — round-1 reproducibility (A2.5): round 1 is ONE `--plan` invocation whose matrix matches the
 //        archived manifest.tsv shape — 12 rows over plain, plain-legacy, lean, caveman.
 //
@@ -406,5 +409,62 @@ test('T7 (#138 A2.5): round 1 is expressible as ONE --plan invocation whose matr
     assert.match(summary, /\bcap=25\b/, 'round 1 ran under cap 25 and the plan fits inside it');
 
     assert.deepEqual(sweptEntries(tmp), [], 'planning round 1 creates nothing');
+  });
+});
+
+// -------------------------------------------------------------------------- T8 (post-audit)
+// A runner that drives successfully but produces NO cost measurement — the bundle exists, the verdict
+// prints, `replay-meta.json` simply carries no `cost.aiu`. That is not hypothetical: a cost read can
+// fail while the drive itself succeeds.
+//
+// Before the fix, an empty $aiu disarmed BOTH budget guards for the whole sweep:
+//   * the gate compared `${aiu:-0}` -> 0 > GATE_MAX -> always PASSED, so an unmeasured drive walked
+//     straight through the circuit breaker, and
+//   * the re-seed computed ceil(Number("") * 1.4) = 0, after which `cum + 0 > cap` is never true and
+//     --cap never fired again.
+// One failed measurement bought an unbounded sweep. The guard is now fail-closed, on the same
+// principle as variant.sh's D8 check: an unverifiable state is a hard failure, not a skipped check.
+function writeCostlessRunner(tmp) {
+  const p = path.join(tmp, 'costless-run.sh');
+  fs.writeFileSync(p, [
+    '#!/usr/bin/env bash',
+    'set -euo pipefail',
+    'n=0; [ ! -f "$FAKE_STATE" ] || n=$(cat "$FAKE_STATE")',
+    'n=$((n+1)); echo "$n" > "$FAKE_STATE"',
+    'ts=$(printf \'20260902T%06dZ\' "$n")',
+    'mkdir -p "$COMPAT_SWEEP_REPORTS/$ts"',
+    // A real bundle shape, minus the cost block — the drive worked, the measurement did not.
+    'printf \'{"scenario":"fake"}\\n\' > "$COMPAT_SWEEP_REPORTS/$ts/replay-meta.json"',
+    'echo "L2: AS-EXPECTED — 4 PASS · 0 LIMITATION · 0 FAIL"',
+    '',
+  ].join('\n'));
+  fs.chmodSync(p, 0o755);
+  return { runner: p, state: path.join(tmp, 'costless-state') };
+}
+
+test('T8 (#138 post-audit): --gate-max is FAIL-CLOSED on an unmeasured drive 1 — it must not pass on a defaulted 0 and re-seed the estimate to 0', () => {
+  withTmp((tmp) => {
+    const reports = path.join(tmp, 'reports');
+    fs.mkdirSync(reports, { recursive: true });
+    const f = writeCostlessRunner(tmp);
+
+    // Four drives requested, a generous cap, and a gate the drive cannot be measured against.
+    const res = runSweep(
+      ['--tier=t8', '--scenario=quick-bugfix', '--arms=plain,lean', '--runs=2', '--cap=100', '--gate-max=10', '--pin=HEAD'],
+      tmp,
+      { COMPAT_SWEEP_RUNNER: f.runner, COMPAT_SWEEP_REPORTS: reports, FAKE_STATE: f.state },
+    );
+    const both = `${res.stdout}\n${res.stderr}`;
+
+    assert.equal(res.status, 1, `an unmeasured drive 1 under --gate-max is a post-staging miss: exit 1, never 0\n${both}`);
+    assert.match(both, /ABORT/, 'the abort is announced, not silent');
+    assert.match(both, /no AIU measurement/i, 'the reason names the missing measurement rather than a generic failure');
+
+    // The decisive assertion: it stopped AT drive 1. Before the fix it sailed on with a zeroed
+    // estimate and drove all four, because `cum + 0 > cap` can never be true.
+    const out = outDirOf(res);
+    assert.ok(fs.existsSync(path.join(out, 'logs', '1-plain.log')), 'drive 1 is kept — it ran, it just could not be measured');
+    assert.ok(!fs.existsSync(path.join(out, 'logs', '2-lean.log')), 'drive 2 must never start once the measurement is missing');
+    assert.equal(fs.readdirSync(path.join(out, 'logs')).length, 1, 'exactly one drive ran; the sweep did not continue on an unmeasured seed');
   });
 });

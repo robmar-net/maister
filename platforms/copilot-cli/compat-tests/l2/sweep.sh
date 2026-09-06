@@ -401,7 +401,21 @@ while [ "$run" -lt "$RUNS" ]; do
 
     # --gate-max: after drive 1 ONLY, against the MEASURED cost (sweep-tier3.sh:41-47).
     if [ "$idx" = "1" ] && [ -n "$GATE_MAX" ]; then
-      if ! hi="$(node -e 'console.log(Number(process.argv[1]||0)>Number(process.argv[2])?"1":"0")' "${aiu:-0}" "$GATE_MAX")"; then
+      # FAIL-CLOSED on an unmeasured drive 1. An empty $aiu means the cost read failed, and BOTH budget
+      # guards would then silently disarm for the whole sweep: `${aiu:-0}` makes the gate compare 0 >
+      # GATE_MAX (always passing), and the re-seed below computes ceil(Number("")*1.4) = 0, after which
+      # `cum + 0 > cap` is never true and --cap never fires again. One failed measurement would buy an
+      # unbounded sweep. Same principle as variant.sh's D8 check: an unverifiable state is a hard
+      # failure, never a skipped check. Exit 1 — drive 1's credits are already spent (post-staging).
+      if [ -z "$aiu" ]; then
+        say "ABORT: drive 1 produced no AIU measurement, so --gate-max cannot be evaluated and the"
+        say "       per-drive estimate cannot be re-seeded. Refusing to continue on an unmeasured seed."
+        say "       Inspect ${OUT}/logs/1-*.log; re-run without --gate-max only if you accept the seed."
+        emit_reports
+        echo "$OUT"
+        exit 1
+      fi
+      if ! hi="$(node -e 'console.log(Number(process.argv[1])>Number(process.argv[2])?"1":"0")' "$aiu" "$GATE_MAX")"; then
         fail "could not evaluate --gate-max after drive 1"
       fi
       if [ "$hi" = "1" ]; then
@@ -413,8 +427,11 @@ while [ "$run" -lt "$RUNS" ]; do
         exit 1
       fi
       say "  cost gate PASSED (${aiu} AIU)"
-      if ! EST="$(node -e 'console.log(Math.ceil(Number(process.argv[1])*1.4))' "$aiu")"; then
-        fail "could not re-seed the per-drive estimate from drive 1"
+      # Belt-and-braces: a non-positive re-seed would disarm --cap for the rest of the sweep, so refuse
+      # it rather than carry it. Unreachable while the empty-$aiu guard above stands; kept because the
+      # consequence of a 0 estimate is silent unbounded spend, not a visible error.
+      if ! EST="$(node -e 'const v=Math.ceil(Number(process.argv[1])*1.4); if(!Number.isFinite(v)||v<=0)process.exit(1); console.log(v)' "$aiu")"; then
+        fail "could not re-seed the per-drive estimate from drive 1 (measured '${aiu}' gave a non-positive estimate; --cap would stop protecting the sweep)"
       fi
       say "  per-drive estimate updated to ${EST} AIU"
     fi
