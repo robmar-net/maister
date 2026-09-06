@@ -19,7 +19,7 @@
 //      TOP-LEVEL additionalContext ends with "\n\n" + the manifest text (the flat envelope Copilot
 //      reads, #113 / WS5.21), no hookSpecificOutput, no AskUserQuestion / maister: in hooks/*.sh
 //      (WS5.15), hooks.json byte-identical, and the hook file differs by exactly one line.
-//   6. All five manifests parse with the R5 schema: manifestSchema 1, arm === basename, explicit
+//   6. All six manifests parse with the R5 schema: manifestSchema 1, arm === basename, explicit
 //      boolean skipCustomInstructions (false ONLY for plain-legacy), plain/plain-legacy have zero
 //      transforms, every transform kind/keys valid, every text JSON-string-safe (R4.3).
 //   7. A broken manifest (anchor that cannot match) reached through the COMPAT_ARMS_DIR seam exits 1
@@ -51,7 +51,7 @@ const L2_DIR = path.resolve(__dirname, '..');            // l2/
 const REPO_ROOT = path.resolve(L2_DIR, '../../../..');   // l2 -> compat-tests -> copilot-cli -> platforms -> <repo>
 const VARIANT_SH = path.join(L2_DIR, 'variants', 'variant.sh');
 const ARMS_DIR = path.join(L2_DIR, 'variants', 'arms');
-const ARMS = ['plain-legacy', 'plain', 'lean', 'caveman', 'terse'];
+const ARMS = ['plain-legacy', 'plain', 'lean', 'caveman', 'terse', 'upstream'];
 const HOOK_REL = path.join('hooks', 'skill-invocation-reminder.sh');
 
 // A PATH that keeps node + coreutils (+ git/perl/shasum/tar) but HIDES `copilot`.
@@ -208,11 +208,11 @@ test('2 (plain, plain-legacy): one-line path, digest equals an independent git a
       const { dir, res } = stage(arm);
       staged.push(dir);
       const last = digestLine(res.stderr);
-      const m = last.match(/^variant\.sh: (\S+) staged from ([0-9a-f]{40}) \(tree ([0-9a-f]{40})\) digest sha256:([0-9a-f]{64}) at (.+)$/);
+      const m = last.match(/^variant\.sh: (\S+) staged from ([0-9a-f]{40}) \(tree ([0-9a-f]{40})\) digest sha256:([0-9a-f]{64}) remotes: (.+?) at (.+)$/);
       assert.ok(m, `${arm}: the final stderr line must be the staged/digest summary, got: ${last}`);
       assert.equal(m[1], arm, `${arm}: summary line must name the arm`);
       assert.equal(m[2], gitHead.stdout.trim(), `${arm}: summary must name the resolved HEAD commit`);
-      assert.equal(m[5], dir, `${arm}: summary path must equal the stdout path`);
+      assert.equal(m[6], dir, `${arm}: summary path must equal the stdout path (m[5] is the #138 remote-slug field, stderr-only and never a control-flow input)`);
       assert.equal(m[4], expectedDigest, `${arm}: stderr digest must equal the R2.3 shell digest of an independent extraction`);
       assert.equal(shellDigest(dir), expectedDigest, `${arm}: the staged tree's own shell digest must equal the archive's`);
       assert.equal(digestDir(dir), expectedContent, `${arm}: staged tree content must be byte-identical to the archive`);
@@ -302,13 +302,13 @@ for (const arm of ['caveman', 'terse']) {
 }
 
 // -------------------------------------------------------------------------- Test 6 (R5 schema)
-test('6 (manifests): all five parse with the R5 schema; arm === basename; explicit skipCustomInstructions; plain arms have zero transforms', () => {
+test('6 (manifests): all six parse with the R5 schema; arm === basename; explicit skipCustomInstructions; plain arms have zero transforms', () => {
   const files = fs.readdirSync(ARMS_DIR).filter((n) => n.endsWith('.json')).sort();
-  assert.deepEqual(files, [...ARMS].map((a) => `${a}.json`).sort(), 'arms/ must hold exactly the five R5 manifests');
+  assert.deepEqual(files, [...ARMS].map((a) => `${a}.json`).sort(), 'arms/ must hold exactly the R5 manifests named by ARMS — no more, no fewer');
   const isStrArray = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
   for (const arm of ARMS) {
     const m = loadManifest(arm);
-    assert.deepEqual(Object.keys(m).sort(), ['arm', 'manifestSchema', 'role', 'sandboxSeeds', 'sessionOptions', 'tiers', 'transforms'], `${arm}: exactly the R5 top-level keys`);
+    assert.deepEqual(Object.keys(m).sort(), ['arm', 'manifestSchema', 'role', 'sandboxSeeds', 'sessionOptions', 'tiers', 'transforms', ...(m.expects === undefined ? [] : ['expects'])].sort(), `${arm}: exactly the R5 top-level keys, plus the OPTIONAL #138 \`expects\` when declared (its value shape and its one legitimate declarer are pinned by test 11)`);
     assert.equal(m.manifestSchema, 1, `${arm}: manifestSchema must be 1`);
     assert.equal(m.arm, arm, `${arm}: arm must equal the file basename`);
     assert.ok(typeof m.role === 'string' && m.role.length > 0, `${arm}: role must be a non-empty string`);
@@ -392,5 +392,106 @@ test('8 (unsafe manifest): a text with a double quote / unknown kind / mismatche
     assert.deepEqual(newEntries(before), [], 'unparseable manifest: no residue');
   } finally {
     fs.rmSync(armsDir, { recursive: true, force: true });
+  }
+});
+
+// ============================================================ #138 WP1 — the upstream control arm
+// Everything below is declared HERE, at the foot of the file, so that not one line number above it
+// moves: the epic pins ~15 `file:line` edit sites across this suite.
+//
+// THE SKIP GATE NAMES A SHA, NEVER A BRANCH. On a GitHub runner the `origin` remote is THE FORK, not
+// upstream, and `actions/checkout` creates a remote-tracking ref for the branch it builds — so a
+// branch-keyed gate would resolve to the FORK's default branch, whose tree HAS hooks/, and stage it
+// under an arm named `upstream`. That is the exact fail-open the declared-key design (D4) exists to
+// prevent, reintroduced through the back door. A SHA names the same tree in every environment; when
+// the object is simply absent (l2-check.yml checks out at the default depth 1) the staging tests SKIP
+// honestly instead of quietly testing the wrong tree.
+const UPSTREAM_PIN = 'f75ef4f';
+const upstreamPinProbe = spawnSync('git', ['-C', REPO_ROOT, 'cat-file', '-e', `${UPSTREAM_PIN}^{commit}`], { encoding: 'utf8' });
+const skipUpstream = skip || (upstreamPinProbe.status === 0
+  ? false
+  : `git -C ${REPO_ROOT} cat-file -e ${UPSTREAM_PIN}^{commit} failed — the upstream control commit is absent from this clone (a depth-1 checkout); upstream STAGING cannot be exercised here (the manifest's schema still is, in test 6)`);
+
+// Every arm that is NOT the upstream control. Derived from ARMS so adding an arm cannot leave this
+// list stale — the one thing a hand-maintained second list always gets wrong.
+const FORK_ARMS = ARMS.filter((a) => a !== 'upstream');
+
+// -------------------------------------------------------------------------- Test 9 (A1.1 + A1.7)
+test('9 (upstream arm): stages the pinned upstream tree byte-identically; the staged copy has NO hooks/ — a hooks-bearing tree FAILS, it never skips', { skip: skipUpstream }, () => {
+  const before = variantEntries();
+  const porcelainBefore = gitPorcelain();
+  const pristine = extractPristine(UPSTREAM_PIN);
+  let dir;
+  try {
+    const staged = stage('upstream', UPSTREAM_PIN);
+    dir = staged.dir;
+    // A1.7's tree precondition — the assertion that makes the whole arm meaningful. If hooks/ is
+    // present the pin resolved to a FORK commit (which is exactly what a branch-keyed gate would do),
+    // and the honest outcome is a RED test, never a green one and never a skip.
+    assert.equal(fs.existsSync(path.join(dir, 'hooks')), false,
+      `upstream: the staged tree must contain NO hooks/ — a hooks-bearing tree under the "upstream" arm means the gate resolved a FORK commit instead of ${UPSTREAM_PIN}`);
+    // `transforms: []`, so the copy must equal an INDEPENDENT extraction of the same archive exactly.
+    assert.deepEqual(differingFiles(pristine, dir), [], 'upstream declares zero transforms: no file may differ from the archive');
+    assert.equal(digestDir(dir), digestDir(pristine), 'upstream: content digest identical to the pristine extraction');
+    // R-WP1 step 5.7: the resolved remote slugs ride on the summary line, on STDERR only. They are
+    // provenance for a human reading the log — never a control-flow input, never a meta field (D3/D4).
+    assert.match(digestLine(staged.res.stderr), /^variant\.sh: upstream staged from [0-9a-f]{40} \(tree [0-9a-f]{40}\) digest sha256:[0-9a-f]{64} remotes: \S.*? at /,
+      `the summary line must keep its shape and carry the resolved remote slugs — stderr:\n${staged.res.stderr}`);
+    assert.equal(gitPorcelain(), porcelainBefore, 'staging the upstream arm must not touch the source repo\'s plugins/ tree');
+  } finally {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(pristine, { recursive: true, force: true });
+  }
+  assert.deepEqual(newEntries(before), [], 'upstream: no l2-variant-* residue may survive');
+});
+
+// -------------------------------------------------------------------------- Test 10 (A1.5 / D8)
+test('10 (D8 fail-closed): a manifest declaring expects.hooksDir:false staged against a hooks-BEARING tree exits non-zero naming the contradiction', { skip }, () => {
+  const before = variantEntries();
+  const armsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'l2-vtest-arms-'));
+  try {
+    // A LYING declaration: `plain` (zero transforms) is handed the upstream opt-out and then pinned to
+    // HEAD, whose tree DOES carry hooks/. The opt-out is one-directional by construction — it removes
+    // "hooks must be present" and ADDS "hooks must be absent" — so this is a hard failure, never a
+    // check that quietly does not run. Not skip-gated: it needs no upstream object at all.
+    const m = loadManifest('plain');
+    m.arm = 'lying';
+    m.expects = { hooksDir: false };
+    fs.writeFileSync(path.join(armsDir, 'lying.json'), JSON.stringify(m, null, 2));
+    const res = runVariant(['lying', '--commit=HEAD'], { COMPAT_ARMS_DIR: armsDir });
+    assert.notEqual(res.status, 0, `a lying declaration must NOT stage successfully — stderr:\n${res.stderr}`);
+    assert.equal(res.stdout, '', 'a refused staging prints nothing on stdout (no path a caller could drive)');
+    assert.match(res.stderr, /expects\.hooksDir/, `stderr must name the DECLARATION it contradicts — stderr:\n${res.stderr}`);
+    assert.match(res.stderr, /hooks\//, `stderr must name the directory that contradicts it — stderr:\n${res.stderr}`);
+    assert.deepEqual(newEntries(before), [], 'the contradicted copy must be REMOVED (no l2-variant-* residue)');
+    // The real arms dir is untouched by the seam (the test-7 invariant, restated for this manifest).
+    assert.equal(fs.existsSync(path.join(ARMS_DIR, 'lying.json')), false, 'COMPAT_ARMS_DIR must never write into the real arms/ directory');
+  } finally {
+    fs.rmSync(armsDir, { recursive: true, force: true });
+  }
+});
+
+// -------------------------------------------------------------------------- Test 11 (A1.2)
+test('11 (fork arms unchanged): ONLY upstream.json declares `expects`; all five fork arms still stage under the full hook battery', { skip }, () => {
+  const files = fs.readdirSync(ARMS_DIR).filter((n) => n.endsWith('.json')).sort();
+  const declaring = files.filter((n) => 'expects' in JSON.parse(read(ARMS_DIR, n))).sort();
+  assert.deepEqual(declaring, ['upstream.json'], 'exactly one manifest may declare `expects` — the opt-out is the upstream control\'s alone');
+  const upstreamExpects = loadManifest('upstream').expects;
+  assert.deepEqual(Object.keys(upstreamExpects).sort(), ['hooksDir'], 'expects carries exactly hooksDir');
+  assert.equal(upstreamExpects.hooksDir, false, 'the upstream control declares hooksDir:false — the opt-out itself');
+  assert.deepEqual(files.filter((n) => !declaring.includes(n)).sort(), FORK_ARMS.map((a) => `${a}.json`).sort(),
+    'every other manifest is a fork arm and declares no `expects` (the grep -L census of A1.2)');
+  for (const arm of FORK_ARMS) {
+    const before = variantEntries();
+    let dir;
+    try {
+      dir = stage(arm).dir;
+      // The battery that :324 gates is still BLOCKING for a non-declaring arm: the hook is present in
+      // the copy, and variant.sh exited 0 only because it ran and passed every check on it.
+      assert.ok(fs.existsSync(path.join(dir, HOOK_REL)), `${arm}: a fork arm's copy must still carry ${HOOK_REL} — the hook battery must not have been opted out of`);
+    } finally {
+      if (dir) fs.rmSync(dir, { recursive: true, force: true });
+    }
+    assert.deepEqual(newEntries(before), [], `${arm}: no l2-variant-* residue may survive`);
   }
 });

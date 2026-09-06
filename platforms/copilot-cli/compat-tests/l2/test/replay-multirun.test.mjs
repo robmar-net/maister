@@ -157,7 +157,7 @@ test('persistTraceBundle with a v2 meta round-trips; the first 12 keys are the l
         maisterVersion: '0.0.0', model: 'gpt-5.6-luna', ts, runIndex: 1, runs: 1,
         variant: 'lean', mutation: null,
         pluginDigest: `sha256:${'a'.repeat(64)}`,
-        pluginSource: { commit: 'c'.repeat(40), commitRef: 'HEAD', treeOid: 't'.repeat(40), forkVersion: '2.2.3+fork.4', method: 'git-archive' },
+        pluginSource: { commit: 'c'.repeat(40), commitRef: 'HEAD', treeOid: 't'.repeat(40), forkVersion: '2.2.3+fork.4', method: 'git-archive', origin: 'fork' },
         referenceHash: 'r'.repeat(64),
         armManifest,
       },
@@ -189,8 +189,8 @@ test('persistTraceBundle with a v2 meta round-trips; the first 12 keys are the l
     assert.ok(path.isAbsolute(json.pluginDir), 'pluginDir is absolute');
     assert.equal(json.pluginName, 'maister-copilot', 'pluginName const');
     assert.equal(json.pluginDigest, `sha256:${'a'.repeat(64)}`, 'pluginDigest passed through verbatim');
-    assert.deepEqual(json.pluginSource, { commit: 'c'.repeat(40), commitRef: 'HEAD', treeOid: 't'.repeat(40), forkVersion: '2.2.3+fork.4', method: 'git-archive' }, 'pluginSource verbatim');
-    assert.deepEqual(Object.keys(json.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method'], 'pluginSource carries the 5-key shape (commitRef included) on every v2 meta');
+    assert.deepEqual(json.pluginSource, { commit: 'c'.repeat(40), commitRef: 'HEAD', treeOid: 't'.repeat(40), forkVersion: '2.2.3+fork.4', method: 'git-archive', origin: 'fork' }, 'pluginSource verbatim');
+    assert.deepEqual(Object.keys(json.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method', 'origin'], 'pluginSource carries the 6-key shape (commitRef included; origin appended after method by #138) on every v2 meta');
     assert.deepEqual(json.sessionOptions, { skipCustomInstructions: true, model: 'gpt-5.6-luna' }, 'sessionOptions = the createSession spread, verbatim');
     assert.deepEqual(json.sandboxSeeds, { configYml: { html_output: true, mockup_format: 'html' }, note: null, hookContextAppend: 'lean-hook' }, 'sandboxSeeds round-trip');
     assert.equal(json.referenceHash, 'r'.repeat(64), 'referenceHash verbatim');
@@ -202,17 +202,17 @@ test('persistTraceBundle with a v2 meta round-trips; the first 12 keys are the l
     // persistMeta (the null discipline) never throws and every new key is present.
     const m1 = buildReplayMeta({
       sc: { id: 'development', taskType: 'development' }, runIndex: 2,
-      persistMeta: { mutation: 'M1', pluginSource: { commit: null, commitRef: null, treeOid: null, forkVersion: '2.2.3+fork.4', method: 'working-tree' } },
+      persistMeta: { mutation: 'M1', pluginSource: { commit: null, commitRef: null, treeOid: null, forkVersion: '2.2.3+fork.4', method: 'working-tree', origin: null } },
       modelActual: 'unknown', cost: null, events: [], sessionOptions: { skipCustomInstructions: true }, sandboxSeeds: { configYml: null, note: null, hookContextAppend: null },
     });
     assert.deepEqual(Object.keys(m1), [...LEGACY, ...NEW], 'mutation drive: identical key set + order');
     assert.equal(m1.mutation, 'M1', 'mutation recorded');
     assert.equal(m1.variant, null, 'mutation drive: variant null');
     assert.equal(m1.pluginSource.method, 'working-tree', 'mutation drive: working-tree');
-    assert.deepEqual(Object.keys(m1.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method'], 'mutation drive: the same 5-key pluginSource shape');
-    // The buildReplayMeta DEFAULT (no pluginSource in persistMeta at all) has the same 5-key shape too.
+    assert.deepEqual(Object.keys(m1.pluginSource), ['commit', 'commitRef', 'treeOid', 'forkVersion', 'method', 'origin'], 'mutation drive: the same 6-key pluginSource shape');
+    // The buildReplayMeta DEFAULT (no pluginSource in persistMeta at all) has the same 6-key shape too.
     const bare = buildReplayMeta({ sc: { id: 'development', taskType: 'development' }, runIndex: 1, persistMeta: {}, modelActual: 'unknown', cost: null, events: [], sessionOptions: null, sandboxSeeds: null });
-    assert.deepEqual(bare.pluginSource, { commit: null, commitRef: null, treeOid: null, forkVersion: null, method: 'working-tree' }, 'default pluginSource: 5 keys, all null, working-tree');
+    assert.deepEqual(bare.pluginSource, { commit: null, commitRef: null, treeOid: null, forkVersion: null, method: 'working-tree', origin: null }, 'default pluginSource: 6 keys, all null, working-tree');
     assert.equal(m1.armManifest, null, 'mutation drive: no arm manifest');
     assert.equal(m1.runIndex, 2, 'runIndex falls back to the drive index when persistMeta omits it');
     assert.equal(m1.cliVersion, null, 'no copilotVersion -> cliVersion null (never a string)');

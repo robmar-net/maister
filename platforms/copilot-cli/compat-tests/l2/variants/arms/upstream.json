@@ -1,0 +1,6 @@
+{ "manifestSchema": 1, "arm": "upstream",
+  "role": "Upstream control (SkillPanel/maister @ f75ef4f, the pre-fork tree) staged through the same verified path as every fork arm. The arm id is 'upstream', NOT 'upstream-control' — that token is already the legacyArm of three pre-provenance bundles, and one table printing the same word from two namespaces would be unreadable.",
+  "tiers": ["T2", "T3"], "transforms": [],
+  "expects": { "hooksDir": false },
+  "sessionOptions": { "skipCustomInstructions": true, "excludedTools": null, "reasoningEffort": null },
+  "sandboxSeeds": { "configYml": { "html_output": true }, "hookContextAppend": null } }
