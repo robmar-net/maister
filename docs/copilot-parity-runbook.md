@@ -516,7 +516,8 @@ broken directory in a glob does not abort the rest — `unreadable bundle: <deta
   refused as `route class unknown (no rundir witness)` — an unwitnessed route is **refused, never silently
   kept**. This flag owns the route *witness*; `cost-report`'s `route` block deliberately does not classify.
   Route selects *what is comparable*. It never explains a cost — see the standing warning below.
-- `origin` column — `fork` / `upstream` / empty, taken from the recorded `pluginSource.origin` on a live
+- `origin` column — `fork` / `upstream` / **`unknown`** (rendered literally; `ab-compare.mjs:407` is
+  `${r.origin ?? 'unknown'}`, pinned by `ab-compare.test.mjs:130`), taken from the recorded `pluginSource.origin` on a live
   row. For the six pre-provenance bundles it is derived from the legacy map's two arm tokens, which already
   *are* the origin: `upstream-control` → `upstream`, `fork-legacy` → `fork`. An `origin` never upgrades a
   row's `comparable`; a legacy row stays `no (legacy)`.
@@ -586,9 +587,14 @@ Always in this order. Stopping early is how #129 happened.
 
 ```bash
 bash platforms/copilot-cli/compat-tests/l2/sweep.sh \
-  --tier=<name> --scenario=<id> --arms=a,b --runs=N --cap=<AIU> [--plan] [--gate-max=<AIU>] [--pin=<sha>]
-make sweep ARGS="--tier=t4 --scenario=quick-bugfix --arms=plain,lean --runs=3 --cap=20 --plan"
+  --tier=<name> --scenario=<id> --arms=a,b --runs=N --cap=<AIU> --pin=<sha> [--plan] [--gate-max=<AIU>]
+make sweep ARGS="--tier=t4 --scenario=quick-bugfix --arms=plain,lean --runs=3 --cap=20 --pin=HEAD --plan"
 ```
+
+**`--pin` is required, including for `--plan`.** Every drive stages an arm and an arm is pinned by
+commit (ADR-003), so the sweep refuses without it — a `--plan` invocation that omits it exits 2 with
+`sweep.sh: every drive stages an arm, which needs a commit pin`. The example above is copy-pasteable
+as written; drop `--pin` and it will not run.
 
 Drives one scenario across several arms under a cumulative credit budget, leaving a manifest plus per-drive
 logs. Drives are **interleaved** `arm × N` (a,b,a,b,…), never blocked by arm, so a mid-sweep stop still
@@ -628,6 +634,18 @@ bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh <name>... --v
 bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh --print-dest       # creates NOTHING
 make bundle-archive ARGS="reports/<ts>"
 ```
+
+**A bare `<ts>` resolves against the CURRENT tree's `reports/`, which in a ticket worktree is empty.**
+Bundles live in the shared checkout, so from a worktree pass the absolute path — the tool accepts
+either form:
+
+```bash
+R=/Users/robmar/Projects/Maister/maister/platforms/copilot-cli/compat-tests/reports
+bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh "$R/<ts>"
+```
+
+This is not a quirk to work around; it is the same per-worktree `reports/` that destroyed ~16 bundles
+in the first place. All seven survivors are archived and `--verify`-clean as of 2026-09-06.
 
 Bundles are the only credit-free source of truth we have, and a bundle that lives only in the working tree
 is one `git clean` away from being unreproducible evidence. `bundle-archive.sh` copies it out with a
