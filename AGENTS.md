@@ -188,6 +188,40 @@ Rules that follow from it:
 - **`make validate` failing on a file you did not write** is a symptom of tree sharing, not a bug in
   the generator. Confirm with `git status --porcelain` and `git worktree list` before "fixing" it.
 
+### Evidence must outlive the worktree (BINDING)
+
+A worktree is disposable; the evidence produced inside one is not. **About 16 L2 replay bundles were
+destroyed** by `git worktree remove` followed by `git clean -xdf` — `compat-tests/reports/` is
+per-worktree **and** git-ignored (`reports/.gitignore` line 8 is `*/`), so nothing in git ever held
+them and nothing complained when they went. Their `.md` reports survived and happened to be enough
+that time; the raw traces they were derived from did not, and cannot be regenerated without spending
+credits on a fresh drive.
+
+So, for any run artifact you would be unhappy to lose:
+
+- **A drive's bundle never lives only in a ticket worktree.** Archive it out of the repository the
+  moment it is worth keeping:
+
+  ```bash
+  bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh <ts>   # or an absolute bundle path
+  ```
+
+  The destination is a **sibling directory outside the repository** (`--print-dest` shows which;
+  `COMPAT_L2_ARCHIVE` overrides it) precisely so it is unreachable by both `git worktree remove` and
+  `git clean -xdf`. Do **not** "solve" this by copying the bundle to another directory *inside* the
+  repo, `compat-tests/reports/` included — that is the same loss one command later.
+- **Verify the copy landed before you remove the worktree — copying is not the rule, *verified* copying
+  is.** `git worktree remove` is irreversible and a silent partial copy looks exactly like a good one:
+
+  ```bash
+  bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh <ts> --verify   # exit 0 = intact
+  ```
+
+  `--verify` re-checks the recorded sha256 digests and names the offending path on any mismatch. **A
+  non-zero exit means the evidence is not safe yet — do not remove the worktree.**
+- **Analysis derived from a bundle is not a substitute for the bundle.** Keep both: the reduced report
+  answers the question you had, the raw trace answers the one you have not thought of yet.
+
 ## Remotes — identify by repo SLUG, not by remote name
 
 Remote *names* differ between clones (`origin`/`upstream`/`fork` are used inconsistently across

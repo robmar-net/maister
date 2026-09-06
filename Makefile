@@ -1,4 +1,4 @@
-.PHONY: build validate check-deterministic test-copilot test-hooks test-l2 clean watch
+.PHONY: build validate check-deterministic test-copilot test-hooks test-l2 bundle-archive clean watch
 
 build:
 	bash platforms/copilot-cli/build.sh
@@ -118,6 +118,20 @@ test-hooks:
 test-l2:
 	$(MAKE) build
 	bash platforms/copilot-cli/compat-tests/l2/run.sh
+
+# Durable evidence — copy an L2 replay bundle OUT of the repository, into a sibling directory that
+# neither `git worktree remove` nor a `git clean` of ignored files can reach, with a sha256 manifest so
+# the copy can later be PROVEN intact. compat-tests/reports/ is per-worktree AND git-ignored, so an
+# archive kept there dies to exactly the command this exists to survive (~16 bundles already did).
+#
+# ARGS passes through VERBATIM — this target pins no subset of the script's flags, so anything the
+# script grows works here on day one. Run it with no ARGS for the usage line.
+#   make bundle-archive ARGS=20260904T214857Z              # archive (bare ts resolves under reports/)
+#   make bundle-archive ARGS="20260904T214857Z --verify"   # exit 0 = intact; non-zero names the offender
+#   make bundle-archive ARGS=--print-dest                  # where archives go; creates nothing
+# COMPAT_L2_ARCHIVE overrides the destination. See l2/tools/bundle-archive.sh -h.
+bundle-archive:
+	bash platforms/copilot-cli/compat-tests/l2/tools/bundle-archive.sh $(ARGS)
 
 clean:
 	rm -rf plugins/maister-copilot/
