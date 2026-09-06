@@ -203,7 +203,9 @@ after a meaningful live run:
 - **[L2-Trace-Equivalence](https://github.com/robmar-net/maister/wiki/L2-Trace-Equivalence)** — L2 (workflow-model conformance) design + per-scenario status; the page keeps its historical name/URL.
 - **L0-Wiring-Contracts**, **L1-Hook-Effects**, **Copilot-CLI-Runtime-Notes**, **Running-the-Tests**, **Testing-Framework-Overview**, **Home**.
 
-Clone/edit the wiki: `git clone https://github.com/robmar-net/maister.wiki.git`.
+Clone/edit/publish the wiki **only** through `scripts/wiki.sh` (`checkout` → edit → `publish`), which
+refuses to push while the Parity-Map census, the Matrix's CLI-version coverage (`matrix-versions.mjs`)
+or Home's ADR index is out of date — see AGENTS.md § Shipping (#148).
 
 ## Cost — where to read it
 

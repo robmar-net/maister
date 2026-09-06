@@ -35,8 +35,11 @@ jobs:
       - name: Clone the wiki
         run: git clone --depth 1 "https://github.com/${GITHUB_REPOSITORY}.wiki.git" /tmp/wiki
 
-      # exit non-zero when the "Header counters:" line disagrees with the row census of the tables.
-      - name: parity-header.mjs --check
+      # The same guards scripts/wiki.sh runs before every publish (#148): G1 the Parity-Map header
+      # census matches its tables, G2 every bundle CLI version has a Matrix row (no bundles on the
+      # runner — trivially green here; it bites locally), G3 every docs/adr/NNNN-*.md is linked from
+      # Home, G4 clone freshness (warning only). Exit non-zero on any guard failure.
+      - name: scripts/wiki.sh check
         run: |
-          node platforms/copilot-cli/compat-tests/l2/tools/parity-header.mjs /tmp/wiki/Parity-Map.md --check \
-            || { echo "::error::Parity-Map header census drifted from its tables — regenerate the line with 'node platforms/copilot-cli/compat-tests/l2/tools/parity-header.mjs <wiki-clone>/Parity-Map.md' and paste it into the page's Header counters line"; exit 1; }
+          bash scripts/wiki.sh check /tmp/wiki \
+            || { echo "::error::wiki guards failed — see the G1/G2/G3 lines above; fix the page and republish via scripts/wiki.sh publish"; exit 1; }

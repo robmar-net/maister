@@ -154,9 +154,9 @@ falls back to the default model. `build.sh` (step 3b) now **maps** the aliases t
 own `git worktree` directory**:
 
 ```bash
-git worktree add .worktrees/<ticket> -b <branch> master   # e.g. .worktrees/132 -b fix/132-...
-cd .worktrees/<ticket>                                    # do ALL the work here
-git worktree remove .worktrees/<ticket>                   # when the PR is merged
+scripts/pr.sh start <ticket> <branch>      # = git worktree add .worktrees/<ticket> -b <branch> fork/master
+cd .worktrees/<ticket>                     # do ALL the work here
+scripts/pr.sh ship "<title>" --body-file … # lands the PR and removes the worktree (§ Shipping below)
 ```
 
 `.worktrees/` is already git-ignored (`.gitignore:12`). The main checkout at the repo root stays on
@@ -221,6 +221,75 @@ So, for any run artifact you would be unhappy to lose:
   non-zero exit means the evidence is not safe yet — do not remove the worktree.**
 - **Analysis derived from a bundle is not a substitute for the bundle.** Keep both: the reduced report
   answers the question you had, the raw trace answers the one you have not thought of yet.
+
+## Shipping — PRs and wiki updates go through the scripts (BINDING)
+
+Two scripts are the **only** sanctioned way to land a change on `master` or on the wiki. Every rule in
+this document that can be checked by a machine is checked by them, at the moment it matters, and none
+of the checks has a skip flag. Hand-run `gh pr merge`, hand-run `git push` to the wiki, and "I'll fix
+the counters later" are all violations, not shortcuts.
+
+Why (review of 2026-09-07, [#148](https://github.com/robmar-net/maister/issues/148)): **56 PRs landed
+in one week, all self-merged, three sessions in parallel.** In that week the wiki rollup drifted three
+times in one session; six bundles were driven on Copilot CLI 1.0.83 and *no page mentioned 1.0.83* —
+the "verified per release" promise had no tripwire; Home's ADR index stopped two ADRs short; and the
+two incidents recorded above (the cross-branch leak into PR #128, ~16 bundles destroyed with a
+worktree) both happened at steps a script now refuses to skip.
+
+### PRs — `scripts/pr.sh`
+
+```bash
+scripts/pr.sh start <ticket> <branch>                  # .worktrees/<ticket> on <branch>, off fresh fork master
+cd .worktrees/<ticket>                                 # ... work, git add <paths>, git commit ...
+scripts/pr.sh ship "<title>" --body-file <body.md>     # the whole pipeline below, or a named refusal
+```
+
+`ship` runs a fixed pipeline; each step is a refusal point (see the script header for the list):
+linked worktree + non-master branch + clean tree → push target resolved **by slug** to
+`robmar-net/maister` → rebase on fresh master → **zero-touch** on `plugins/maister/**` (only the
+version line of its `plugin.json` may change) → `make build` · `validate` · `check-deterministic` ·
+the L2 unit suite, and the tree is *still* clean afterwards → the **`+fork.N` rule** (installer-visible
+change ⇒ bumped; otherwise untouched) → push, `gh pr create`, wait for **every** check → squash-merge
+with branch deletion → fast-forward the main checkout → remove the worktree **only** after the merge is
+confirmed on `master` and every bundle in it is archived **and verified**. `--no-merge` / `--draft`
+stop after opening; `--keep-worktree` keeps the tree. Nothing else is configurable.
+
+Rules the script cannot check, and which still bind:
+
+- **One PR per ticket, one ticket per session.** Before starting anything: `git worktree list` and
+  `gh pr list --repo robmar-net/maister` — if the ticket is in flight elsewhere, do not start it again.
+- **Never merge on red, never "re-run until green".** A flaky check is a bug to ticket, not a die to roll.
+- **The PR body names the wiki pages it invalidates** ("Wiki: Matrix row for 1.0.83, Home status
+  box"), and that wiki publish happens in the **same session, right after the merge** — not "later".
+- **Stage explicitly** (`git add <paths>`); the script refuses a dirty tree but cannot tell a stray
+  from a change.
+
+### Wiki — `scripts/wiki.sh`
+
+```bash
+W=$(scripts/wiki.sh checkout)          # a FRESH clone (never a shared one) — prints its path
+# ... edit $W/<Page>.md with anchored, assert-guarded replaces (the pages are hand-edited by the operator) ...
+scripts/wiki.sh publish "<msg>" "$W"   # guards → pull --rebase → commit → push → verify remote HEAD
+```
+
+`publish` (and `check`, read-only) run four guards and refuse on any failure: **G1** the Parity-Map
+header census matches its tables (`parity-header.mjs --check`); **G2** every Copilot CLI version with
+a local bundle or archive has a **Compatibility-Matrix row** (`matrix-versions.mjs --check` — the
+1.0.83 tripwire); **G3** every `docs/adr/NNNN-*.md` is linked from Home; **G4** the clone is not
+behind `origin/master` (warning — publish rebases, and re-runs G1–G3 on the rebased result, so a
+parallel session's edit cannot re-drift a counter under you). CI runs the same `check` on a fresh
+clone daily and on web edits (`wiki-census-check.yml`).
+
+Rules the script cannot check:
+
+- **Pull, edit, publish — within minutes, never across a session.** A clone older than the edit it
+  carries is stale by definition; `checkout` again rather than reuse one.
+- **Anchored replaces only, never whole-page rewrites.** The operator edits these pages by hand
+  between sessions; an unanchored rewrite deletes their work silently. Assert the anchor exists first.
+- **A live run is not recorded until the Matrix has its row.** A run that spent credits and left no
+  Matrix row is evidence that does not exist — G2 will refuse the next publish anyway, so do it now.
+- **The Home status box and the Parity-Map "In plain terms" restate the Matrix; they never lead it.**
+  Change the Matrix row first, then the restatements, in the same publish.
 
 ## Remotes — identify by repo SLUG, not by remote name
 
