@@ -2,7 +2,7 @@
 > **This fork is Maister for GitHub Copilot CLI** — the downstream, Copilot-focused build of
 > [SkillPanel/maister](https://github.com/SkillPanel/maister).
 >
-> - **Using Claude Code?** Install from **upstream**. The `plugins/maister` tree here is a byte-identical mirror that may lag behind.
+> - **Using Claude Code?** Install from **upstream**. The `plugins/maister` tree here is a byte-identical mirror (except the `+fork.N` version line of its `plugin.json`) that may lag behind.
 > - **Using GitHub Copilot CLI?** You are in the right place. The `maister-copilot` plugin here is produced by a generator that fixes the Copilot gaps found in live testing (MCP server loading, the destructive-command guard, task-item tools, hook adaptations — see [#13](https://github.com/robmar-net/maister/issues/13), [#15](https://github.com/robmar-net/maister/issues/15), [#19](https://github.com/robmar-net/maister/issues/19)) and is **verified live on real Copilot CLI releases** — see the [Compatibility Matrix](https://github.com/robmar-net/maister/wiki/Compatibility-Matrix) and the [wiki](https://github.com/robmar-net/maister/wiki).
 >
 > **Install on Copilot CLI**
@@ -20,7 +20,7 @@
 > `/maister-copilot:work`, `/maister-copilot:development`, `/maister-copilot:init`, … The plain-language
 > phrasing above is what every L2 conformance scenario drives, so it is the form with live evidence behind it.
 >
-> **Why this build vs installing straight from upstream:** the stock upstream variant ships **no hooks at all** (no skill-routing reminder, no destructive-command guard), no `mcpServers` declaration (MCP never loads after install), Claude-only task tools and single-select-only gates — verified diffs with evidence: [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
+> **Why this build vs installing straight from upstream:** the stock upstream variant ships **no hooks at all** (no destructive-command guard — its effect is measured live; no skill-routing reminder — delivered here since [#113](https://github.com/robmar-net/maister/issues/113), its effect on routing not yet measured, [#121](https://github.com/robmar-net/maister/issues/121)), no `mcpServers` declaration (MCP never loads after install), Claude-only task tools and single-select-only gates — verified diffs with evidence: [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
 >
 > Slash commands **are** namespaced by plugin id on Copilot CLI — type `/maister-copilot:development`, `/maister-copilot:work`, `/maister-copilot:reviews-code` (the bare `/development` is not offered). Plain language works too — *"Run the maister development workflow to add …"* — and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/README.md`](platforms/copilot-cli/README.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
 >
