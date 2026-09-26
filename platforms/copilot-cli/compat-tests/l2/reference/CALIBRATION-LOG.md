@@ -1166,3 +1166,88 @@ Suite **268 tests / 266 pass / 0 fail / 2 skipped** (`node --test platforms/copi
 `--check-reference ×6` (default / research / quick-bugfix / destructive-guard / work / init) CURRENT,
 `make validate` "All checks passed", `make build` byte-identical, `make check-deterministic` PASS,
 main checkout `git status --porcelain` empty.
+
+### 47 — upstream v2.2.4 sync: NO predicate change, 23 citations re-anchored (issue #156)
+
+**PREDICATE-FROZEN, HASH-NEUTRAL.** Merging `SkillPanel/maister` `f75ef4f..4151c9c` (tag `v2.2.4`;
+2 commits, 60 files, +762/−2717, headline "Port the v3 branch's fixes to the stable release") changed
+**no** reference predicate, no `schema_version`, no `workflow_model_version`. `--check-reference` ×6
+(development / research / quick-bugfix / destructive-guard / work / init) is **CURRENT** at
+**workflow model v6** with hashes verified, both before and after the citation work below. No skeleton
+JSON was edited. Fork base moves `2.2.3+fork.5` → **`2.2.4+fork.1`** (AGENTS.md § Versioning: a new
+upstream base resets `N`).
+
+**The gate marker was renamed upstream and it does NOT touch us.** `→ Pause` became
+`→ MANDATORY GATE` throughout the orchestrator framework (the old form kept as a documented synonym).
+Measured, not assumed: the L2 grammar does not key on the marker string. The only occurrence anywhere
+under `reference/` is a prose quotation in `research.derivation.md:37`, which already read
+"MANDATORY GATE". A rename of this size looks like it should force a recalibration; it does not, and
+saying so explicitly is cheaper than re-deriving the question at the next sync.
+
+**What DID move: 23 line-number citations, all in two files.** Upstream reflowed
+`implementation-verifier/SKILL.md` (one inserted line, everything after it +1) and
+`orchestrator-patterns.md` (+102 lines across 11 hunks). Every citation was re-anchored by locating the
+**exact pre-merge line content** in the post-merge file and confirming a **unique** match — never by
+eyeballing a nearby heading:
+
+| citation | old → new |
+|---|---|
+| `implementation-verifier/SKILL.md` singles | `:107→:108`, `:113→:114`, `:120→:121`, `:125→:126`, `:130→:131`, `:135→:136`, `:140→:141` |
+| `implementation-verifier/SKILL.md` range (×6 sites) | `:108-142 → :109-143` |
+| `orchestrator-patterns.md` (×8 sites) | `:408→:419`, `:358→:369`, `:254→:262` |
+| `development/SKILL.md` bare-colon | `:553→:554`, `:583→:584` |
+
+Verification was mechanical and is reproducible: for each citation, `git show f75ef4f:<file>` line
+*old* must equal the working-tree line *new*. **23 correct, 0 mismatched.** Range END values
+(`:118`, `:122`, `:180`, `:189`, `:222`, `:430`, `:107`, `:170`, `:177`, `:200`, `:235`, `:124`, `:173`)
+and every bare-colon citation was checked by the same method — 270 occurrences across the six
+derivations (development 157, research 83, quick-bugfix 23, destructive-guard 7, work 0, init 0). Only
+the two `development/SKILL.md` values above drifted. `destructive-guard`'s seven resolve to the
+untouched Copilot override and the extractor, not to any merge-changed file.
+
+**Two citations in THIS log are deliberately left wrong.** Entry 19's note cites
+`implementation-verifier/SKILL.md:108`; entry **23**'s row and its note cite
+`orchestrator-patterns.md:358` and the range `:358-360`. That content now sits at **`:109`**,
+**`:369`** and **`:369-371`** respectively. This log is **append-only**, so those lines stay as written
+and the correction lives here instead. A reader chasing entry 19 or 23 should apply these offsets.
+
+**A basename whose two files diverged — checked, and it needs no fix.** The merge made
+`block-destructive-commands.sh` name two materially different files: upstream rewrote the Claude source
+(`plugins/maister/hooks/…`, now 51 lines — drops `jq` for a `grep`/`sed` field reader, emits
+`permissionDecision:"deny"`, and removes the command text from the reason), while our Copilot override
+(`platforms/copilot-cli/hooks-overrides/…`, 67 lines, `permissionDecision:"ask"`) is **untouched**.
+`destructive-guard.derivation.md` cites the guard at bare `:54` and `:59-60`, and a mechanical resolver
+that guesses the source tree lands on a file whose line 54 no longer exists — which is how this was first
+mis-flagged here as a drift. It is not one: the derivation's own **Source** row (`:12`) already names
+`platforms/copilot-cli/hooks-overrides/block-destructive-commands.sh` in full, and the later bare
+citations are shorthand under that declared source. Verified against the override: `:54` is the
+destructive regex, `:59` is `"permissionDecision": "ask"`, `:60` the reason. **No predicate and no
+citation changed.** Recorded because the next mechanical audit will trip over the same basename.
+
+**`${CLAUDE_PLUGIN_ROOT}` → `${MAISTER_PLUGIN_ROOT}` in emitted skills — adopted from upstream, premise
+NOT verified here.** Upstream's `build.sh` step 9 renames the variable in the generated skills, on the
+stated grounds that Copilot CLI exports no plugin-directory variable. Two measurements are in play and
+they concern **different expansion paths**, so neither refutes the other: live T8/T9 established that
+`${CLAUDE_PLUGIN_ROOT}` inside `hooks/hooks.json` **does** expand on Copilot (the runtime substitutes it
+when launching a hook — which is why `build.sh` still ships the Claude-format `hooks.json` unchanged);
+upstream's claim is about the **agent's shell environment**, where a skill tells the model to run
+`node ${…}/…`, and that has **not** been measured on Copilot. The rename is adopted as plausible and
+self-consistent, its premise is recorded as unverified, and the probe is ticketed rather than treated as
+established. Two source skills are affected (`mockup-studio/SKILL.md` and its
+`references/visual-companion.md`); `make validate` now enforces both the absence of the Claude name in
+emitted skills and count parity with the source tree.
+
+**The shipped README is now a branding-contract surface.** Upstream's `build.sh` step 10 copies
+`platforms/copilot-cli/README.md` into the variant. Both candidate READMEs failed WS5.11 once shipped —
+upstream's carried 1 standalone `Claude`, ours carried 8 — so the file was split: `README.md` is
+user-facing and Claude-free (install, the `MAISTER_PLUGIN_ROOT` export, requirements, the verified
+runtime notes), and the maintainer material moved to `platforms/copilot-cli/MAINTAINERS.md`, which does
+not ship. The install instructions still name `SkillPanel/maister`, unchanged from before the merge —
+retargeting them is an editorial decision this sync did not make on its own.
+
+Gates: `make build` → `make validate` **"All checks passed"** (28 checks, including the three adopted
+from upstream: gate markers not nested in code spans, the plugin-root rename, every `hooks.json` command
+path exists), `make check-deterministic` **PASS** (rebuild byte-identical), suite **272 tests / 270 pass
+/ 0 fail / 2 skipped**, `--check-reference ×6` **CURRENT**. Tripwires: the `model:` alias tripwire did
+not fire (all 8 incoming values are `inherit`, covered by the step-3b map); `CLAUDE.md` was not among
+the 60 changed paths, so the `@AGENTS.md` import could not be dropped (WS5.23 green regardless).
