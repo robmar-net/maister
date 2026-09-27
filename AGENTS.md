@@ -300,11 +300,14 @@ that `build.sh`'s step-3b map does not know is a STOP (ADR 0002), and a `CLAUDE.
 is reported because the `@AGENTS.md` import can vanish with nothing erroring. It then prints the conflict
 set **split into regenerate-vs-hand-resolve**, so the shape of the work is known before it starts.
 
-`land` runs: linked worktree + clean tree + **HEAD is a 2-parent merge** → push target by slug → fork
-master is an *ancestor* (if master moved, **merge** it in; never rebase) → no conflict residue → the
+`land` runs: linked worktree + clean tree → push target by slug → **ancestry, not parent position**: the
+branch must contain both fork master and the **upstream tip resolved from the upstream remote by slug**,
+and carry a merge commit of its own (if master moved, **merge** it in; never rebase — and note that doing
+so makes *our* master the second parent, which is exactly why ancestry is what gets checked) → no
+conflict residue → the
 **inverted** version rule (base moved ⇒ `<new-base>+fork.1` in all three manifests) → `make build` ·
 `validate` · `check-deterministic` · the L2 unit suite with the tree still clean → **`citation-drift.mjs
---base=HEAD^1`** → an **appended** CALIBRATION entry (insertions > 0, deletions == 0) → push, PR, every
+--base=<fork master>`** → an **appended** CALIBRATION entry (insertions > 0, deletions == 0) → push, PR, every
 check green → `--merge`, ancestor assertion, fast-forward the main checkout, archive-verified worktree
 removal.
 

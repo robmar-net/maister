@@ -35,14 +35,16 @@
 #   S4  `git merge --no-commit`, leaving conflicts for a human to resolve
 #
 # `land` is a fixed pipeline; every step is a refusal point and none can be skipped by flag:
-#   L1  you are in a LINKED worktree on a non-master branch, tree clean, HEAD is a 2-parent MERGE
+#   L1  you are in a LINKED worktree on a non-master branch, tree clean
 #   L2  push target resolves BY SLUG to robmar-net/maister — SkillPanel/maister is refused
-#   L3  fork master is an ancestor of HEAD (never rebase a merge: if master moved, merge it in)
+#   L3  ANCESTRY, not parent position (#159): the branch contains fork master AND the upstream tip
+#       (resolved from the upstream remote by slug), and carries a merge commit of its own. Never
+#       rebase a merge: if master moved, merge it in
 #   L4  no conflict residue, and nothing under plugins/maister-copilot/** was hand-resolved
 #   L5  version rule INVERTED vs pr.sh P6: the upstream base moved ⇒ all three manifests read
-#       <new-upstream-base>+fork.1
+#       <new-upstream-base>+fork.1  (compared against fork master, not a parent position)
 #   L6  gates: make build → validate → check-deterministic → the L2 unit suite, tree STILL clean
-#   L7  citation-drift.mjs --base=HEAD^1: the L2 provenance check the reference hash cannot do
+#   L7  citation-drift.mjs --base=<fork master>: the L2 provenance check the reference hash cannot do
 #   L8  an APPENDED CALIBRATION-LOG entry (insertions > 0, deletions == 0) records the sync
 #   L9  push, gh pr create, wait for EVERY check to be green
 #   L10 merge with --merge (NOT squash), assert the upstream SHA is now an ancestor of master,
@@ -165,29 +167,38 @@ cmd_land() {
   done
   [ -n "$title" ] && [ -n "$body_file" ] && [ -f "$body_file" ] || usage
 
-  # L1 — linked worktree, non-master branch, clean tree, HEAD is a 2-parent merge
+  # L1 — linked worktree, non-master branch, clean tree
   local top main branch
   top="$(git rev-parse --show-toplevel)"; main="$(main_checkout)"
   [ "$top" != "$main" ] || fail "you are in the MAIN checkout ($main); land from the sync worktree (scripts/sync.sh start)"
   branch="$(git rev-parse --abbrev-ref HEAD)"
   [ "$branch" != "master" ] && [ "$branch" != "HEAD" ] || fail "on '$branch' — a sync needs its own branch"
   [ -z "$(git status --porcelain)" ] || fail "working tree not clean — commit (git add <paths>) or drop the changes first"
-  local parents; parents="$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')"
-  [ "$parents" = "3" ] || fail "HEAD has $((parents-1)) parent(s) — a sync must land a MERGE commit (2 parents). A squashed or rebased sync loses the record that we merged at all."
-  local base_sha upstream_sha
-  base_sha="$(git rev-parse HEAD^1)"; upstream_sha="$(git rev-parse HEAD^2)"
-  log "L1 merge commit $(git rev-parse --short HEAD): ours $(git rev-parse --short "$base_sha") + upstream $(git rev-parse --short "$upstream_sha")"
+  log "L1 worktree $top on $branch, tree clean"
 
   # L2 — push target by slug
   local fork; fork="$(remote_for "$SLUG")" || fail "no remote points at ${SLUG}"
   case "$(git remote get-url --push "$fork")" in *"$UPSTREAM_SLUG"*) fail "push url of '$fork' points at upstream ${UPSTREAM_SLUG}" ;; esac
   log "L2 push target: $fork → ${SLUG}"
 
-  # L3 — fork master must be an ancestor; NEVER rebase (that is what drops the merge)
+  # L3 — ANCESTRY, not parent position (#159). The upstream commit is resolved from the upstream REMOTE
+  # by slug, because `HEAD^2` stops being upstream the moment this step's own advice is followed: merging
+  # `$fork/master` in makes OUR MASTER the second parent. Keying on ancestry is order-independent, and it
+  # states the real invariant — this branch must CONTAIN the upstream tip and everything already on master.
+  local up base_sha upstream_sha
+  up="$(remote_for "$UPSTREAM_SLUG")" || fail "no remote points at upstream ${UPSTREAM_SLUG} (fetch-only)"
+  git fetch -q "$up" master
   git fetch -q "$fork" master
-  git merge-base --is-ancestor "$fork/master" HEAD \
+  upstream_sha="$(git rev-parse "$up/master")"
+  base_sha="$(git rev-parse "$fork/master")"
+  git merge-base --is-ancestor "$base_sha" HEAD \
     || fail "$fork/master is not an ancestor of HEAD — master moved. MERGE it in (git merge $fork/master); do NOT rebase, a rebase drops this branch's merge commit."
-  log "L3 $fork/master is an ancestor of HEAD"
+  git merge-base --is-ancestor "$upstream_sha" HEAD \
+    || fail "upstream ${UPSTREAM_SLUG}@$(git rev-parse --short "$upstream_sha") is NOT an ancestor of HEAD — upstream advanced since this sync merged. Merge the new tip (git merge $upstream_sha) and re-verify; landing now would claim a sync to a tip we have not taken."
+  # A squashed or rebased sync carries no merge commit of its own, and then nothing records that we merged.
+  git rev-list --merges HEAD "^$base_sha" | grep -q . \
+    || fail "this branch carries no merge commit of its own — a sync must PRESERVE the merge (2 parents). A squash or rebase loses the only record that we merged at all."
+  log "L3 contains $fork/master $(git rev-parse --short "$base_sha") and upstream $(git rev-parse --short "$upstream_sha"); merge commit present"
 
   # L4 — no conflict residue; the generated tree was regenerated, not hand-merged
   ! git grep -qE '^(<<<<<<<|>>>>>>>) ' -- . || fail "conflict markers are still in the tree"
