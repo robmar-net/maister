@@ -22,7 +22,7 @@
 >
 > **Why this build vs installing straight from upstream:** the stock upstream variant ships **no hooks at all** (no destructive-command guard — its effect is measured live; no skill-routing reminder — delivered here since [#113](https://github.com/robmar-net/maister/issues/113), its effect on routing not yet measured, [#121](https://github.com/robmar-net/maister/issues/121)), no `mcpServers` declaration (MCP never loads after install), Claude-only task tools and single-select-only gates — verified diffs with evidence: [Why This Fork](https://github.com/robmar-net/maister/wiki/Why-This-Fork).
 >
-> Slash commands **are** namespaced by plugin id on Copilot CLI — type `/maister-copilot:development`, `/maister-copilot:work`, `/maister-copilot:reviews-code` (the bare `/development` is not offered). Plain language works too — *"Run the maister development workflow to add …"* — and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/README.md`](platforms/copilot-cli/README.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
+> Slash commands **are** namespaced by plugin id on Copilot CLI — type `/maister-copilot:development`, `/maister-copilot:work`, `/maister-copilot:reviews-code` (the bare `/development` is not offered). Plain language works too — *"Run the maister development workflow to add …"* — and the matching workflow skill triggers. Generator, tests and platform notes: [`platforms/copilot-cli/MAINTAINERS.md`](platforms/copilot-cli/MAINTAINERS.md) · [`docs/copilot-parity-runbook.md`](docs/copilot-parity-runbook.md). Contributions flow one way (upstream → here); nothing is pushed back upstream.
 >
 > *Everything below is the upstream Claude Code documentation, kept verbatim.*
 
@@ -49,6 +49,7 @@ Describe what you want to build, and the plugin handles the rest - from specific
 ### Prerequisites
 
 - [Claude Code](https://claude.ai/code) CLI installed and configured
+- Node.js 20 or newer for HTML mockups (optional — without it, mockups fall back to ASCII)
 
 ### Installation
 
@@ -58,6 +59,8 @@ Describe what you want to build, and the plugin handles the rest - from specific
 ```
 
 After installing, restart Claude Code (`/exit` and relaunch) to ensure the plugin is fully loaded.
+
+On GitHub Copilot CLI, install the `maister-copilot` variant with `copilot plugin install` — from a registered marketplace (`copilot plugin marketplace add SkillPanel/maister`, then `copilot plugin install maister-copilot@maister-plugins`) or straight from the repository subdirectory (`copilot plugin install SkillPanel/maister:plugins/maister-copilot`). To run a local checkout instead, load it with `copilot --plugin-dir /path/to/maister/plugins/maister-copilot`; add `--add-dir` for the same path when the checkout sits outside your working directory, which grants file access to it. `--add-dir` on its own does not load a plugin. Then export `MAISTER_PLUGIN_ROOT` as the variant's [install notes](platforms/copilot-cli/README.md) describe, so HTML mockups can start their preview server.
 
 ### Initial project setup
 

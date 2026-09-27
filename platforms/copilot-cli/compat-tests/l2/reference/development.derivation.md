@@ -47,18 +47,18 @@ array of 31).
 | `created_artifact(verification/*)` | required | :441 | P11 Output: `verification/implementation-verification.md` + optional review reports |
 | `task_characteristic(has_reproducible_defect)=false` | required | :149, :202 | Characteristic set by gap-analyzer (:149); Stage 0's pinned task input has no reproducible defect, so the value is scenario-fixed and P3 skip-if (:202) applies |
 | `task_characteristic(ui_heavy)=false` | required | :149, :221-222 | Scenario-fixed by the pinned task input; P4 skip-if (:221-222) applies |
-| `task_characteristic(involves_data_operations)=false` | required | :149 | One of the 5 gap-analyzer characteristics (:149, default :583); scenario-fixed by the pinned task input (no data operations) |
+| `task_characteristic(involves_data_operations)=false` | required | :149 | One of the 5 gap-analyzer characteristics (:149, default :584); scenario-fixed by the pinned task input (no data operations) |
 | `gate_fired(ask)` | required | :176-180 | P2 exit gate always invokes AskUserQuestion — "There is no path through Phase 2 that bypasses `AskUserQuestion`" (:180) |
 | `outcome(tests-pass)=pass` | required | :441, :359 | FUNCTIONAL ORACLE (issue #48, Stage 2). P11 verification (:441) produces `verification/implementation-verification.md` — a correct run's implemented code (P8, :359) passes its test suite, so the functional `tests-pass` outcome is a passing deliverable check, not merely a modeled delegation |
 | `task_status(completed)` | optional | :545 | P14 State: "Set `task.status: completed`". **Demoted required→optional in [#63](https://github.com/robmar-net/maister/issues/63) item 2 (hash-neutral):** lexical STATE self-report (the class #48 Stage 4 moved away from); terminal semantics carried by the functional `outcome(...)=pass` + event-witnessed `reached_terminal(completion)`. Model-grounded, NOT fitted |
-| `reached_terminal(completion)` | required | :553 | P14: "→ End of workflow" |
+| `reached_terminal(completion)` | required | :554 | P14: "→ End of workflow" |
 | `precedes(gap-analyzer,specification-creator)` | required | :147→:285 | ORDER (issue #48, Stage 4): the P2 gap-analyzer delegation (:147) fans out before the P5 specification-creator delegation (:285) — analyse precedes spec |
 | `precedes(specification-creator,implementation-planner)` | required | :285→:332 | P5 specification-creator (:285) precedes P7 implementation-planner (:332) — spec precedes plan |
 | `precedes(implementation-planner,task-group-implementer)` | required | :332→implementation-plan-executor/SKILL.md:96 | P7 implementation-planner (:332) precedes the P8 executor's per-group task-group-implementer fan-out (implementation-plan-executor/SKILL.md:96) — plan precedes implement |
 | `precedes(task-group-implementer,implementation-verifier)` | required | implementation-plan-executor/SKILL.md:96→:446 | The P8 task-group-implementer fan-out (implementation-plan-executor/SKILL.md:96) precedes the P11 implementation-verifier invocation (:446) — implement precedes verify |
 | `min_count(delegated(task-group-implementer))=1` | required | implementation-plan-executor/SKILL.md:87-99 | COUNT (issue #48, Stage 4): the plan executor delegates ONE task-group-implementer per task group (implementation-plan-executor/SKILL.md:87-99), so a correct dev run fans out ≥1 — token-expansion `=1..c`, reference asserts the floor `=1` |
 | `outcome(greet-edges)=pass` | required | prompt-pinned edges + `run-edge-tests.sh` (issue #88) | PRODUCT-CORRECTNESS oracle: the `--greet` deliverable preserves a multi-word name verbatim AND fails a bare `--greet` with a non-zero exit + `usage` on stderr (restaged 2-check runner). SEPARATE from `outcome(tests-pass)` (which stays the feature check). **PROMOTED optional→required (CALIBRATION #36) after 2 clean runs — fork `20260831T123617Z` (AS-EXPECTED after #90) + `20260831T143100Z`, both `=pass`; upstream control also `=pass`.** Backwards-incomparable: a bundle whose bare `--greet` prints `Hello, !` exit 0 cannot pass |
-| `state_schema(conformant)` | optional | :107-122, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema (canonical `completed_phases` + top-level `task:` block). **It is NOT hard-required** because the runtime routing/resume readers (`development/SKILL.md:247`, `orchestrator-patterns.md:358-360`) are model-interpreted and *semantic* — a bare-int `completed_phases` or a top-level `status:` is read for the same meaning — so an off-schema serialization is behavior-preserving, not a functional regression. The divergence stays visible via the `state_schema(off-schema)` allowlist LIMITATION (🟢 ADAPTED); lexical parity would need a deterministic post-write normalizer hook (tracked in #57). Keyed on the dedicated `schemaDivergences` signal (NOT `parseWarnings`), so legitimate absences do not mark off-schema. Model-grounded demotion (readers are semantic), NOT fitted to a run |
+| `state_schema(conformant)` | optional | :107-122, orchestrator-framework/references/orchestrator-patterns.md | STATE SCHEMA (issue #48, Stage 4; **demoted required→optional in [#57](https://github.com/robmar-net/maister/issues/57)**): a conformant serialization matches maister's documented schema (canonical `completed_phases` + top-level `task:` block). **It is NOT hard-required** because the runtime routing/resume readers (`development/SKILL.md:247`, `orchestrator-patterns.md:369-360`) are model-interpreted and *semantic* — a bare-int `completed_phases` or a top-level `status:` is read for the same meaning — so an off-schema serialization is behavior-preserving, not a functional regression. The divergence stays visible via the `state_schema(off-schema)` allowlist LIMITATION (🟢 ADAPTED); lexical parity would need a deterministic post-write normalizer hook (tracked in #57). Keyed on the dedicated `schemaDivergences` signal (NOT `parseWarnings`), so legitimate absences do not mark off-schema. Model-grounded demotion (readers are semantic), NOT fitted to a run |
 
 ## Optional (42)
 
@@ -68,12 +68,12 @@ array of 31).
 | `phase_completed(6)` | optional | :114, :309 | Activation "Always (conditional)" (:114); "Recommended: Always … User can skip" (:309, gate :311). **Witness (#71):** `delegated(spec-auditor)` (:300) |
 | `phase_completed(9)` | optional | :116-118 (WP-D live sweep, #76 / CALIBRATION #31) | Conditional TDD Green Gate — activation "When Phase 3 was executed". Paired with `phase_completed(3)`; optional for the same latitude reason. **Witness (#71):** `gate_fired_at(phase-9)` (:376) |
 | `delegated(spec-auditor)` | optional | :305 | P6 delegation; skippable per :309 |
-| `delegated(implementation-completeness-checker)` | optional | implementation-verifier/SKILL.md:120 | Sub-delegation inside the verifier; surfacing depends on the P10 verification-scope selection (:425) and platform (see allowlist note) |
-| `delegated(test-suite-runner)` | optional | implementation-verifier/SKILL.md:107 | Skipped entirely when `skip_test_suite: true` (implementation-verifier/SKILL.md:113) |
-| `delegated(code-reviewer)` | optional | implementation-verifier/SKILL.md:125 | Gated on `code_review_enabled` (user-selected at P10 Q1 :425) |
-| `delegated(code-quality-pragmatist)` | optional | implementation-verifier/SKILL.md:130 | Gated on `pragmatic_review_enabled` |
-| `delegated(reality-assessor)` | optional | implementation-verifier/SKILL.md:140 | Gated on `reality_check_enabled` |
-| `delegated(production-readiness-checker)` | optional | implementation-verifier/SKILL.md:135 | Gated on `production_check_enabled` |
+| `delegated(implementation-completeness-checker)` | optional | implementation-verifier/SKILL.md:121 | Sub-delegation inside the verifier; surfacing depends on the P10 verification-scope selection (:425) and platform (see allowlist note) |
+| `delegated(test-suite-runner)` | optional | implementation-verifier/SKILL.md:108 | Skipped entirely when `skip_test_suite: true` (implementation-verifier/SKILL.md:114) |
+| `delegated(code-reviewer)` | optional | implementation-verifier/SKILL.md:126 | Gated on `code_review_enabled` (user-selected at P10 Q1 :425) |
+| `delegated(code-quality-pragmatist)` | optional | implementation-verifier/SKILL.md:131 | Gated on `pragmatic_review_enabled` |
+| `delegated(reality-assessor)` | optional | implementation-verifier/SKILL.md:141 | Gated on `reality_check_enabled` |
+| `delegated(production-readiness-checker)` | optional | implementation-verifier/SKILL.md:136 | Gated on `production_check_enabled` |
 | `invoked_skill(development)` | optional | :2 | Skill name `maister:development`; entry-point-dependent — a run may arrive via `/maister:work` routing instead of a direct root-skill invocation |
 | `task_characteristic(creates_new_entities)=true` | optional | :149 | Both-optional pair — see honesty note 2 (tautology guard) |
 | `task_characteristic(creates_new_entities)=false` | optional | :149 | Both-optional pair — see honesty note 2 (tautology guard) |
@@ -103,9 +103,9 @@ array of 31).
 | `standards(index_read)` | optional | :50 (WP-D, #76) | Init Step 6 "Discover project documentation": Read `.maister/docs/INDEX.md`; lazy standards loading (implementation-plan-executor). Extracted from a READ-tool read (apply_patch mentions excluded) |
 | `created_artifact(dashboard.html)` | optional | :49 (WP-D, #76) | Init Step 5 "Set up Operator Dashboard": copy `dashboard.html` to task root. Config-gated — SKIPPED when `html_output=false` (:49, :87), hence optional not required |
 | `created_artifact(dashboard-data.js)` | optional | :49 (WP-D, #76) | Init Step 5: write the initial `dashboard-data.js`. Same `html_output` config gate as `dashboard.html` |
-| `outcome(spec-structure)=pass` | optional | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | Structure oracle: `implementation/spec.md` opens with the § 7 Artifact Summary Contract `## TL;DR` (specification-creator.md:114). Body headings NOT asserted (wording varies per task — see CALIBRATION #29). Optional; `=fail` allowlisted |
-| `outcome(plan-structure)=pass` | optional | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | Structure oracle: `implementation/implementation-plan.md` opens with `## TL;DR` (implementation-planner.md:193). Optional; `=fail` allowlisted |
-| `outcome(verification-structure)=pass` | optional | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | Structure oracle: `verification/implementation-verification.md` opens with `## TL;DR` (implementation-verifier/SKILL.md Phase 3 report structure). Optional; `=fail` allowlisted |
+| `outcome(spec-structure)=pass` | optional | orchestrator-patterns.md:419 § 7 (WP-D2, #76) | Structure oracle: `implementation/spec.md` opens with the § 7 Artifact Summary Contract `## TL;DR` (specification-creator.md:114). Body headings NOT asserted (wording varies per task — see CALIBRATION #29). Optional; `=fail` allowlisted |
+| `outcome(plan-structure)=pass` | optional | orchestrator-patterns.md:419 § 7 (WP-D2, #76) | Structure oracle: `implementation/implementation-plan.md` opens with `## TL;DR` (implementation-planner.md:193). Optional; `=fail` allowlisted |
+| `outcome(verification-structure)=pass` | optional | orchestrator-patterns.md:419 § 7 (WP-D2, #76) | Structure oracle: `verification/implementation-verification.md` opens with `## TL;DR` (implementation-verifier/SKILL.md Phase 3 report structure). Optional; `=fail` allowlisted |
 
 ## Rules (21)
 
@@ -173,15 +173,15 @@ dev profile does NOT emit `created_artifact(analysis/gap-analysis.md)`, so it mu
 
 | predicate | partition | citation | note |
 |---|---|---|---|
-| `invoked_skill(reviews-code)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
-| `invoked_skill(reviews-pragmatic)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
-| `invoked_skill(reviews-spec-audit)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
-| `invoked_skill(reviews-reality-check)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
-| `invoked_skill(reviews-production-readiness)` | allowlist | implementation-verifier/SKILL.md:108-142 | LIMITATION — platform divergence, see honesty note 3 |
+| `invoked_skill(reviews-code)` | allowlist | implementation-verifier/SKILL.md:109-143 | LIMITATION — platform divergence, see honesty note 3 |
+| `invoked_skill(reviews-pragmatic)` | allowlist | implementation-verifier/SKILL.md:109-143 | LIMITATION — platform divergence, see honesty note 3 |
+| `invoked_skill(reviews-spec-audit)` | allowlist | implementation-verifier/SKILL.md:109-143 | LIMITATION — platform divergence, see honesty note 3 |
+| `invoked_skill(reviews-reality-check)` | allowlist | implementation-verifier/SKILL.md:109-143 | LIMITATION — platform divergence, see honesty note 3 |
+| `invoked_skill(reviews-production-readiness)` | allowlist | implementation-verifier/SKILL.md:109-143 | LIMITATION — platform divergence, see honesty note 3 |
 | `state_schema(off-schema)` | allowlist | :107-122 (parser tolerance) | LIMITATION (issue #48, Stage 4) — the tolerant state parser accepts documented off-schema orchestrator-state serializations (bare-int `completed_phases`, `phase[-_]` tolerance, `phase_summaries` as phase source, `phases:` sequence with `id|number|phase` key, top-level `status:` without a `task:` block, floating `task_characteristics`); a run whose state diverges is allowlisted, not REGRESSED |
-| `outcome(spec-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — a spec.md that does not open with the § 7 `## TL;DR` contract is surfaced VISIBLY, not REGRESSED, while `=pass` is optional. Retire + promote `=pass` to required after ≥2 runs confirm the structure on Copilot (CALIBRATION #29) |
-| `outcome(plan-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — same as `outcome(spec-structure)=fail` for `implementation/implementation-plan.md` |
-| `outcome(verification-structure)=fail` | allowlist | orchestrator-patterns.md:408 § 7 (WP-D2, #76) | LIMITATION — same for `verification/implementation-verification.md` |
+| `outcome(spec-structure)=fail` | allowlist | orchestrator-patterns.md:419 § 7 (WP-D2, #76) | LIMITATION — a spec.md that does not open with the § 7 `## TL;DR` contract is surfaced VISIBLY, not REGRESSED, while `=pass` is optional. Retire + promote `=pass` to required after ≥2 runs confirm the structure on Copilot (CALIBRATION #29) |
+| `outcome(plan-structure)=fail` | allowlist | orchestrator-patterns.md:419 § 7 (WP-D2, #76) | LIMITATION — same as `outcome(spec-structure)=fail` for `implementation/implementation-plan.md` |
+| `outcome(verification-structure)=fail` | allowlist | orchestrator-patterns.md:419 § 7 (WP-D2, #76) | LIMITATION — same for `verification/implementation-verification.md` |
 | `invoked_skill(quick-plan)` | allowlist | #88 follow-up (CALIBRATION #34) | LIMITATION — platform/model divergence: the dev model additionally invoked the maister `quick-plan` skill (Plan Mode) during planning, ALONGSIDE `implementation-planner` (still delegated; precedes chain intact). No development/SKILL.md anchor → allowlisted (not silently optional), a benign in-family planning aid, not a mis-route out of maister. Observed live 1.0.82 `20260831T123617Z` |
 
 ## Honesty notes
@@ -197,7 +197,7 @@ characteristics pinned as required `=false` above are fixed by Stage 0's pinned 
 which is why they are not both-optional pairs.
 
 **Note 3 — the 5 allowlist `reviews-*` entries.**
-Citation: `implementation-verifier/SKILL.md:108-142`. On Claude, the implementation-verifier
+Citation: `implementation-verifier/SKILL.md:109-143`. On Claude, the implementation-verifier
 delegates review work to Task subagents (`code-reviewer`, `code-quality-pragmatist`,
 `production-readiness-checker`, `reality-assessor` — the already-optional
 `delegated(code-reviewer)` etc. rows above model exactly these). On Copilot, the same review work
