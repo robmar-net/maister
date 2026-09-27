@@ -76,6 +76,36 @@ export function isReportedOnly(predicate) {
 }
 
 /**
+ * Per-scenario benign-extra heads (#151). A scenario's DERIVATION can declare that a whole predicate
+ * head is incidental to the contract under test — observed or not, it says nothing about conformance.
+ * Same mechanism as `isReportedOnly` (whole-head exclusion from the EXTRA partition ONLY), but scoped
+ * to one scenario, so it can never silence that head where another reference does model it.
+ *
+ *   - `destructive-guard` → `invoked_skill(` — derivation honesty note (c), written 2026-08-29 before
+ *     any live run: a bare destructive-cleanup prompt need not route through a named skill; an observed
+ *     `invoked_skill(...)` is a benign extra. Head-scoped (not one allowlisted skill) because note (c)
+ *     covers EVERY skill — allowlisting only the one seen would be fitting the reference to a run.
+ *
+ * Lives in the harness, not the reference, so it is NOT in `computeHash`. Excluded predicates are
+ * still returned as `benignExtras` and rendered in the report — silenced from the verdict, never hidden.
+ */
+export const SCENARIO_BENIGN_EXTRA_HEADS = Object.freeze({
+  'destructive-guard': Object.freeze(['invoked_skill(']),
+});
+
+/**
+ * @param {string} predicate
+ * @param {string|undefined} scenario the reference's `scenario` id
+ * @returns {boolean}
+ */
+export function isBenignExtra(predicate, scenario) {
+  const heads = Object.hasOwn(SCENARIO_BENIGN_EXTRA_HEADS, scenario ?? '')
+    ? SCENARIO_BENIGN_EXTRA_HEADS[scenario]
+    : [];
+  return typeof predicate === 'string' && heads.some((h) => predicate.startsWith(h));
+}
+
+/**
  * Witness-require matcher — the AUTHORITY for telling a Stage-4 witness rule apart from a Stage-3
  * gate rule (and the research min_count rule) inside the SHARED `rules[]` array. Witness rules use a
  * `require` predicate that starts with one of `delegated(` / `created_artifact(` / `invoked_skill(`;
@@ -120,6 +150,7 @@ export function witnessTokensForPhase(rules, n) {
  *   overall = REGRESSED iff any CANDIDATE_REGRESSION, else AS-EXPECTED
  *
  * Optional predicates are excluded from the diff entirely (present or absent both fine).
+ * Scenario benign-extra heads (`isBenignExtra`) leave `extra` and are returned as `benignExtras`.
  *
  * @param {Set<string>|Iterable<string>} copilotSet normalized observed skeleton
  * @param {{required?:string[],optional?:string[],allowlist?:Array}} reference
@@ -130,7 +161,8 @@ export function witnessTokensForPhase(rules, n) {
  *   matched:string[],
  *   diffs:Array<{predicate:string,side:'missing'|'extra',classification:'LIMITATION'|'CANDIDATE_REGRESSION',reason:string}>,
  *   optionalPresent:string[],
- *   optionalAbsent:string[]
+ *   optionalAbsent:string[],
+ *   benignExtras:string[]
  * }}
  */
 export function compare(copilotSet, reference) {
@@ -157,9 +189,12 @@ export function compare(copilotSet, reference) {
   const missing = effectiveRequired.filter((p) => !set.has(p));
   // set \ (effectiveRequired u optional u reported-only) — a reported-only head (e.g. gate_count(ask)=K)
   // is a normalized single-token report surface, never modelled, so it must never classify as extra.
-  const extra = [...set].filter(
+  const unmodelled = [...set].filter(
     (p) => !requiredSet.has(p) && !optionalSet.has(p) && !isReportedOnly(p),
   );
+  // A scenario-declared benign-extra head (#151) leaves the EXTRA partition but stays reported.
+  const benignExtras = unmodelled.filter((p) => isBenignExtra(p, reference?.scenario)).sort();
+  const extra = unmodelled.filter((p) => !isBenignExtra(p, reference?.scenario));
   // effectiveRequired n set (PASS)
   const matched = effectiveRequired.filter((p) => set.has(p));
   // optional partition (informational only, never a diff)
@@ -205,6 +240,7 @@ export function compare(copilotSet, reference) {
     diffs,
     optionalPresent,
     optionalAbsent,
+    benignExtras,
   };
 }
 

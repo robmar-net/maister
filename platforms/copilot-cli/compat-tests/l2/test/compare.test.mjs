@@ -21,6 +21,8 @@ import {
   isReportedOnly,
   WITNESS_REQUIRE_RE,
   witnessTokensForPhase,
+  isBenignExtra,
+  SCENARIO_BENIGN_EXTRA_HEADS,
 } from '../compare.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -411,4 +413,84 @@ test('4.4d witnessTokensForPhase returns only witness requires for the phase; ig
 
   // Defensive: a non-array rules input yields [].
   assert.deepEqual(witnessTokensForPhase(null, 5), []);
+});
+
+// ── #151: scenario-scoped benign-extra heads ─────────────────────────────────────────────────────
+//
+// destructive-guard derivation note (c) declares any `invoked_skill(...)` a benign extra. The harness
+// encodes it as a head scoped to that scenario: out of the EXTRA partition, still reported, and inert
+// for every other scenario. The committed reference is loaded here on purpose — the fix must turn the
+// #151 live skeleton AS-EXPECTED without a reference edit or hash change.
+
+const DG_REF_PATH = join(__dirname, '..', 'reference', 'destructive-guard.skeleton.json');
+const loadDgReference = () => JSON.parse(readFileSync(DG_REF_PATH, 'utf8'));
+// The observed skeleton of bundle 20260907T005316Z (CLI 1.0.83), as issue #151 records it.
+const DG_151_OBSERVED = [
+  'hook_effect(destructive_guard=ask)',
+  'invoked_skill(development)',
+  'reached_terminal(completion)',
+];
+
+test('151a destructive-guard: the #151 skeleton (extra invoked_skill(development)) is AS-EXPECTED 2·0·0', () => {
+  const reference = loadDgReference();
+  const result = compare(new Set(DG_151_OBSERVED), reference);
+  assert.equal(result.overall, 'AS-EXPECTED');
+  assert.equal(result.exitCode, EXIT.AS_EXPECTED);
+  assert.deepEqual(result.counts, { pass: 2, limitation: 0, fail: 0 });
+  assert.equal(result.diffs.length, 0);
+  assert.deepEqual(result.benignExtras, ['invoked_skill(development)'], 'silenced, never hidden');
+});
+
+test('151b destructive-guard: the head covers EVERY skill (note (c)), not just the one observed', () => {
+  const reference = loadDgReference();
+  const result = compare(
+    new Set([...DG_151_OBSERVED, 'invoked_skill(quick-bugfix)', 'invoked_skill(work)']),
+    reference,
+  );
+  assert.equal(result.overall, 'AS-EXPECTED');
+  assert.deepEqual(result.benignExtras, [
+    'invoked_skill(development)', 'invoked_skill(quick-bugfix)', 'invoked_skill(work)',
+  ]);
+});
+
+test('151c destructive-guard: any OTHER unmodelled extra still REGRESSES', () => {
+  const reference = loadDgReference();
+  const result = compare(new Set([...DG_151_OBSERVED, 'delegated(code-reviewer)']), reference);
+  assert.equal(result.overall, 'REGRESSED');
+  assert.deepEqual(result.diffs.map((d) => [d.predicate, d.side, d.classification]), [
+    ['delegated(code-reviewer)', 'extra', 'CANDIDATE_REGRESSION'],
+  ]);
+});
+
+test('151d destructive-guard: the benign head never excuses the guard contract going missing', () => {
+  const reference = loadDgReference();
+  const result = compare(new Set(['invoked_skill(development)', 'reached_terminal(completion)']), reference);
+  assert.equal(result.overall, 'REGRESSED');
+  assert.deepEqual(result.diffs.map((d) => [d.predicate, d.side]), [
+    ['hook_effect(destructive_guard=ask)', 'missing'],
+  ]);
+});
+
+test('151e the head is scenario-scoped: invoked_skill( extra still REGRESSES for any other scenario', () => {
+  assert.equal(isBenignExtra('invoked_skill(development)', 'destructive-guard'), true);
+  assert.equal(isBenignExtra('invoked_skill(development)', 'development'), false);
+  assert.equal(isBenignExtra('invoked_skill(development)', undefined), false);
+  assert.equal(isBenignExtra('invoked_skill(development)', 'toString'), false, 'no prototype lookups');
+  assert.equal(isBenignExtra('delegated(x)', 'destructive-guard'), false);
+
+  const reference = { ...loadDgReference(), scenario: 'other-fixture' };
+  const result = compare(new Set(DG_151_OBSERVED), reference);
+  assert.equal(result.overall, 'REGRESSED');
+  assert.deepEqual(result.benignExtras, []);
+});
+
+test('151f the benign-extra map is frozen and lists only destructive-guard', () => {
+  assert.ok(Object.isFrozen(SCENARIO_BENIGN_EXTRA_HEADS));
+  assert.deepEqual(Object.keys(SCENARIO_BENIGN_EXTRA_HEADS), ['destructive-guard']);
+});
+
+test('151g the committed destructive-guard reference is untouched (hash still verifies)', () => {
+  const reference = loadDgReference();
+  assert.deepEqual(reference.allowlist, [], 'no allowlist fit for the observed skill');
+  assert.equal(computeHash(reference), reference.hash);
 });

@@ -76,3 +76,6 @@ live `PermissionRequest` shape), confirmed by the cited live bundle. L1-FINDINGS
 route through a named skill; if an `invoked_skill(...)` predicate appears on a live run it is a
 benign extra (not required, not an unmodeled-extra failure). Modeling it would fit the reference to
 an incidental routing choice rather than the guard contract.
+Encoded in the harness (issue #151): `compare.mjs` `SCENARIO_BENIGN_EXTRA_HEADS` drops the whole
+`invoked_skill(` head from this scenario's EXTRA partition and reports it under **Benign extras** —
+no reference edit, no hash change. See CALIBRATION-LOG entry 48.

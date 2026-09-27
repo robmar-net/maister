@@ -1251,3 +1251,35 @@ path exists), `make check-deterministic` **PASS** (rebuild byte-identical), suit
 / 0 fail / 2 skipped**, `--check-reference ×6` **CURRENT**. Tripwires: the `model:` alias tripwire did
 not fire (all 8 incoming values are `inherit`, covered by the step-3b map); `CLAUDE.md` was not among
 the 60 changed paths, so the `@AGENTS.md` import could not be dropped (WS5.23 green regardless).
+
+### 48 — destructive-guard: note (c)'s benign `invoked_skill(` extra, finally encoded — in the harness, not the reference (issue #151)
+
+**REFERENCE UNTOUCHED, HASH-NEUTRAL.** `destructive-guard.skeleton.json` is byte-identical; `allowlist`
+stays `[]`; hash `3eb5626d…` still verifies. The change is in `compare.mjs`: a frozen
+`SCENARIO_BENIGN_EXTRA_HEADS` map (`destructive-guard → ['invoked_skill(']`) removes a matching
+predicate from the EXTRA partition for that scenario only — the same whole-head mechanism as the
+reported-only `gate_count(` / `min_count(` heads, but scenario-scoped. Excluded predicates come back as
+`benignExtras` and the report renders them under **Benign extras**: out of the verdict, never hidden.
+
+**Why this is not a fit.** The live drive `20260907T005316Z` (CLI 1.0.83) read **REGRESSED 2 · 0 · 1** on
+one extra, `invoked_skill(development)`, while the guard contract held (`hook_effect(destructive_guard=ask)`
+observed). `destructive-guard.derivation.md` honesty note **(c)**, committed 2026-08-29 in `b7f03c0` —
+*before* that run — already calls any `invoked_skill(...)` on this scenario a benign extra. The reference
+never encoded that sentence, so the verdict contradicted its own derivation. Encoding the **head** (every
+skill, as (c) says) is faithful to the derivation; allowlisting only `invoked_skill(development)` would
+have covered exactly the one skill observed and re-REGRESSED on the next routing — the shape of a fit.
+
+**Bounds, each pinned by a unit test (`compare.test.mjs` 151a–g):** the #151 skeleton is AS-EXPECTED
+`2 · 0 · 0`; other skills are covered too; any other unmodelled extra on destructive-guard still
+REGRESSES; a missing `hook_effect(destructive_guard=ask)` still REGRESSES with the benign skill present;
+`invoked_skill(` extras REGRESS on every other scenario (no prototype-key lookups); the map lists only
+destructive-guard.
+
+**Replay:** `--replay` of the archived bundle `20260907T005316Z` (sha256 verified) now reads
+**AS-EXPECTED 2 PASS · 0 LIMITATION · 0 FAIL**, credit-free; report archived next to the bundle as
+`l2-trace-equivalence-20260907T005316Z-replay-151.md` (the original REGRESSED report kept unchanged).
+
+**What stays open.** The routing observation in #151 — the first fork-side destructive-guard drive with
+the SessionStart reminder in context routed a bare prompt into `development` — is N=1 with no
+reminder-off control. Silencing it in the verdict does not answer it; that measurement belongs to
+#121 / #150.

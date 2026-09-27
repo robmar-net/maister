@@ -968,6 +968,14 @@ export function buildReport(ctx) {
     }
   }
   L.push('');
+  // #151: observed predicates the scenario derivation declares benign — out of the verdict, still shown.
+  const benignExtras = result?.benignExtras || [];
+  if (benignExtras.length) {
+    L.push('**Benign extras** — observed, excluded from the diff by a scenario-scoped head declared in the derivation (`compare.mjs` `SCENARIO_BENIGN_EXTRA_HEADS`):');
+    L.push('');
+    L.push(fencedList(benignExtras));
+    L.push('');
+  }
 
   // ## Gates — the deterministic responder's per-gate answer log (in call order). Each interactive
   // gate that fired and was answered is listed with the phase its answerMap entry mapped to; a
