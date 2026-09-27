@@ -124,6 +124,10 @@ Some incoming upstream changes need a Copilot-side adaptation to land *before* t
 introduce a silent parity gap. Treat each tripwire below as a **STOP** during a sync: if the incoming
 merge carries the trigger, pause, finish the linked adaptation, then merge.
 
+> **`scripts/sync.sh start` now checks these mechanically, before it merges** (§ Shipping). The prose
+> below stays because it explains *why* each one matters and what the adaptation is — but enforcement no
+> longer depends on someone remembering to read it.
+
 ### `CLAUDE.md` overwritten — the `@AGENTS.md` import (ALWAYS check)
 
 This file only reaches an agent because `CLAUDE.md` imports it (see the note at the top).
@@ -224,10 +228,22 @@ So, for any run artifact you would be unhappy to lose:
 
 ## Shipping — PRs and wiki updates go through the scripts (BINDING)
 
-Two scripts are the **only** sanctioned way to land a change on `master` or on the wiki. Every rule in
+Three scripts are the **only** sanctioned way to land a change on `master` or on the wiki. Every rule in
 this document that can be checked by a machine is checked by them, at the moment it matters, and none
 of the checks has a skip flag. Hand-run `gh pr merge`, hand-run `git push` to the wiki, and "I'll fix
 the counters later" are all violations, not shortcuts.
+
+**Which script depends on WHICH ACTIVITY, and the two are not variants of one thing.** Authoring a
+change and reacting to upstream invert each other's invariants, so they get separate scripts — never one
+script with a flag that relaxes a guard (a guard with an off switch is how an ordinary ticket ends up
+bypassing zero-touch):
+
+| | `pr.sh` — **our work** | `sync.sh` — **reaction to upstream** |
+|---|---|---|
+| `plugins/maister/**` | must be **unchanged** (zero-touch) | **changes by definition** — that is the job |
+| history | squash to a single commit | **preserves the merge commit** (its second parent is the only record we merged) |
+| version | `+fork.N` **incremented** | upstream base moves ⇒ **`N` resets to 1** |
+| merge tripwires below | not applicable | **mechanically enforced**, not remembered |
 
 Why (review of 2026-09-07, [#148](https://github.com/robmar-net/maister/issues/148)): **56 PRs landed
 in one week, all self-merged, three sessions in parallel.** In that week the wiki rollup drifted three
@@ -263,6 +279,43 @@ Rules the script cannot check, and which still bind:
   box"), and that wiki publish happens in the **same session, right after the merge** — not "later".
 - **Stage explicitly** (`git add <paths>`); the script refuses a dirty tree but cannot tell a stray
   from a change.
+
+### Upstream merges — `scripts/sync.sh`
+
+```bash
+scripts/sync.sh start                                  # worktree + tripwire preflight + the merge, left uncommitted
+cd .worktrees/sync-<version>                           # ... resolve, REGENERATE the copilot tree, version, CALIBRATION, commit ...
+scripts/sync.sh land "<title>" --body-file <body.md>   # the whole pipeline, or a named refusal
+```
+
+`pr.sh` **cannot** land a sync, and must not be taught to: its rebase (P3) and squash-merge (P8) both
+discard the merge commit's second parent, and its zero-touch check (P4) refuses the 20-odd
+`plugins/maister/**` files a sync legitimately carries. Without that second parent git holds no record
+that we merged, and the **next** sync re-applies the same upstream change and conflicts against our own
+copy of it. So `sync.sh` lands with `--merge` and then *asserts* the upstream SHA is an ancestor of
+`master`.
+
+`start` refuses **before** the merge, which is the point of a preflight: an incoming agent `model:` alias
+that `build.sh`'s step-3b map does not know is a STOP (ADR 0002), and a `CLAUDE.md` in the incoming range
+is reported because the `@AGENTS.md` import can vanish with nothing erroring. It then prints the conflict
+set **split into regenerate-vs-hand-resolve**, so the shape of the work is known before it starts.
+
+`land` runs: linked worktree + clean tree → push target by slug → **ancestry, not parent position**: the
+branch must contain both fork master and the **upstream tip resolved from the upstream remote by slug**,
+and carry a merge commit of its own (if master moved, **merge** it in; never rebase — and note that doing
+so makes *our* master the second parent, which is exactly why ancestry is what gets checked) → no
+conflict residue → the
+**inverted** version rule (base moved ⇒ `<new-base>+fork.1` in all three manifests) → `make build` ·
+`validate` · `check-deterministic` · the L2 unit suite with the tree still clean → **`citation-drift.mjs
+--base=<fork master>`** → an **appended** CALIBRATION entry (insertions > 0, deletions == 0) → push, PR, every
+check green → `--merge`, ancestor assertion, fast-forward the main checkout, archive-verified worktree
+removal.
+
+**Why the citation check is a gate and not a nicety.** L2 derivations cite the exact source line each
+predicate came from, and those citations are prose — the reference hash does not cover them. In the
+v2.2.4 sync, `--check-reference` ×6 reported CURRENT with hashes verified while **23 citations pointed at
+the wrong lines**, because upstream had reflowed two files. Provenance rot is invisible to every other
+gate we have, which makes it exactly the silent green this document exists to prevent.
 
 ### Wiki — `scripts/wiki.sh`
 
